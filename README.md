@@ -17,11 +17,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/yourusername/brewos/blob/main/LICENSE">
+  <a href="https://github.com/mizrachiran/brewos/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-Apache%202.0%20+%20Commons%20Clause-blue.svg" alt="License: Apache 2.0 + Commons Clause">
   </a>
-  <a href="https://github.com/yourusername/brewos/releases">
-    <img src="https://img.shields.io/github/v/release/yourusername/brewos?include_prereleases" alt="Release">
+  <a href="https://github.com/mizrachiran/brewos/releases">
+    <img src="https://img.shields.io/github/v/release/mizrachiran/brewos?include_prereleases" alt="Release">
   </a>
   <img src="https://img.shields.io/badge/platform-RP2040%20%7C%20ESP32-brightgreen" alt="Platform">
   <img src="https://img.shields.io/badge/status-development-orange" alt="Status">
@@ -145,7 +145,7 @@ The ECM Synchronika serves as the reference implementation with complete schemat
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/brewos.git
+git clone https://github.com/mizrachiran/brewos.git
 cd brewos
 
 # Build Pico firmware (all machine types)
@@ -293,8 +293,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## Community
 
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/brewos/discussions)
-- **Issues:** [GitHub Issues](https://github.com/yourusername/brewos/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/mizrachiran/brewos/discussions)
+- **Issues:** [GitHub Issues](https://github.com/mizrachiran/brewos/issues)
 - **Discord:** Coming soon
 
 ---
