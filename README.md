@@ -80,23 +80,25 @@ BrewOS is an open-source control system designed to replace factory controllers 
 │                              SYSTEM ARCHITECTURE                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│    ┌──────────────┐         ┌──────────────┐         ┌──────────────┐       │
-│    │   SENSORS    │         │  PICO RP2040 │         │   ACTUATORS  │       │
-│    │              │         │              │         │              │       │
-│    │ • NTC ×2     │────────►│ • Safety     │────────►│ • SSR ×2     │       │
-│    │ • Thermocouple│        │ • PID Control│         │ • Relay ×4   │       │
-│    │ • Pressure   │         │ • State Mgmt │         │ • Buzzer     │       │
-│    │ • Levels ×3  │         │              │         │ • LED        │       │
-│    │ • Switches   │         └──────┬───────┘         └──────────────┘       │
-│    └──────────────┘                │                                         │
-│                                    │ Binary UART                             │
-│                                    │ (921600 baud)                           │
-│                                    ▼                                         │
-│                           ┌──────────────┐                                   │
-│    ┌──────────────┐       │    ESP32     │       ┌──────────────┐           │
-│    │    PZEM      │──────►│   Display    │◄─────►│  External    │           │
-│    │  Power Meter │ UART  │   Module     │ WiFi  │  (MQTT, App) │           │
-│    └──────────────┘       └──────────────┘       └──────────────┘           │
+│  ┌──────────────┐         ┌──────────────┐         ┌──────────────┐         │
+│  │   SENSORS    │         │  PICO RP2040 │         │   ACTUATORS  │         │
+│  │              │         │              │         │              │         │
+│  │ • NTC ×2     │────────►│ • Safety     │────────►│ • SSR ×2     │         │
+│  │ • Thermocouple│        │ • PID Control│         │ • Relay ×4   │         │
+│  │ • Pressure   │         │ • State Mgmt │         │ • Buzzer     │         │
+│  │ • Levels ×3  │         │              │         │ • LED        │         │
+│  │ • Switches   │         └───────┬──────┘         └──────────────┘         │
+│  └──────────────┘                 │                                          │
+│                                   │                                          │
+│  ┌──────────────┐                 │                                          │
+│  │    PZEM      │────────────────►│                                          │
+│  │  Power Meter │ UART            │ Binary UART (921600 baud)                │
+│  └──────────────┘                 ▼                                          │
+│                           ┌──────────────┐         ┌──────────────┐         │
+│                           │    ESP32     │         │  External    │         │
+│                           │   Display    │◄───────►│  (MQTT, App) │         │
+│                           │   Module     │  WiFi   │              │         │
+│                           └──────────────┘         └──────────────┘         │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
