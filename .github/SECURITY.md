@@ -8,7 +8,7 @@ If you discover a security vulnerability in BrewOS, please report it responsibly
 
 Please **do not** open a public GitHub issue for security vulnerabilities. Instead:
 
-1. Email the maintainers directly (add your email here)
+1. Email the maintainers directly (mizrachiran@gmail.com)
 2. Or use GitHub's private vulnerability reporting feature
 
 Include:
