@@ -1,61 +1,79 @@
-# BrewOS - Open Source Espresso Machine Firmware
+<p align="center">
+  <img src="docs/assets/brewos-logo.png" alt="BrewOS Logo" width="200">
+</p>
 
-## Project Overview
+<h1 align="center">BrewOS</h1>
 
-An open-source control system to replace factory controllers in espresso machines. Designed as a plug-and-play replacement with enhanced features for dual-boiler, single-boiler, and heat-exchanger machines.
+<p align="center">
+  <strong>Open-source firmware for espresso machine control</strong>
+</p>
 
-**Architecture:** Raspberry Pi Pico (RP2040) + ESP32 Display Module  
-**Status:** Development  
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#supported-machines">Supported Machines</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#documentation">Documentation</a> •
+  <a href="#contributing">Contributing</a>
+</p>
 
----
-
-## Documentation Index
-
-### Hardware
-
-| Document | Description |
-|----------|-------------|
-| [Hardware Specification](hardware/Specification.md) | PCB design, component selection, electrical specs |
-| [Test Procedures](hardware/Test_Procedures.md) | Breadboard, prototype, and integration testing |
-
-### Firmware
-
-| Document | Description |
-|----------|-------------|
-| [Firmware Overview](firmware/README.md) | Getting started, build instructions, toolchain |
-| [Requirements](firmware/Requirements.md) | Functional and safety requirements |
-| [Architecture](firmware/Architecture.md) | Module structure, dual-core design, state machine |
-| [Communication Protocol](firmware/Communication_Protocol.md) | Binary protocol between Pico ↔ ESP32 |
-| [Machine Configurations](firmware/Machine_Configurations.md) | Multi-machine support, pin mappings |
-| [Debugging](firmware/Debugging.md) | Debug strategies, Picoprobe setup, remote logging |
-| [Feature Status](firmware/Feature_Status_Table.md) | Implementation status of all features |
-
-### Setup & Development
-
-| Document | Description |
-|----------|-------------|
-| [Setup Guide](SETUP.md) | Development environment setup, build instructions, OTA updates |
-
-### Schematics
-
-| Document | Description |
-|----------|-------------|
-| [ECM Synchronika Schematic](schematics/ECM_Schematic_Reference.md) | Circuit diagrams for ECM Synchronika |
-| [ECM Synchronika Netlist](schematics/ECM_Netlist.csv) | Component netlist for ECM Synchronika PCB |
+<p align="center">
+  <a href="https://github.com/yourusername/brewos/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache%202.0%20+%20Commons%20Clause-blue.svg" alt="License: Apache 2.0 + Commons Clause">
+  </a>
+  <a href="https://github.com/yourusername/brewos/releases">
+    <img src="https://img.shields.io/github/v/release/yourusername/brewos?include_prereleases" alt="Release">
+  </a>
+  <img src="https://img.shields.io/badge/platform-RP2040%20%7C%20ESP32-brightgreen" alt="Platform">
+  <img src="https://img.shields.io/badge/status-development-orange" alt="Status">
+</p>
 
 ---
 
-## Quick Links
+## What is BrewOS?
 
-- **Setup Guide:** [SETUP.md](SETUP.md) - Development environment and OTA updates
-- **Safety Requirements:** [firmware/Requirements.md#2-safety-requirements-critical](firmware/Requirements.md#2-safety-requirements-critical)
-- **GPIO Pin Mapping:** [firmware/Requirements.md#31-gpio-pin-mapping](firmware/Requirements.md#31-gpio-pin-mapping)
-- **Protocol Messages:** [firmware/Communication_Protocol.md](firmware/Communication_Protocol.md)
-- **OTA Updates:** [SETUP.md#method-2-ota-via-esp32-when-wired](SETUP.md#method-2-ota-via-esp32-when-wired) - Over-the-air firmware updates
+BrewOS is an open-source control system designed to replace factory controllers in espresso machines. It provides enhanced temperature control, real-time monitoring, and modern features while maintaining safety as the top priority.
+
+**Why BrewOS?**
+- 🎯 **Precise PID Control** - Sub-degree temperature stability for consistent shots
+- 📱 **WiFi Connected** - Monitor and control via web interface
+- 🔧 **Multi-Machine Support** - One firmware for dual boiler, single boiler, and HX machines
+- 🛡️ **Safety First** - Hardware watchdogs, interlocks, and fail-safe design
+- 📊 **Data Logging** - Track shots, temperatures, and machine statistics
+- 🔄 **OTA Updates** - Update firmware wirelessly via web interface
 
 ---
 
-## Architecture Overview
+## Features
+
+### Temperature Control
+- Dual independent PID loops for brew and steam boilers
+- Configurable heating strategies (parallel, sequential, smart stagger)
+- Group head temperature monitoring via thermocouple
+- Pre-infusion support with configurable timing
+
+### Connectivity
+- Built-in WiFi access point for initial setup
+- Web-based dashboard for monitoring and control
+- Real-time WebSocket updates
+- REST API for integration
+
+### Safety
+- Hardware watchdog timer (2-second timeout)
+- Water level interlocks
+- Over-temperature protection (165°C max)
+- Automatic safe-state on any fault
+- Extensive error logging
+
+### Monitoring
+- Real-time temperature graphs
+- Pressure monitoring
+- Shot timer with statistics
+- Power consumption tracking (PZEM-004T)
+- Brew counter with cleaning reminders
+
+---
+
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -83,49 +101,135 @@ An open-source control system to replace factory controllers in espresso machine
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Dual-Core Design:**
+| Core | Responsibility | Timing |
+|------|----------------|--------|
+| **Core 0** | Safety, sensors, PID control, outputs | 100ms deterministic loop |
+| **Core 1** | UART communication, protocol handling | Async, interrupt-driven |
+
 ---
 
 ## Supported Machines
 
-BrewOS supports multiple machine architectures through compile-time configuration:
+BrewOS supports multiple espresso machine architectures through compile-time configuration:
 
 | Machine Type | Status | Examples |
 |--------------|--------|----------|
-| Dual Boiler | ✅ Supported | ECM Synchronika, Profitec Pro 700 |
-| Single Boiler | ✅ Supported | Rancilio Silvia, Gaggia Classic |
-| Heat Exchanger | ✅ Supported | E61 HX machines |
-| Thermoblock | 🔮 Future | - |
+| **Dual Boiler** | ✅ Supported | ECM Synchronika, Profitec Pro 700, Lelit Bianca |
+| **Single Boiler** | ✅ Supported | Rancilio Silvia, Gaggia Classic, Lelit Anna |
+| **Heat Exchanger** | ✅ Supported | E61 HX machines, Bezzera BZ10 |
+| **Thermoblock** | 🔮 Planned | - |
 
-### Machine-Specific Resources
+### Reference Implementation
 
-| Machine | Schematics | Notes |
-|---------|------------|-------|
-| ECM Synchronika | [Schematic](schematics/ECM_Schematic_Reference.md), [Netlist](schematics/ECM_Netlist.csv) | Dual boiler reference implementation |
+The ECM Synchronika serves as the reference implementation with complete schematics and documentation:
 
-Want to add support for your machine? See [Machine Configurations](firmware/Machine_Configurations.md).
+| Resource | Description |
+|----------|-------------|
+| [Schematic](schematics/ECM_Schematic_Reference.md) | Complete circuit diagrams |
+| [Netlist](schematics/ECM_Netlist.csv) | Component list for PCB |
+| [Wiring Guide](hardware/ESP32_Display_Wiring.md) | Connection details |
 
 ---
 
-## Building Firmware
+## Quick Start
+
+### Prerequisites
+
+- [Pico SDK](https://github.com/raspberrypi/pico-sdk) (v1.5.0+)
+- [ARM GCC Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+- [PlatformIO](https://platformio.org/) (for ESP32)
+- CMake 3.13+
+
+### Building
 
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/brewos.git
-cd brewos/src/pico
+cd brewos
 
-# Create build directory
+# Build Pico firmware (all machine types)
+cd src/pico
 mkdir build && cd build
-
-# Build for your machine type
-cmake -DMACHINE_TYPE=DUAL_BOILER ..   # For dual boiler machines
-cmake -DMACHINE_TYPE=SINGLE_BOILER .. # For single boiler machines
-cmake -DMACHINE_TYPE=HEAT_EXCHANGER .. # For HX machines
-
-# Compile
+cmake -DBUILD_ALL_MACHINES=ON ..
 make -j4
 
-# Output: brewos_dual_boiler.uf2 (or other variant)
+# Output files:
+# - brewos_dual_boiler.uf2
+# - brewos_single_boiler.uf2
+# - brewos_heat_exchanger.uf2
 ```
+
+```bash
+# Build ESP32 firmware
+cd src/esp32
+pio run
+
+# Upload web UI
+pio run -t uploadfs
+```
+
+### Flashing
+
+**Pico (USB):**
+1. Hold BOOTSEL button
+2. Connect USB cable
+3. Release button - Pico mounts as drive
+4. Copy `brewos_*.uf2` to the drive
+
+**Pico (OTA via ESP32):**
+1. Connect to BrewOS-Setup WiFi
+2. Open http://192.168.4.1
+3. Upload firmware via web interface
+
+See [SETUP.md](SETUP.md) for detailed instructions.
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| **Getting Started** | |
+| [Setup Guide](SETUP.md) | Development environment setup |
+| [Quick Start](firmware/Quick_Start.md) | Quick reference for common tasks |
+| **Firmware** | |
+| [Architecture](firmware/Architecture.md) | Module structure, dual-core design |
+| [Requirements](firmware/Requirements.md) | Functional and safety requirements |
+| [Communication Protocol](firmware/Communication_Protocol.md) | Binary protocol between Pico ↔ ESP32 |
+| [Machine Configurations](firmware/Machine_Configurations.md) | Multi-machine support, adding new machines |
+| **Hardware** | |
+| [Specification](hardware/Specification.md) | PCB design, component selection |
+| [Test Procedures](hardware/Test_Procedures.md) | Hardware testing procedures |
+| **Features** | |
+| [Cleaning Mode](firmware/Cleaning_Mode_Implementation.md) | Backflush cycle implementation |
+| [Statistics](firmware/Statistics_Feature.md) | Shot tracking and analytics |
+| [Water Management](firmware/Water_Management_Implementation.md) | Auto-fill system |
+
+---
+
+## Hardware Requirements
+
+### Microcontrollers
+- **Raspberry Pi Pico** (RP2040) - Real-time control
+- **ESP32-S3** - WiFi, display, user interface
+
+### Sensors
+- 2× NTC thermistors (brew & steam boilers)
+- 1× MAX31855 thermocouple (group head)
+- 1× Pressure transducer (0-16 bar)
+- 3× Water level probes
+
+### Actuators
+- 2× Solid State Relays (heater control)
+- 4× Mechanical relays (pump, solenoid, etc.)
+- 1× Piezo buzzer
+- 1× Status LED
+
+### Optional
+- PZEM-004T power meter
+- Flow meter
+- Scale integration
 
 ---
 
@@ -140,23 +244,82 @@ Improper handling can result in death or serious injury.
 • Only qualified individuals should work on mains circuits
 • Always use isolation transformers during development
 • Never work alone on energized equipment
-• Follow all safety procedures in the test documentation
+• Disconnect power before making any changes
+• Follow all local electrical codes and regulations
 ```
+
+**Safety is not optional.** The firmware includes multiple safety layers, but hardware installation must be performed by qualified individuals. See [Safety Requirements](firmware/Requirements.md#2-safety-requirements-critical) for details.
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please read the documentation before submitting PRs:
+We welcome contributions! Please read our guidelines before getting started:
 
-1. Check [Feature Status](firmware/Feature_Status_Table.md) for what's needed
-2. Follow the existing code style
-3. Add tests where applicable
-4. Update documentation
+1. **Read the docs** - Understand the [Architecture](firmware/Architecture.md) and [Requirements](firmware/Requirements.md)
+2. **Check existing issues** - See what's being worked on
+3. **Follow code style** - Match existing patterns
+4. **Test thoroughly** - Especially safety-critical code
+5. **Update documentation** - Keep docs in sync with changes
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+### Development Priorities
+
+| Priority | Area | Description |
+|----------|------|-------------|
+| 🔴 Critical | Safety | Any safety improvements |
+| 🟠 High | Stability | Bug fixes, reliability |
+| 🟡 Medium | Features | New machine support, integrations |
+| 🟢 Normal | Enhancements | UI improvements, optimizations |
+
+---
+
+## Roadmap
+
+- [x] Dual boiler support (ECM Synchronika)
+- [x] Single boiler support
+- [x] Heat exchanger support
+- [x] Web-based dashboard
+- [x] OTA firmware updates
+- [ ] MQTT integration
+- [ ] Home Assistant integration
+- [ ] Mobile app (React Native)
+- [ ] Pressure profiling
+- [ ] Flow control
+- [ ] Thermoblock support
+
+---
+
+## Community
+
+- **Discussions:** [GitHub Discussions](https://github.com/yourusername/brewos/discussions)
+- **Issues:** [GitHub Issues](https://github.com/yourusername/brewos/issues)
+- **Discord:** Coming soon
 
 ---
 
 ## License
 
-[TBD]
+This project is licensed under the **Apache License 2.0 with Commons Clause** - see the [LICENSE](LICENSE) file for details.
 
+**What this means:**
+- ✅ You can use, modify, and distribute the software for personal use
+- ✅ You can use it for your own espresso machine
+- ✅ You can contribute improvements back to the project
+- ❌ You cannot sell the software or services based primarily on the software
+
+---
+
+## Acknowledgments
+
+- [Raspberry Pi Pico SDK](https://github.com/raspberrypi/pico-sdk)
+- [ESP-IDF](https://github.com/espressif/esp-idf) & Arduino ESP32
+- [PlatformIO](https://platformio.org/)
+- The espresso enthusiast community
+
+---
+
+<p align="center">
+  <sub>Built with ☕ by espresso enthusiasts, for espresso enthusiasts</sub>
+</p>
