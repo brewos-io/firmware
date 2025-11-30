@@ -1173,29 +1173,9 @@
                             </div>
                         </div>
                     </div>
-                    <div class="arch-diagram">┌─────────────────────────────────────────────────────────────┐
-│                    SYSTEM ARCHITECTURE                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌────────────┐       ┌────────────┐       ┌────────────┐   │
-│  │  SENSORS   │       │ PICO RP2040│       │  ACTUATORS │   │
-│  │            │       │            │       │            │   │
-│  │ • NTC ×2   │──────▶│ • Safety   │──────▶│ • SSR ×2   │   │
-│  │ • Thermo   │       │ • PID      │       │ • Relay ×4 │   │
-│  │ • Pressure │       │ • State    │       │ • Buzzer   │   │
-│  │ • Level ×3 │       │            │       │            │   │
-│  └────────────┘       └─────┬──────┘       └────────────┘   │
-│                             │                                │
-│  ┌────────────┐             │ UART 921600                    │
-│  │   PZEM     │────────────▶│                                │
-│  │ Power Meter│             ▼                                │
-│  └────────────┘       ┌────────────┐       ┌────────────┐   │
-│                       │   ESP32    │       │  External  │   │
-│                       │  Display   │◀─────▶│  MQTT/API  │   │
-│                       │  + WiFi    │ WiFi  │            │   │
-│                       └────────────┘       └────────────┘   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘</div>
+                    <div class="arch-diagram">
+                        <img src="assets/architecture.png" alt="BrewOS System Architecture" style="max-width: 100%; height: auto; border-radius: 12px;">
+                    </div>
                 </div>
             </div>
         </section>

@@ -14,6 +14,7 @@ import { AuthCallback } from '@/pages/AuthCallback';
 import { Pair } from '@/pages/Pair';
 import { Onboarding } from '@/pages/Onboarding';
 import { Cloud } from '@/pages/Cloud';
+import { FirstRunWizard } from '@/pages/FirstRunWizard';
 import { initConnection, getConnection } from '@/lib/connection';
 import { initializeStore } from '@/lib/store';
 import { useAppStore } from '@/lib/mode';
@@ -22,6 +23,7 @@ import { Loader2 } from 'lucide-react';
 function App() {
   const [loading, setLoading] = useState(true);
   const [apMode, setApMode] = useState(false);
+  const [setupComplete, setSetupComplete] = useState(true); // Default true to avoid flash
   
   const { 
     mode, 
@@ -37,13 +39,27 @@ function App() {
       await initialize();
 
       if (mode === 'local') {
-        // Local mode: check AP mode and init WebSocket
+        // Local mode: check AP mode and setup status
         try {
           const response = await fetch('/api/mode');
           const data = await response.json();
           setApMode(data.apMode);
+          
+          // Check if setup is complete (only if not in AP mode)
+          if (!data.apMode) {
+            try {
+              const setupResponse = await fetch('/api/setup/status');
+              if (setupResponse.ok) {
+                const setupData = await setupResponse.json();
+                setSetupComplete(setupData.complete);
+              }
+            } catch {
+              // If endpoint doesn't exist, assume setup is complete
+              setSetupComplete(true);
+            }
+          }
         } catch {
-          console.log('Could not check AP mode');
+          console.log('Could not check mode/setup status');
         }
 
         // Initialize WebSocket connection
@@ -69,6 +85,11 @@ function App() {
     };
   }, [initialize, mode]);
 
+  // Handle setup completion
+  const handleSetupComplete = () => {
+    setSetupComplete(true);
+  };
+
   // Show loading state
   if (loading || !initialized) {
     return (
@@ -83,9 +104,14 @@ function App() {
 
   // ===== LOCAL MODE (ESP32) =====
   if (mode === 'local') {
-    // Show setup page in AP mode
+    // Show WiFi setup page in AP mode
     if (apMode) {
       return <Setup />;
+    }
+
+    // Show first-run wizard if setup not complete
+    if (!setupComplete) {
+      return <FirstRunWizard onComplete={handleSetupComplete} />;
     }
 
     return (
@@ -173,4 +199,3 @@ function App() {
 }
 
 export default App;
-

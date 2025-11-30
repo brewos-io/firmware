@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { GoogleLogin } from '@react-oauth/google';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
@@ -137,7 +137,7 @@ export function Pair() {
                 </p>
                 <div className="flex justify-center">
                   <GoogleLogin
-                    onSuccess={(response) => {
+                    onSuccess={(response: CredentialResponse) => {
                       if (response.credential) {
                         handleGoogleLogin(response.credential);
                       }

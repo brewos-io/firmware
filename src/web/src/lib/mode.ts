@@ -4,11 +4,9 @@ import type { CloudDevice, ConnectionMode } from './types';
 import { 
   isGoogleAuthConfigured, 
   getStoredSession, 
-  storeSession, 
   clearSession, 
   handleGoogleSuccess,
   type GoogleUser,
-  type AuthSession,
 } from './google-auth';
 
 /**

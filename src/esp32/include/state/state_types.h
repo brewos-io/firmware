@@ -18,7 +18,7 @@ struct TemperatureSettings {
     uint16_t ecoTimeoutMinutes = 30;   // Auto-eco after idle
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
 };
 
 struct BrewSettings {
@@ -31,7 +31,7 @@ struct BrewSettings {
     float preinfusionPressure = 2.0f;  // Pre-infusion bar
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
 };
 
 struct PowerSettings {
@@ -40,7 +40,7 @@ struct PowerSettings {
     bool powerOnBoot = false;          // Auto power on
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
 };
 
 struct NetworkSettings {
@@ -51,7 +51,7 @@ struct NetworkSettings {
     char hostname[32] = "brewos";
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
 };
 
 struct MQTTSettings {
@@ -64,7 +64,7 @@ struct MQTTSettings {
     bool discovery = true;             // Home Assistant discovery
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
 };
 
 struct CloudSettings {
@@ -74,7 +74,7 @@ struct CloudSettings {
     char deviceKey[65] = {0};          // Secret key
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
 };
 
 struct ScaleSettings {
@@ -84,7 +84,7 @@ struct ScaleSettings {
     uint8_t scaleType = 0;             // 0=unknown, 1=acaia, 2=felicita, etc.
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
 };
 
 struct DisplaySettings {
@@ -95,7 +95,7 @@ struct DisplaySettings {
     bool showPressure = true;
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
 };
 
 // All settings combined
@@ -142,7 +142,7 @@ struct Statistics {
     uint16_t sessionShots = 0;
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
     
     void resetDaily();
     void recordMaintenance(const char* type);
@@ -164,7 +164,7 @@ struct ShotRecord {
     uint8_t rating = 0;                // User rating 0-5
     
     void toJson(JsonObject& obj) const;
-    bool fromJson(const JsonObject& obj);
+    bool fromJson(JsonObjectConst obj);
     
     float ratio() const { return doseWeight > 0 ? yieldWeight / doseWeight : 0; }
 };
@@ -180,7 +180,7 @@ struct ShotHistory {
     void addShot(const ShotRecord& shot);
     const ShotRecord* getShot(uint8_t index) const;  // 0 = most recent
     void toJson(JsonArray& arr) const;
-    bool fromJson(const JsonArray& arr);
+    bool fromJson(JsonArrayConst arr);
     void clear();
 };
 

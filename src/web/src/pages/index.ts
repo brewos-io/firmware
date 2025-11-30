@@ -11,3 +11,4 @@ export { AuthCallback } from './AuthCallback';
 export { Pair } from './Pair';
 export { Onboarding } from './Onboarding';
 export { Cloud } from './Cloud';
+export { FirstRunWizard } from './FirstRunWizard';

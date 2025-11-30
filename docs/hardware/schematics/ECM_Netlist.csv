@@ -1,0 +1,142 @@
+Reference,Component,Value,Footprint,Net1,Net2,Net3,Description
+U1,Raspberry_Pi_Pico,RP2040,Module,VSYS=+5V,GND=GND,3V3=+3.3V,Microcontroller module
+U2,AC_DC_Converter,HLK-5M05,Module,L=L_FUSED,N=N_FUSED,+Vout=+5V,Isolated 5V 3A power supply (compact)
+U3,LDO_Regulator,AP2112K-3.3,SOT-23-5,VIN=+5V,VOUT=+3.3V,GND=GND,3.3V 600mA LDO
+U4,Thermocouple_Amp,MAX31855KASA+,SOIC-8,T+=TC_POS,T-=TC_NEG,VCC=+3.3V,K-type thermocouple amplifier
+U6,Op_Amp,OPA342UA,SOIC-8,VCC=+3.3V,OUT=AC_OUT,GND=GND,Level probe oscillator (Wien bridge)
+U7,Comparator,TLV3201AIDBVR,SOT-23-5,VCC=+3.3V,OUT=GPIO4,GND=GND,Level probe detector with hysteresis
+K1,Relay_SPST,HF46F-G/005-HS1,Relay_SPST,Coil+=K1_DRIVE,COM=J2_COM,NO=J2_NO,Water LED relay 10A
+K2,Relay_SPST,G5LE-1A4_DC5,Relay_SPST,Coil+=K2_DRIVE,COM=J3_COM,NO=J3_NO,Pump relay 16A
+K3,Relay_SPST,HF46F-G/005-HS1,Relay_SPST,Coil+=K3_DRIVE,COM=J4_COM,NO=J4_NO,Solenoid relay 10A
+K4,Relay_SPDT,G5LE-1_DC5,Relay_SPDT,Coil+=K4_DRIVE,COM=J9_COM,NO=J9_NO,Spare relay SPDT 10A
+Q1,NPN_Transistor,MMBT2222A,SOT-23,C=K1_COIL,B=GPIO10_R,E=GND,K1 relay driver
+Q2,NPN_Transistor,MMBT2222A,SOT-23,C=K2_COIL,B=GPIO11_R,E=GND,K2 relay driver
+Q3,NPN_Transistor,MMBT2222A,SOT-23,C=K3_COIL,B=GPIO12_R,E=GND,K3 relay driver
+Q4,NPN_Transistor,MMBT2222A,SOT-23,C=K4_COIL,B=GPIO20_R,E=GND,K4 relay driver
+Q5,NPN_Transistor,MMBT2222A,SOT-23,C=SSR1_NEG,B=GPIO13_R,E=GND,SSR1 low-side driver
+Q6,NPN_Transistor,MMBT2222A,SOT-23,C=SSR2_NEG,B=GPIO14_R,E=GND,SSR2 low-side driver
+D1,Diode,1N4007,DO-41,A=GND,K=K1_COIL,,K1 flyback diode
+D2,Diode,1N4007,DO-41,A=GND,K=K2_COIL,,K2 flyback diode
+D3,Diode,1N4007,DO-41,A=GND,K=K3_COIL,,K3 flyback diode
+D4,Diode,1N4007,DO-41,A=GND,K=K4_COIL,,K4 flyback diode
+D10,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=GPIO2,,Water switch ESD
+D11,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=GPIO3,,Tank level ESD
+D12,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=GPIO4,,Steam level ESD
+D13,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=GPIO5,,Brew switch ESD
+D14,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=ADC0,,Brew NTC ESD
+D15,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=ADC1,,Steam NTC ESD
+D20,TVS_Diode,SMBJ5.0A,SMB,A=GND,K=+5V,,5V rail protection
+LED1,LED,Green_0805,0805,A=LED1_A,K=GND,,K1 indicator
+LED2,LED,Green_0805,0805,A=LED2_A,K=GND,,K2 indicator
+LED3,LED,Green_0805,0805,A=LED3_A,K=GND,,K3 indicator
+LED4,LED,Green_0805,0805,A=LED4_A,K=GND,,K4 indicator
+LED5,LED,Orange_0805,0805,A=LED5_A,K=GND,,SSR1 indicator
+LED6,LED,Orange_0805,0805,A=LED6_A,K=GND,,SSR2 indicator
+LED7,LED,Green_0805,0805,A=GPIO15,K=GND,,Status LED (Green)
+R1,Resistor,3.3k_1%,0805,1=+3.3V_A,2=ADC0,,Brew NTC pull-up (50k NTC optimized for 93C)
+R2,Resistor,1.2k_1%,0805,1=+3.3V_A,2=ADC1,,Steam NTC pull-up (50k NTC optimized for 135C)
+R3,Resistor,10k_1%,0805,1=ADC2,2=GND,,Pressure divider (to GND)
+R4,Resistor,4.7k_1%,0805,1=PRESS_SIG,2=ADC2,,Pressure divider (series) - 91% ADC range
+R5,Resistor,1k_1%,0805,1=ADC0_R,2=ADC0,,Brew NTC series protection
+R6,Resistor,1k_1%,0805,1=ADC1_R,2=ADC1,,Steam NTC series protection
+R10,Resistor,10k,0805,1=GPIO10,2=GND,,K1 driver pull-down
+R11,Resistor,10k,0805,1=GPIO11,2=GND,,K2 driver pull-down
+R12,Resistor,10k,0805,1=GPIO12,2=GND,,K3 driver pull-down
+R13,Resistor,10k,0805,1=GPIO20,2=GND,,K4 driver pull-down
+R14,Resistor,10k,0805,1=GPIO13,2=GND,,SSR1 driver pull-down
+R15,Resistor,10k,0805,1=GPIO14,2=GND,,SSR2 driver pull-down
+R16,Resistor,10k,0805,1=+3.3V,2=GPIO2,,Water switch pull-up (optional)
+R17,Resistor,10k,0805,1=+3.3V,2=GPIO3,,Tank level pull-up (optional)
+R18,Resistor,10k,0805,1=+3.3V,2=GPIO5,,Brew switch pull-up (optional)
+R20,Resistor,1k,0805,1=GPIO10,2=Q1_B,,Q1 base resistor
+R21,Resistor,1k,0805,1=GPIO11,2=Q2_B,,Q2 base resistor
+R22,Resistor,1k,0805,1=GPIO12,2=Q3_B,,Q3 base resistor
+R23,Resistor,1k,0805,1=GPIO20,2=Q4_B,,Q4 base resistor
+R24,Resistor,1k,0805,1=GPIO13,2=Q5_B,,Q5 base resistor
+R25,Resistor,1k,0805,1=GPIO14,2=Q6_B,,Q6 base resistor
+R30,Resistor,470R,0805,1=+5V,2=LED1_A,,LED1 current limit (6.4mA)
+R31,Resistor,470R,0805,1=+5V,2=LED2_A,,LED2 current limit (6.4mA)
+R32,Resistor,470R,0805,1=+5V,2=LED3_A,,LED3 current limit (6.4mA)
+R33,Resistor,470R,0805,1=+5V,2=LED4_A,,LED4 current limit (6.4mA)
+R34,Resistor,330R,0805,1=GPIO13,2=LED5_A,,SSR1 LED current limit (logic side)
+R35,Resistor,330R,0805,1=GPIO14,2=LED6_A,,SSR2 LED current limit (logic side)
+R40,Resistor,33R,0805,1=GPIO0,2=J15_3,,UART0 TX series
+R41,Resistor,33R,0805,1=GPIO1,2=J15_4,,UART0 RX series
+R42,Resistor,33R,0805,1=GPIO0,2=J16_3,,Service TX (shared with J15 GPIO0)
+R43,Resistor,33R,0805,1=GPIO1,2=J16_4,,Service RX (shared with J15 GPIO1)
+R44,Resistor,33R,0805,1=GPIO6,2=J17_3,,PZEM TX series
+R45,Resistor,33R,0805,1=GPIO7,2=J17_4,,PZEM RX series
+R46,Resistor,4.7k,0805,1=+3.3V,2=GPIO8,,I2C0 SDA pull-up
+R47,Resistor,4.7k,0805,1=+3.3V,2=GPIO9,,I2C0 SCL pull-up
+R48,Resistor,330R,0805,1=GPIO15,2=LED7_A,,Status LED current limit
+R49,Resistor,100R,0805,1=GPIO19,2=BZ1,,Buzzer series
+R71,Resistor,10k,0805,1=+3.3V,2=PICO_RUN,,Pico RUN pull-up (J15 Pin 5)
+R72,Resistor,10k,0805,1=+3.3V,2=PICO_BOOTSEL,,Pico BOOTSEL pull-up (J15 Pin 6)
+R73,Resistor,10k,0805,1=GND,2=GPIO21,,WEIGHT_STOP pull-down (J15 Pin 7)
+R80,Resistor,100R_2W,1210,1=K2_NO,2=C50,,Snubber K2 Pump - MANDATORY
+R81,Resistor,100R_2W,1210,1=K3_NO,2=C51,,Snubber K3 Solenoid - MANDATORY
+R82,Resistor,100R_2W,1210,1=K1_NO,2=C52,,Snubber K1 - DNP (footprint only)
+R83,Resistor,100R_2W,1210,1=K4_NO,2=C53,,Snubber K4 - DNP (footprint only)
+R91,Resistor,10k_1%,0805,1=AC_OUT,2=OPA_NEG,,Level probe oscillator feedback
+R92,Resistor,10k_1%,0805,1=OPA_POS,2=WIEN1,,Level probe Wien bridge
+R93,Resistor,10k_1%,0805,1=OPA_POS,2=WIEN2,,Level probe Wien bridge
+R94,Resistor,100R,0805,1=AC_OUT,2=PROBE,,Level probe current limit
+R95,Resistor,10k,0805,1=AC_SENSE,2=COMP_POS,,Level probe AC bias
+R96,Resistor,100k_1%,0805,1=+3.3V,2=VREF,,Level probe reference divider
+R97,Resistor,100k_1%,0805,1=VREF,2=GND,,Level probe reference divider
+R98,Resistor,1M,0805,1=GPIO4,2=COMP_POS,,Level probe hysteresis
+C1,Capacitor,100nF_X2,Radial,1=L_FUSED,2=N_FUSED,,Mains EMI filter
+C2,Capacitor,100uF_16V,Radial_6.3mm,1=+5V,2=GND,,5V bulk cap
+C3,Capacitor,100uF_16V,Radial_6.3mm,1=+5V,2=GND,,5V input cap
+C4,Capacitor,47uF_10V,1206,1=+3.3V,2=GND,,3.3V LDO output
+C5,Capacitor,100nF,0805,1=+3.3V,2=GND,,3.3V decoupling
+C6,Capacitor,100nF,0805,1=+3.3V,2=GND,,3.3V digital decoupling
+C7,Capacitor,22uF_10V,1206,1=+3.3V_A,2=GND,,3.3V analog bulk
+C8,Capacitor,100nF,0805,1=ADC0,2=GND,,Brew NTC filter
+C9,Capacitor,100nF,0805,1=ADC1,2=GND,,Steam NTC filter
+C10,Capacitor,100nF,0805,1=+3.3V,2=GND,,MAX31855 decoupling
+C11,Capacitor,100nF,0805,1=ADC2,2=GND,,Pressure filter
+C13,Capacitor,100uF_10V,Radial,1=+5V,2=GND,,ESP32 bulk cap
+C40,Capacitor,10nF,0805,1=TC_POS,2=TC_NEG,,Thermocouple filter
+C50,Capacitor,100nF_X2_275V,Radial,1=K2_NO,2=K2_COM,,Snubber K2 Pump - MANDATORY
+C51,Capacitor,100nF_X2_275V,Radial,1=K3_NO,2=K3_COM,,Snubber K3 Solenoid - MANDATORY
+C52,Capacitor,100nF_X2_275V,Radial,1=K1_NO,2=K1_COM,,Snubber K1 - DNP (footprint only)
+C53,Capacitor,100nF_X2_275V,Radial,1=K4_NO,2=K4_COM,,Snubber K4 - DNP (footprint only)
+C60,Capacitor,100nF,0805,1=+3.3V,2=GND,,OPA342 VCC decoupling
+C61,Capacitor,100nF,0805,1=WIEN1,2=GND,,Level probe Wien bridge timing
+C62,Capacitor,100nF,0805,1=WIEN2,2=GND,,Level probe Wien bridge timing
+C63,Capacitor,100nF,0805,1=+3.3V,2=GND,,TLV3201 VCC decoupling
+C64,Capacitor,1uF,0805,1=AC_OUT,2=AC_SENSE,,Level probe AC coupling
+C65,Capacitor,100nF,0805,1=AC_SENSE,2=GND,,Level probe sense filter
+F1,Fuse,10A_250V,5x20mm,1=L,2=L_FUSED,,Mains fuse 10A slow-blow + holder 01000056Z
+RV1,Varistor,275V,14mm,1=L_FUSED,2=N_FUSED,,Surge protection
+SW1,Switch,Tactile_6x6mm,SMD,1=RUN,2=GND,,Reset button
+SW2,Switch,Tactile_6x6mm,SMD,1=BOOTSEL,2=GND,,Boot button
+BZ1,Buzzer,Passive_12mm,TH,1=BZ1_POS,2=GND,,Passive piezo buzzer
+FB1,Ferrite_Bead,600R_100MHz,0603,1=+3.3V,2=+3.3V_A,,Analog isolation
+J1,Connector,Terminal_3pos,6.3mm_Spade,1=L,2=N,3=PE,Mains input
+J2,Connector,Terminal_2pos,6.3mm_Spade,1=J2_COM,2=J2_NO,,K1 output
+J3,Connector,Terminal_2pos,6.3mm_Spade,1=J3_COM,2=J3_NO,,K2 output (Pump)
+J4,Connector,Terminal_2pos,6.3mm_Spade,1=J4_COM,2=J4_NO,,K3 output (Solenoid)
+J5,Connector,Terminal_2pos,6.3mm_Spade,1=GPIO2,2=GND,,Water reservoir switch
+J6,Connector,Terminal_2pos,6.3mm_Spade,1=GPIO3,2=GND,,Tank level sensor
+J7,Connector,Terminal_1pos,6.3mm_Spade,1=PROBE,,,Steam boiler level probe
+J8,Connector,Terminal_2pos,6.3mm_Spade,1=GPIO5,2=GND,,Brew handle switch
+J9,Connector,Screw_3pos,5.08mm,1=K4_COM,2=K4_NO,3=K4_NC,K4 spare relay (FLOATING - user wires as needed)
+J10,Connector,Screw_2pos,5.08mm,1=NTC1_SIG,2=GND,,Brew NTC thermistor
+J11,Connector,Screw_2pos,5.08mm,1=NTC2_SIG,2=GND,,Steam NTC thermistor
+J12,Connector,Screw_2pos,5.08mm,1=TC_POS,2=TC_NEG,,K-type thermocouple
+J13,Connector,Screw_3pos,5.08mm,1=+5V,2=GND,3=PRESS_SIG,Pressure transducer (0.5-4.5V)
+J15,Connector,JST-XH_8pos,2.54mm,1=+5V,2=GND,3=PICO_TX,4=PICO_RX,5=PICO_RUN,6=PICO_BOOTSEL,7=WEIGHT_STOP,8=SPARE,ESP32 display + brew-by-weight (GPIO21/22)
+J16,Connector,Header_4pos,2.54mm,1=+3.3V,2=GND,3=SERVICE_TX,4=SERVICE_RX,Service/debug (shared GPIO0/1 with J15)
+J23,Connector,Header_4pos,2.54mm,1=+3.3V,2=GND,3=I2C0_SDA,4=I2C0_SCL,I2C accessory port (GPIO8/9)
+J17,Connector,Female_Header_5pos,2.54mm,1=+5V,2=PZEM_RX,3=PZEM_TX,4=NC,5=GND,PZEM UART (LV - Right side)
+J24,Connector,Female_Header_4pos,2.54mm,1=CT_POS,2=CT_NEG,3=N,4=L_FUSED,PZEM HV+CT (Left side) - 220V!
+J25,Connector,Screw_2pos,5.08mm,1=CT_POS,2=CT_NEG,,CT clamp wires (routed from J24)
+J18,Connector,Screw_2pos,5.08mm,1=+5V,2=SSR1_NEG,,SSR1 brew heater
+J19,Connector,Screw_2pos,5.08mm,1=+5V,2=SSR2_NEG,,SSR2 steam heater
+J20,Connector,Header_2x20,2.54mm,,,,"Pico socket"
+MH1,Mounting_Hole,M3,3.2mm,1=GND,,,PE Star Point - PTH connected to GND
+MH2,Mounting_Hole,M3,3.2mm,1=NC,,,NPTH - Isolated (no GND connection)
+MH3,Mounting_Hole,M3,3.2mm,1=NC,,,NPTH - Isolated (no GND connection)
+MH4,Mounting_Hole,M3,3.2mm,1=NC,,,NPTH - Isolated (no GND connection)

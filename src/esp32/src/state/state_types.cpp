@@ -15,7 +15,7 @@ void TemperatureSettings::toJson(JsonObject& obj) const {
     obj["ecoTimeoutMinutes"] = ecoTimeoutMinutes;
 }
 
-bool TemperatureSettings::fromJson(const JsonObject& obj) {
+bool TemperatureSettings::fromJson(JsonObjectConst obj) {
     if (obj["brewSetpoint"].is<float>()) brewSetpoint = obj["brewSetpoint"];
     if (obj["steamSetpoint"].is<float>()) steamSetpoint = obj["steamSetpoint"];
     if (obj["brewOffset"].is<float>()) brewOffset = obj["brewOffset"];
@@ -39,7 +39,7 @@ void BrewSettings::toJson(JsonObject& obj) const {
     obj["preinfusionPressure"] = preinfusionPressure;
 }
 
-bool BrewSettings::fromJson(const JsonObject& obj) {
+bool BrewSettings::fromJson(JsonObjectConst obj) {
     if (obj["bbwEnabled"].is<bool>()) bbwEnabled = obj["bbwEnabled"];
     if (obj["doseWeight"].is<float>()) doseWeight = obj["doseWeight"];
     if (obj["targetWeight"].is<float>()) targetWeight = obj["targetWeight"];
@@ -60,7 +60,7 @@ void PowerSettings::toJson(JsonObject& obj) const {
     obj["powerOnBoot"] = powerOnBoot;
 }
 
-bool PowerSettings::fromJson(const JsonObject& obj) {
+bool PowerSettings::fromJson(JsonObjectConst obj) {
     if (obj["mainsVoltage"].is<uint16_t>()) mainsVoltage = obj["mainsVoltage"];
     if (obj["maxCurrent"].is<float>()) maxCurrent = obj["maxCurrent"];
     if (obj["powerOnBoot"].is<bool>()) powerOnBoot = obj["powerOnBoot"];
@@ -78,7 +78,7 @@ void NetworkSettings::toJson(JsonObject& obj) const {
     obj["hostname"] = hostname;
 }
 
-bool NetworkSettings::fromJson(const JsonObject& obj) {
+bool NetworkSettings::fromJson(JsonObjectConst obj) {
     if (obj["wifiSsid"].is<const char*>()) {
         strncpy(wifiSsid, obj["wifiSsid"] | "", sizeof(wifiSsid) - 1);
     }
@@ -106,7 +106,7 @@ void MQTTSettings::toJson(JsonObject& obj) const {
     obj["discovery"] = discovery;
 }
 
-bool MQTTSettings::fromJson(const JsonObject& obj) {
+bool MQTTSettings::fromJson(JsonObjectConst obj) {
     if (obj["enabled"].is<bool>()) enabled = obj["enabled"];
     if (obj["broker"].is<const char*>()) strncpy(broker, obj["broker"] | "", sizeof(broker) - 1);
     if (obj["port"].is<uint16_t>()) port = obj["port"];
@@ -128,7 +128,7 @@ void CloudSettings::toJson(JsonObject& obj) const {
     // Don't expose deviceKey
 }
 
-bool CloudSettings::fromJson(const JsonObject& obj) {
+bool CloudSettings::fromJson(JsonObjectConst obj) {
     if (obj["enabled"].is<bool>()) enabled = obj["enabled"];
     if (obj["serverUrl"].is<const char*>()) strncpy(serverUrl, obj["serverUrl"] | "", sizeof(serverUrl) - 1);
     if (obj["deviceId"].is<const char*>()) strncpy(deviceId, obj["deviceId"] | "", sizeof(deviceId) - 1);
@@ -147,7 +147,7 @@ void ScaleSettings::toJson(JsonObject& obj) const {
     obj["scaleType"] = scaleType;
 }
 
-bool ScaleSettings::fromJson(const JsonObject& obj) {
+bool ScaleSettings::fromJson(JsonObjectConst obj) {
     if (obj["enabled"].is<bool>()) enabled = obj["enabled"];
     if (obj["pairedAddress"].is<const char*>()) strncpy(pairedAddress, obj["pairedAddress"] | "", sizeof(pairedAddress) - 1);
     if (obj["pairedName"].is<const char*>()) strncpy(pairedName, obj["pairedName"] | "", sizeof(pairedName) - 1);
@@ -167,7 +167,7 @@ void DisplaySettings::toJson(JsonObject& obj) const {
     obj["showPressure"] = showPressure;
 }
 
-bool DisplaySettings::fromJson(const JsonObject& obj) {
+bool DisplaySettings::fromJson(JsonObjectConst obj) {
     if (obj["brightness"].is<uint8_t>()) brightness = obj["brightness"];
     if (obj["screenTimeout"].is<uint16_t>()) screenTimeout = obj["screenTimeout"];
     if (obj["showShotTimer"].is<bool>()) showShotTimer = obj["showShotTimer"];
@@ -207,14 +207,55 @@ void Settings::toJson(JsonDocument& doc) const {
 }
 
 bool Settings::fromJson(const JsonDocument& doc) {
-    if (doc["temperature"].is<JsonObject>()) temperature.fromJson(doc["temperature"].as<JsonObject>());
-    if (doc["brew"].is<JsonObject>()) brew.fromJson(doc["brew"].as<JsonObject>());
-    if (doc["power"].is<JsonObject>()) power.fromJson(doc["power"].as<JsonObject>());
-    if (doc["network"].is<JsonObject>()) network.fromJson(doc["network"].as<JsonObject>());
-    if (doc["mqtt"].is<JsonObject>()) mqtt.fromJson(doc["mqtt"].as<JsonObject>());
-    if (doc["cloud"].is<JsonObject>()) cloud.fromJson(doc["cloud"].as<JsonObject>());
-    if (doc["scale"].is<JsonObject>()) scale.fromJson(doc["scale"].as<JsonObject>());
-    if (doc["display"].is<JsonObject>()) display.fromJson(doc["display"].as<JsonObject>());
+    // In ArduinoJson 7.x, we access nested objects directly through the variant
+    JsonVariantConst tempVar = doc["temperature"];
+    if (tempVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = tempVar.as<JsonObjectConst>();
+        temperature.fromJson(obj);
+    }
+    
+    JsonVariantConst brewVar = doc["brew"];
+    if (brewVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = brewVar.as<JsonObjectConst>();
+        brew.fromJson(obj);
+    }
+    
+    JsonVariantConst powerVar = doc["power"];
+    if (powerVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = powerVar.as<JsonObjectConst>();
+        power.fromJson(obj);
+    }
+    
+    JsonVariantConst networkVar = doc["network"];
+    if (networkVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = networkVar.as<JsonObjectConst>();
+        network.fromJson(obj);
+    }
+    
+    JsonVariantConst mqttVar = doc["mqtt"];
+    if (mqttVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = mqttVar.as<JsonObjectConst>();
+        mqtt.fromJson(obj);
+    }
+    
+    JsonVariantConst cloudVar = doc["cloud"];
+    if (cloudVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = cloudVar.as<JsonObjectConst>();
+        cloud.fromJson(obj);
+    }
+    
+    JsonVariantConst scaleVar = doc["scale"];
+    if (scaleVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = scaleVar.as<JsonObjectConst>();
+        scale.fromJson(obj);
+    }
+    
+    JsonVariantConst displayVar = doc["display"];
+    if (displayVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = displayVar.as<JsonObjectConst>();
+        display.fromJson(obj);
+    }
+    
     return true;
 }
 
@@ -247,7 +288,7 @@ void Statistics::toJson(JsonObject& obj) const {
     obj["sessionShots"] = sessionShots;
 }
 
-bool Statistics::fromJson(const JsonObject& obj) {
+bool Statistics::fromJson(JsonObjectConst obj) {
     if (obj["totalShots"].is<uint32_t>()) totalShots = obj["totalShots"];
     if (obj["totalSteamCycles"].is<uint32_t>()) totalSteamCycles = obj["totalSteamCycles"];
     if (obj["totalKwh"].is<float>()) totalKwh = obj["totalKwh"];
@@ -298,7 +339,7 @@ void ShotRecord::toJson(JsonObject& obj) const {
     obj["ratio"] = ratio();
 }
 
-bool ShotRecord::fromJson(const JsonObject& obj) {
+bool ShotRecord::fromJson(JsonObjectConst obj) {
     if (obj["timestamp"].is<uint32_t>()) timestamp = obj["timestamp"];
     if (obj["doseWeight"].is<float>()) doseWeight = obj["doseWeight"];
     if (obj["yieldWeight"].is<float>()) yieldWeight = obj["yieldWeight"];
@@ -338,9 +379,9 @@ void ShotHistory::toJson(JsonArray& arr) const {
     }
 }
 
-bool ShotHistory::fromJson(const JsonArray& arr) {
+bool ShotHistory::fromJson(JsonArrayConst arr) {
     clear();
-    for (JsonObject obj : arr) {
+    for (JsonObjectConst obj : arr) {
         ShotRecord shot;
         shot.fromJson(obj);
         addShot(shot);

@@ -46,6 +46,7 @@ docs/
 - [ESP32 Implementation](esp32/Implementation_Plan.md)
 
 ### Architecture
+- [System Architecture](Architecture.md) ⭐ *Full system overview with cloud*
 - [Pico Architecture](pico/Architecture.md)
 - [ESP32 State Management](esp32/State_Management.md) - Settings, stats, shot history
 - [Communication Protocol](shared/Communication_Protocol.md)

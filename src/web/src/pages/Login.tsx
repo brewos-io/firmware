@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { GoogleLogin } from '@react-oauth/google';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { Card } from '@/components/Card';
 import { useAuth } from '@/lib/auth';
 import { isGoogleAuthConfigured } from '@/lib/google-auth';
@@ -9,7 +9,7 @@ import { Coffee, AlertCircle } from 'lucide-react';
 export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, loading, handleGoogleLogin } = useAuth();
+  const { user, handleGoogleLogin } = useAuth();
   
   // Get error from navigation state (e.g., from failed auth)
   const error = (location.state as { error?: string })?.error;
@@ -58,7 +58,7 @@ export function Login() {
         <div className="space-y-4">
           <div className="flex justify-center">
             <GoogleLogin
-              onSuccess={(response) => {
+              onSuccess={(response: CredentialResponse) => {
                 if (response.credential) {
                   handleGoogleLogin(response.credential);
                 }
