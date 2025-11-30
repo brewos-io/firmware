@@ -14,10 +14,9 @@ BrewOS supports Bluetooth Low Energy (BLE) coffee scales for brew-by-weight func
 | **Acaia** | Lunar, Pearl, Pyxis, Cinco, Orion | ✅ Implemented | Encrypted protocol, heartbeat required |
 | **Felicita** | Arc, Parallel, Incline | ✅ Implemented | ASCII weight format |
 | **Decent** | Decent Scale | ✅ Implemented | Well-documented protocol |
-| **Timemore** | Black Mirror, Basic | ✅ Implemented | Similar to Felicita |
+| **Timemore** | Black Mirror 2 only | ✅ Implemented | Basic/Nano/Mini have no Bluetooth |
 | **Hiroia** | Jimmy | ✅ Implemented | Via name detection |
-| **Skale** | Skale | ✅ Implemented | Uses Felicita protocol |
-| **Generic** | BLE Weight Scale Service | ✅ Implemented | Bluetooth SIG standard |
+| **Generic** | BLE Weight Scale Service | ✅ Implemented | Bluetooth SIG standard (0x181D) |
 
 ## Protocol Details
 
