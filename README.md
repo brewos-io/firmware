@@ -111,9 +111,9 @@ The **ECM Synchronika** serves as the reference implementation with complete sch
 
 | Resource | Description |
 |----------|-------------|
-| [Schematic](schematics/ECM_Schematic_Reference.md) | Complete circuit diagrams |
-| [Netlist](schematics/ECM_Netlist.csv) | Component list for PCB |
-| [Wiring Guide](hardware/ESP32_Display_Wiring.md) | Connection details |
+| [Schematic](docs/hardware/schematics/ECM_Schematic_Reference.md) | Complete circuit diagrams |
+| [Netlist](docs/hardware/schematics/ECM_Netlist.csv) | Component list for PCB |
+| [Wiring Guide](docs/hardware/ESP32_Display_Wiring.md) | Connection details |
 | [Compatibility](docs/Compatibility.md) | Validated & compatible machines |
 
 ---
@@ -179,23 +179,24 @@ See [SETUP.md](SETUP.md) for detailed instructions.
 | **Getting Started** | |
 | [Setup Guide](SETUP.md) | Development environment setup |
 | [Quick Start](docs/pico/Quick_Start.md) | Quick reference for common tasks |
+| [System Architecture](docs/Architecture.md) | Full system overview with cloud |
 | **Pico Firmware** | |
 | [Architecture](docs/pico/Architecture.md) | Module structure, dual-core design |
 | [Requirements](docs/pico/Requirements.md) | Functional and safety requirements |
 | [Machine Configurations](docs/pico/Machine_Configurations.md) | Multi-machine support |
 | **ESP32 Firmware** | |
-| [Implementation Plan](docs/esp32/Implementation_Plan.md) | ESP32 development status |
+| [State Management](docs/esp32/State_Management.md) | Settings, stats, shot history |
 | [MQTT Integration](docs/esp32/integrations/MQTT.md) | Home Assistant integration |
-| [Web API](docs/esp32/integrations/Web_API.md) | REST API reference |
+| [BLE Scales](docs/esp32/integrations/BLE_Scales.md) | Bluetooth scale integration |
+| **Web & Cloud** | |
+| [Web Interface](docs/web/README.md) | React dashboard development |
+| [Cloud Service](docs/cloud/README.md) | Remote access architecture |
+| [WebSocket Protocol](docs/web/WebSocket_Protocol.md) | Message format reference |
 | **Shared** | |
 | [Communication Protocol](docs/shared/Communication_Protocol.md) | Binary protocol Pico ↔ ESP32 |
 | **Hardware** | |
-| [Specification](hardware/Specification.md) | PCB design, component selection |
-| [Test Procedures](hardware/Test_Procedures.md) | Hardware testing procedures |
-| **Features** | |
-| [Cleaning Mode](docs/pico/features/Cleaning_Mode_Implementation.md) | Backflush cycle |
-| [Statistics](docs/pico/features/Statistics_Feature.md) | Shot tracking |
-| [Water Management](docs/pico/features/Water_Management_Implementation.md) | Auto-fill system |
+| [Specification](docs/hardware/Specification.md) | PCB design, component selection |
+| [Compatibility](docs/Compatibility.md) | Validated machines list |
 
 ---
 
@@ -296,24 +297,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 | 🟠 High | Stability | Bug fixes, reliability |
 | 🟡 Medium | Features | New machine support, integrations |
 | 🟢 Normal | Enhancements | UI improvements, optimizations |
-
----
-
-## Roadmap
-
-- [x] Dual boiler support (ECM Synchronika)
-- [x] Single boiler support
-- [x] Heat exchanger support
-- [x] Web-based dashboard
-- [x] OTA firmware updates
-- [x] MQTT integration
-- [x] Home Assistant auto-discovery
-- [ ] BLE scale integration (brew by weight)
-- [ ] Cloud connectivity
-- [ ] Mobile app (React Native)
-- [ ] Pressure profiling
-- [ ] Flow control
-- [ ] Thermoblock support
 
 ---
 

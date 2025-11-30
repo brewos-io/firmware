@@ -39,7 +39,6 @@ The ESP32-S3 handles connectivity, user interface, and advanced features for the
 ### In Progress 🔲
 
 - Notifications framework
-- Cloud connectivity
 
 ## Building
 

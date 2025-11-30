@@ -27,7 +27,7 @@ The ESP32-S3 serves as the connectivity and UI hub for the BrewOS coffee machine
 | LVGL Display | ✅ Complete | Round display UI |
 | BLE Scale | ✅ Complete | Multi-scale support (Acaia, Felicita, Decent, Timemore) |
 | Brew by Weight | ✅ Complete | Auto-stop at target weight |
-| Cloud Integration | 🔲 Planned | Remote monitoring |
+| Cloud Integration | ✅ Complete | [Details](../cloud/README.md) |
 
 ---
 
@@ -142,33 +142,23 @@ See [Web API Reference](integrations/Web_API.md) for full documentation.
 
 ## 5. Cloud Integration
 
-**Status:** 🔲 Planned
+**Status:** ✅ Complete
 
-### Features
+See [Cloud Service Documentation](../cloud/README.md) for full details.
 
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| Account Linking | OAuth2 or device code | High |
-| Remote Monitoring | View status from anywhere | High |
-| Push Notifications | Alerts for water/errors | Medium |
-| Shot History Sync | Backup to cloud | Medium |
-| Remote Config | Update settings remotely | Low |
+### Summary
 
-### Tasks
-
-```
-[ ] CLOUD-1: WebSocket client to cloud server
-[ ] CLOUD-2: Device registration flow
-[ ] CLOUD-3: Status streaming
-[ ] CLOUD-4: Command handling
-[ ] CLOUD-5: Secure token storage
-```
+- WebSocket relay through cloud.brewos.io
+- Google OAuth for user authentication
+- QR code device pairing
+- Same UI and functionality as local access
+- Stateless relay design (all data stays on ESP32)
 
 ---
 
 ## 6. Brew by Weight (BLE Scale)
 
-**Status:** 🔲 Planned
+**Status:** ✅ Complete
 
 ### Supported Scales
 
