@@ -22,7 +22,6 @@ export function About() {
             alt="BrewOS" 
             className="h-20 mx-auto mb-6 brightness-0 invert"
           />
-          <h1 className="text-3xl font-bold mb-2">BrewOS</h1>
           <p className="text-cream-300 mb-4">
             Open-source espresso machine controller
           </p>
