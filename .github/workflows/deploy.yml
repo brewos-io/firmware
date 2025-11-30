@@ -22,7 +22,9 @@ jobs:
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           envs: VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY,SUPABASE_URL
+          script_stop: true
           script: |
+            set -e
             cd /root/brewos
             
             # Reset to match repo exactly (avoid conflicts from manual edits)
@@ -44,10 +46,13 @@ jobs:
             DATA_DIR=/data
             EOF
             
-            # Rebuild web UI
+            # Rebuild web UI (fail fast on errors)
             cd src/web
             npm ci
             npm run build
+            
+            # Copy built web UI to cloud service
+            cp -r dist ../cloud/web
             
             # Restart cloud service
             cd ../cloud

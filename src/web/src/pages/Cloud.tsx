@@ -259,7 +259,7 @@ export function Cloud() {
                   <Wifi className="w-4 h-4 text-coffee-400" />
                   <span className="text-sm text-coffee-700">Cloud Connection</span>
                 </div>
-                <Badge variant={cloudConfig?.connected ? 'success' : 'secondary'}>
+                <Badge variant={cloudConfig?.connected ? 'success' : 'default'}>
                   {cloudConfig?.connected ? 'Connected' : 'Disconnected'}
                 </Badge>
               </div>
@@ -299,12 +299,16 @@ export function Cloud() {
             </div>
 
             <div className="space-y-4">
-              <Toggle
-                label="Enable Cloud Connection"
-                description="Allow remote access via BrewOS Cloud"
-                checked={cloudEnabled}
-                onChange={setCloudEnabled}
-              />
+              <div>
+                <Toggle
+                  label="Enable Cloud Connection"
+                  checked={cloudEnabled}
+                  onChange={setCloudEnabled}
+                />
+                <p className="text-xs text-coffee-400 mt-1 ml-14">
+                  Allow remote access via BrewOS Cloud
+                </p>
+              </div>
 
               <Input
                 label="Cloud Server URL"
