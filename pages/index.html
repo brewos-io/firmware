@@ -173,6 +173,89 @@
             transition: 0.3s;
         }
         
+        .mobile-menu {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: var(--cream-100);
+            z-index: 999;
+            padding: 80px 24px 24px;
+            overflow-y: auto;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+        
+        .mobile-menu.active {
+            transform: translateX(0);
+        }
+        
+        .mobile-menu ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .mobile-menu li {
+            width: 100%;
+        }
+        
+        .mobile-menu a {
+            display: block;
+            padding: 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .mobile-menu a:hover {
+            background: var(--cream-200);
+            color: var(--coffee-800);
+        }
+        
+        .mobile-menu .nav-cta {
+            background: var(--coffee-800);
+            color: var(--white);
+            margin-top: 8px;
+        }
+        
+        .mobile-menu .nav-signin {
+            background: transparent;
+            color: var(--accent);
+            border: 1.5px solid var(--accent);
+            margin-top: 8px;
+        }
+        
+        .mobile-menu-close {
+            position: absolute;
+            top: 20px;
+            right: 24px;
+            background: none;
+            border: none;
+            font-size: 28px;
+            color: var(--coffee-800);
+            cursor: pointer;
+            padding: 8px;
+            line-height: 1;
+        }
+        
+        .mobile-menu-btn.active span:nth-child(1) {
+            transform: rotate(45deg) translate(5px, 5px);
+        }
+        
+        .mobile-menu-btn.active span:nth-child(2) {
+            opacity: 0;
+        }
+        
+        .mobile-menu-btn.active span:nth-child(3) {
+            transform: rotate(-45deg) translate(7px, -6px);
+        }
+        
         /* ===== HERO ===== */
         .hero {
             padding: 140px 0 100px;
@@ -633,19 +716,6 @@
             color: var(--text-primary);
         }
         
-        .arch-diagram {
-            background: var(--coffee-900);
-            border-radius: 20px;
-            padding: 40px;
-            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-            font-size: 0.75rem;
-            overflow-x: auto;
-            white-space: pre;
-            line-height: 1.5;
-            color: var(--cream-400);
-            box-shadow: var(--shadow-xl);
-        }
-        
         /* ===== CTA ===== */
         .cta-section {
             padding: 120px 0;
@@ -855,7 +925,7 @@
             }
         }
         
-        @media (max-width: 768px) {
+        @media (max-width: 1024px) {
             .nav-links {
                 display: none;
             }
@@ -863,6 +933,13 @@
             .mobile-menu-btn {
                 display: block;
             }
+            
+            .mobile-menu {
+                display: block;
+            }
+        }
+        
+        @media (max-width: 768px) {
             
             .hero {
                 padding: 120px 0 80px;
@@ -923,13 +1000,26 @@
                 <li><a href="https://github.com/mizrachiran/brewos/blob/main/SETUP.md" class="nav-cta">Get Started</a></li>
                 <li><a href="https://cloud.brewos.io" class="nav-signin">Sign In</a></li>
             </ul>
-            <button class="mobile-menu-btn" aria-label="Menu">
+            <button class="mobile-menu-btn" aria-label="Menu" id="mobileMenuBtn">
                 <span></span>
                 <span></span>
                 <span></span>
             </button>
         </nav>
     </header>
+    
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <button class="mobile-menu-close" aria-label="Close Menu" id="mobileMenuClose">×</button>
+        <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#machines">Machines</a></li>
+            <li><a href="https://github.com/mizrachiran/brewos" target="_blank">GitHub</a></li>
+            <li><a href="https://github.com/mizrachiran/brewos/blob/main/SETUP.md" class="nav-cta">Get Started</a></li>
+            <li><a href="https://cloud.brewos.io" class="nav-signin">Sign In</a></li>
+        </ul>
+    </div>
 
     <main>
         <section class="hero">
@@ -1173,9 +1263,6 @@
                             </div>
                         </div>
                     </div>
-                    <div class="arch-diagram">
-                        <img src="assets/architecture.png" alt="BrewOS System Architecture" style="max-width: 100%; height: auto; border-radius: 12px;">
-                    </div>
                 </div>
             </div>
         </section>
@@ -1250,6 +1337,40 @@
     </footer>
 
     <script>
+        // Mobile menu toggle
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        const mobileMenuClose = document.getElementById('mobileMenuClose');
+        
+        function openMobileMenu() {
+            mobileMenu.classList.add('active');
+            mobileMenuBtn.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeMobileMenu() {
+            mobileMenu.classList.remove('active');
+            mobileMenuBtn.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+        
+        mobileMenuBtn.addEventListener('click', openMobileMenu);
+        mobileMenuClose.addEventListener('click', closeMobileMenu);
+        
+        // Close menu when clicking on a link
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                closeMobileMenu();
+            });
+        });
+        
+        // Close menu when clicking outside
+        mobileMenu.addEventListener('click', (e) => {
+            if (e.target === mobileMenu) {
+                closeMobileMenu();
+            }
+        });
+        
         // Header scroll effect
         const header = document.querySelector('header');
         window.addEventListener('scroll', () => {
