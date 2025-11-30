@@ -38,6 +38,12 @@ static uint8_t g_pwm_slice_brew = 0xFF;  // Invalid slice number
 static uint8_t g_pwm_slice_steam = 0xFF;
 static bool g_pwm_initialized = false;
 
+// PWM channel tracking - maps slice to the channel that was initialized
+// This ensures we set the correct channel when using the legacy interface
+#define MAX_PWM_SLICES 8
+static uint8_t g_pwm_slice_channel[MAX_PWM_SLICES] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+static uint8_t g_pwm_slice_gpio[MAX_PWM_SLICES] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
 // =============================================================================
 // Initialization
 // =============================================================================
@@ -265,7 +271,12 @@ bool hw_pwm_init_ssr(uint8_t gpio_pin, uint8_t* slice_num) {
     
     if (g_simulation_mode) {
         // In simulation, just return a fake slice number
-        *slice_num = gpio_pin;  // Use GPIO as slice number for simulation
+        *slice_num = gpio_pin % MAX_PWM_SLICES;  // Use GPIO modulo as slice number for simulation
+        // Track channel even in simulation for consistency
+        if (*slice_num < MAX_PWM_SLICES) {
+            g_pwm_slice_channel[*slice_num] = gpio_pin & 1;  // Simulate channel based on GPIO
+            g_pwm_slice_gpio[*slice_num] = gpio_pin;
+        }
         return true;
     }
     
@@ -273,6 +284,12 @@ bool hw_pwm_init_ssr(uint8_t gpio_pin, uint8_t* slice_num) {
     // Each GPIO has a PWM slice assigned
     *slice_num = pwm_gpio_to_slice_num(gpio_pin);
     uint8_t channel = pwm_gpio_to_channel(gpio_pin);
+    
+    // Track channel for this slice (used by hw_set_pwm_duty)
+    if (*slice_num < MAX_PWM_SLICES) {
+        g_pwm_slice_channel[*slice_num] = channel;
+        g_pwm_slice_gpio[*slice_num] = gpio_pin;
+    }
     
     // Set GPIO function to PWM
     gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
@@ -286,11 +303,65 @@ bool hw_pwm_init_ssr(uint8_t gpio_pin, uint8_t* slice_num) {
     // Initialize PWM slice
     pwm_init(*slice_num, &config, false);
     
-    // Set initial duty to 0
+    // Set initial duty to 0 (only for the correct channel)
     pwm_set_chan_level(*slice_num, channel, 0);
     
     // Enable PWM
     pwm_set_enabled(*slice_num, true);
+    
+    DEBUG_PRINT("PWM: GPIO%d initialized on slice %d channel %c\n", 
+                gpio_pin, *slice_num, channel == 0 ? 'A' : 'B');
+    
+    return true;
+}
+
+bool hw_pwm_init_ssr_ex(uint8_t gpio_pin, pwm_ssr_config_t* config) {
+    if (!config) {
+        return false;
+    }
+    
+    config->gpio_pin = gpio_pin;
+    config->initialized = false;
+    
+    if (g_simulation_mode) {
+        config->slice = gpio_pin % MAX_PWM_SLICES;
+        config->channel = gpio_pin & 1;  // Simulate channel based on GPIO
+        config->initialized = true;
+        return true;
+    }
+    
+    // Real hardware: Initialize PWM
+    config->slice = pwm_gpio_to_slice_num(gpio_pin);
+    config->channel = pwm_gpio_to_channel(gpio_pin);
+    
+    // Also update the tracking arrays for legacy interface compatibility
+    if (config->slice < MAX_PWM_SLICES) {
+        g_pwm_slice_channel[config->slice] = config->channel;
+        g_pwm_slice_gpio[config->slice] = gpio_pin;
+    }
+    
+    // Set GPIO function to PWM
+    gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
+    
+    // Configure PWM
+    pwm_config pwm_cfg = pwm_get_default_config();
+    pwm_config_set_clkdiv(&pwm_cfg, 125.0f);  // 125MHz / 125 = 1MHz
+    pwm_config_set_wrap(&pwm_cfg, 40000);     // 1MHz / 40000 = 25Hz
+    pwm_config_set_phase_correct(&pwm_cfg, false);
+    
+    // Initialize PWM slice
+    pwm_init(config->slice, &pwm_cfg, false);
+    
+    // Set initial duty to 0 (only for the correct channel)
+    pwm_set_chan_level(config->slice, config->channel, 0);
+    
+    // Enable PWM
+    pwm_set_enabled(config->slice, true);
+    
+    config->initialized = true;
+    
+    DEBUG_PRINT("PWM: GPIO%d initialized on slice %d channel %c (ex)\n", 
+                gpio_pin, config->slice, config->channel == 0 ? 'A' : 'B');
     
     return true;
 }
@@ -304,17 +375,37 @@ void hw_set_pwm_duty(uint8_t slice_num, float duty_percent) {
         return;
     }
     
-    // Real hardware: Set PWM duty cycle
-    // Note: This is a simplified version - you may need to get the channel
-    // For now, assume channel A (0) - this should be improved to track channels
+    // Convert percentage to PWM level (0-40000 for 25Hz)
+    uint16_t level = (uint16_t)((duty_percent / 100.0f) * 40000.0f);
+    
+    // Use tracked channel for this slice (defaults to channel A if not tracked)
+    uint8_t channel = PWM_CHAN_A;
+    if (slice_num < MAX_PWM_SLICES && g_pwm_slice_channel[slice_num] != 0xFF) {
+        channel = g_pwm_slice_channel[slice_num];
+    }
+    
+    // Set only the correct channel to avoid affecting other SSRs sharing this slice
+    pwm_set_chan_level(slice_num, channel, level);
+}
+
+void hw_set_pwm_duty_ex(const pwm_ssr_config_t* config, float duty_percent) {
+    if (!config || !config->initialized) {
+        return;
+    }
+    
+    if (duty_percent < 0.0f) duty_percent = 0.0f;
+    if (duty_percent > 100.0f) duty_percent = 100.0f;
+    
+    if (g_simulation_mode) {
+        // In simulation, just store the value (could be used for testing)
+        return;
+    }
     
     // Convert percentage to PWM level (0-40000 for 25Hz)
     uint16_t level = (uint16_t)((duty_percent / 100.0f) * 40000.0f);
     
-    // Set both channels (A and B) to same value for simplicity
-    // TODO: Track which channel to use
-    pwm_set_chan_level(slice_num, PWM_CHAN_A, level);
-    pwm_set_chan_level(slice_num, PWM_CHAN_B, level);
+    // Set only the correct channel
+    pwm_set_chan_level(config->slice, config->channel, level);
 }
 
 float hw_get_pwm_duty(uint8_t slice_num) {

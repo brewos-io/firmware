@@ -25,6 +25,10 @@ static uint16_t g_cleaning_threshold = CLEANING_DEFAULT_THRESHOLD;
 static uint32_t g_cleaning_cycle_start = 0;
 static bool g_cleaning_initialized = false;
 
+// Flash wear reduction: track pending saves and last saved value
+static uint16_t g_last_saved_brew_count = 0;  // Last brew count written to flash
+static bool g_dirty = false;                   // True if we have unsaved changes
+
 // =============================================================================
 // Initialization
 // =============================================================================
@@ -40,12 +44,17 @@ void cleaning_init(void) {
     // Load brew count and threshold from config persistence
     config_persistence_get_cleaning(&g_brew_count, &g_cleaning_threshold);
     
+    // Track last saved value for flash wear reduction
+    g_last_saved_brew_count = g_brew_count;
+    g_dirty = false;
+    
     // Validate threshold (in case of corrupted data)
     if (g_cleaning_threshold < CLEANING_MIN_THRESHOLD || 
         g_cleaning_threshold > CLEANING_MAX_THRESHOLD) {
         g_cleaning_threshold = CLEANING_DEFAULT_THRESHOLD;
-        // Save corrected threshold
+        // Save corrected threshold immediately (configuration fix)
         config_persistence_save_cleaning(g_brew_count, g_cleaning_threshold);
+        g_last_saved_brew_count = g_brew_count;
     }
     
     g_cleaning_initialized = true;
@@ -63,11 +72,28 @@ void cleaning_record_brew_cycle(uint32_t brew_duration_ms) {
     // This matches ECM Synchronika behavior
     if (brew_duration_ms >= CLEANING_CYCLE_MIN_TIME_MS) {
         g_brew_count++;
+        g_dirty = true;
+        
         DEBUG_PRINT("Cleaning: Brew cycle recorded (count=%d, duration=%lu ms)\n", 
                     g_brew_count, brew_duration_ms);
         
-        // Save to config persistence (only save when count changes)
-        config_persistence_save_cleaning(g_brew_count, g_cleaning_threshold);
+        // Flash wear reduction: only save to flash every N brews
+        // This reduces flash writes by 90% (from every brew to every 10 brews)
+        uint16_t brews_since_save = g_brew_count - g_last_saved_brew_count;
+        if (brews_since_save >= CLEANING_FLASH_SAVE_INTERVAL) {
+            config_persistence_save_cleaning(g_brew_count, g_cleaning_threshold);
+            g_last_saved_brew_count = g_brew_count;
+            g_dirty = false;
+            DEBUG_PRINT("Cleaning: Saved to flash (interval save)\n");
+        }
+        
+        // Also save when crossing the threshold (important milestone)
+        if (g_brew_count == g_cleaning_threshold) {
+            config_persistence_save_cleaning(g_brew_count, g_cleaning_threshold);
+            g_last_saved_brew_count = g_brew_count;
+            g_dirty = false;
+            DEBUG_PRINT("Cleaning: Saved to flash (threshold reached)\n");
+        }
     }
 }
 
@@ -79,8 +105,10 @@ void cleaning_reset_brew_count(void) {
     g_brew_count = 0;
     DEBUG_PRINT("Cleaning: Brew counter reset\n");
     
-    // Save to config persistence
+    // Save immediately - this is an explicit user action
     config_persistence_save_cleaning(g_brew_count, g_cleaning_threshold);
+    g_last_saved_brew_count = g_brew_count;
+    g_dirty = false;
 }
 
 uint16_t cleaning_get_threshold(void) {
@@ -95,8 +123,10 @@ bool cleaning_set_threshold(uint16_t threshold) {
     g_cleaning_threshold = threshold;
     DEBUG_PRINT("Cleaning: Threshold set to %d cycles\n", threshold);
     
-    // Save to config persistence
+    // Save immediately - this is an explicit user action
     config_persistence_save_cleaning(g_brew_count, g_cleaning_threshold);
+    g_last_saved_brew_count = g_brew_count;
+    g_dirty = false;
     
     return true;
 }
@@ -187,5 +217,29 @@ bool cleaning_is_active(void) {
 
 cleaning_state_t cleaning_get_state(void) {
     return g_cleaning_state;
+}
+
+// =============================================================================
+// Flash Wear Reduction Functions
+// =============================================================================
+
+bool cleaning_force_save(void) {
+    if (!g_dirty) {
+        return true;  // No pending changes
+    }
+    
+    if (config_persistence_save_cleaning(g_brew_count, g_cleaning_threshold)) {
+        g_last_saved_brew_count = g_brew_count;
+        g_dirty = false;
+        DEBUG_PRINT("Cleaning: Force saved to flash\n");
+        return true;
+    }
+    
+    DEBUG_PRINT("Cleaning: Force save failed!\n");
+    return false;
+}
+
+bool cleaning_has_unsaved_changes(void) {
+    return g_dirty;
 }
 

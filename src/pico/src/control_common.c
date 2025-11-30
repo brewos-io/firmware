@@ -95,11 +95,18 @@ float pid_compute(pid_state_t* pid, float process_value, float dt) {
     float p_term = pid->kp * error;
     
     // Integral with anti-windup
-    pid->integral += error * dt;
-    float max_integral = PID_OUTPUT_MAX / pid->ki;
-    if (pid->integral > max_integral) pid->integral = max_integral;
-    if (pid->integral < -max_integral) pid->integral = -max_integral;
-    float i_term = pid->ki * pid->integral;
+    // Guard against division by zero when ki is 0 or very small (P-only control)
+    float i_term = 0.0f;
+    if (pid->ki > 0.001f) {
+        pid->integral += error * dt;
+        float max_integral = PID_OUTPUT_MAX / pid->ki;
+        if (pid->integral > max_integral) pid->integral = max_integral;
+        if (pid->integral < -max_integral) pid->integral = -max_integral;
+        i_term = pid->ki * pid->integral;
+    } else {
+        // Ki disabled or negligible - reset integral to prevent windup when re-enabled
+        pid->integral = 0.0f;
+    }
     
     // Derivative with filtering
     float derivative = (error - pid->last_error) / dt;

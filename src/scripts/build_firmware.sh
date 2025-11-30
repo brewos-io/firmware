@@ -179,9 +179,9 @@ build_esp32() {
         exit 1
     }
     
-    # Build LittleFS image
+    # Build LittleFS image (only for esp32s3, not simulator)
     print_info "Building LittleFS image..."
-    pio run -t buildfs || {
+    pio run -e esp32s3 -t buildfs || {
         print_error "LittleFS build failed"
         exit 1
     }

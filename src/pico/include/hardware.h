@@ -142,21 +142,57 @@ uint8_t hw_max31855_get_fault(uint32_t data);
 // =============================================================================
 
 /**
+ * PWM SSR configuration structure
+ * Tracks both slice and channel to properly handle RP2040 PWM architecture
+ * where two adjacent GPIOs share a slice but use different channels.
+ */
+typedef struct {
+    uint8_t slice;      // PWM slice number (0-7)
+    uint8_t channel;    // PWM channel (0=A, 1=B)
+    uint8_t gpio_pin;   // GPIO pin for this PWM output
+    bool initialized;   // True if this config has been initialized
+} pwm_ssr_config_t;
+
+/**
  * Initialize PWM for SSR (Solid State Relay) control
  * 
  * @param gpio_pin GPIO pin for PWM output
- * @param slice_num Pointer to store PWM slice number (for later use)
+ * @param slice_num Pointer to store PWM slice number (for backward compatibility)
  * @return true if successful, false otherwise
+ * 
+ * @note Use hw_pwm_init_ssr_ex for proper channel tracking on new code
  */
 bool hw_pwm_init_ssr(uint8_t gpio_pin, uint8_t* slice_num);
 
 /**
- * Set PWM duty cycle for SSR
+ * Initialize PWM for SSR with full configuration tracking
+ * Preferred over hw_pwm_init_ssr for proper channel handling.
+ * 
+ * @param gpio_pin GPIO pin for PWM output
+ * @param config Pointer to config structure to populate
+ * @return true if successful, false otherwise
+ */
+bool hw_pwm_init_ssr_ex(uint8_t gpio_pin, pwm_ssr_config_t* config);
+
+/**
+ * Set PWM duty cycle for SSR (legacy interface)
  * 
  * @param slice_num PWM slice number (from hw_pwm_init_ssr)
  * @param duty_percent Duty cycle (0.0 to 100.0)
+ * 
+ * @note This function uses internal tracking to determine the correct channel.
+ *       Use hw_set_pwm_duty_ex with a config for guaranteed correct behavior.
  */
 void hw_set_pwm_duty(uint8_t slice_num, float duty_percent);
+
+/**
+ * Set PWM duty cycle for SSR using full configuration
+ * Preferred over hw_set_pwm_duty for proper channel handling.
+ * 
+ * @param config PWM configuration from hw_pwm_init_ssr_ex
+ * @param duty_percent Duty cycle (0.0 to 100.0)
+ */
+void hw_set_pwm_duty_ex(const pwm_ssr_config_t* config, float duty_percent);
 
 /**
  * Get current PWM duty cycle

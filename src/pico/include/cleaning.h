@@ -27,9 +27,12 @@
 
 #define CLEANING_DEFAULT_THRESHOLD    100     // Default reminder after 100 brews
 #define CLEANING_MIN_THRESHOLD        10      // Minimum threshold
-#define CLEANING_MAX_THRESHOLD        200     // Maximum threshold
+#define CLEANING_MAX_THRESHOLD        1000    // Maximum threshold
 #define CLEANING_CYCLE_MIN_TIME_MS    15000   // Minimum brew time to count as cycle (15s)
 #define CLEANING_CYCLE_DURATION_MS    10000   // Cleaning cycle pump duration (10s)
+
+// Flash wear reduction: save every N brews instead of every brew
+#define CLEANING_FLASH_SAVE_INTERVAL  10      // Save to flash every 10 brews
 
 // =============================================================================
 // Cleaning State
@@ -114,6 +117,20 @@ bool cleaning_is_reminder_due(void);
  * @param brew_duration_ms Duration of the brew cycle in milliseconds
  */
 void cleaning_record_brew_cycle(uint32_t brew_duration_ms);
+
+/**
+ * Force save cleaning state to flash
+ * Call this on shutdown or periodically to ensure data is persisted.
+ * Flash wear reduction: normally saves happen every CLEANING_FLASH_SAVE_INTERVAL brews.
+ * @return true if saved successfully or no pending changes
+ */
+bool cleaning_force_save(void);
+
+/**
+ * Check if there are unsaved changes
+ * @return true if there are pending changes not yet saved to flash
+ */
+bool cleaning_has_unsaved_changes(void);
 
 #endif // CLEANING_H
 

@@ -11,6 +11,7 @@
 #include <string.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "pico/mutex.h"
 #include "hardware/watchdog.h"
 
 #include "config.h"
@@ -38,9 +39,11 @@
 static volatile bool g_core1_ready = false;
 static uint32_t g_boot_time = 0;
 
-// Status payload (updated by control loop, read by comms)
-static volatile status_payload_t g_status;
-static volatile bool g_status_updated = false;
+// Status payload (updated by control loop on Core 0, read by comms on Core 1)
+// Protected by mutex for thread-safe access between cores
+static status_payload_t g_status;
+static bool g_status_updated = false;
+static mutex_t g_status_mutex;  // Protects g_status and g_status_updated
 
 // -----------------------------------------------------------------------------
 // Core 1 Entry Point (Communication)
@@ -83,12 +86,18 @@ void core1_main(void) {
         if (now - last_status_send >= STATUS_SEND_PERIOD_MS) {
             last_status_send = now;
             
+            // Thread-safe read of status with mutex protection
+            status_payload_t status_copy;
+            bool should_send = false;
+            
+            mutex_enter_blocking(&g_status_mutex);
             if (g_status_updated) {
-                status_payload_t status_copy;
-                
-                // Quick copy of status (minimize time with interrupts consideration)
-                memcpy((void*)&status_copy, (const void*)&g_status, sizeof(status_payload_t));
-                
+                memcpy(&status_copy, &g_status, sizeof(status_payload_t));
+                should_send = true;
+            }
+            mutex_exit(&g_status_mutex);
+            
+            if (should_send) {
                 protocol_send_status(&status_copy);
             }
         }
@@ -117,6 +126,22 @@ void handle_packet(const packet_t* packet) {
         case MSG_CMD_SET_TEMP: {
             if (packet->length >= sizeof(cmd_set_temp_t)) {
                 cmd_set_temp_t* cmd = (cmd_set_temp_t*)packet->payload;
+                
+                // Validate target: 0=brew, 1=steam
+                if (cmd->target > 1) {
+                    DEBUG_PRINT("CMD_SET_TEMP: Invalid target %d\n", cmd->target);
+                    protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_ERROR_INVALID);
+                    break;
+                }
+                
+                // Validate temperature range: 0-200°C (stored as 0-2000 in 0.1°C units)
+                // Negative temperatures don't make sense for espresso machines
+                if (cmd->temperature < 0 || cmd->temperature > 2000) {
+                    DEBUG_PRINT("CMD_SET_TEMP: Invalid temperature %d (valid: 0-2000)\n", cmd->temperature);
+                    protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_ERROR_INVALID);
+                    break;
+                }
+                
                 control_set_setpoint(cmd->target, cmd->temperature);
                 protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_SUCCESS);
             } else {
@@ -128,6 +153,23 @@ void handle_packet(const packet_t* packet) {
         case MSG_CMD_SET_PID: {
             if (packet->length >= sizeof(cmd_set_pid_t)) {
                 cmd_set_pid_t* cmd = (cmd_set_pid_t*)packet->payload;
+                
+                // Validate target: 0=brew, 1=steam
+                if (cmd->target > 1) {
+                    DEBUG_PRINT("CMD_SET_PID: Invalid target %d\n", cmd->target);
+                    protocol_send_ack(MSG_CMD_SET_PID, packet->seq, ACK_ERROR_INVALID);
+                    break;
+                }
+                
+                // Validate PID gains: reasonable range 0-10000 (stored as value*100)
+                // Max 100.0 for any gain is already very aggressive
+                if (cmd->kp > 10000 || cmd->ki > 10000 || cmd->kd > 10000) {
+                    DEBUG_PRINT("CMD_SET_PID: Invalid gains Kp=%d Ki=%d Kd=%d (max 10000)\n", 
+                               cmd->kp, cmd->ki, cmd->kd);
+                    protocol_send_ack(MSG_CMD_SET_PID, packet->seq, ACK_ERROR_INVALID);
+                    break;
+                }
+                
                 control_set_pid(cmd->target, cmd->kp / 100.0f, cmd->ki / 100.0f, cmd->kd / 100.0f);
                 protocol_send_ack(MSG_CMD_SET_PID, packet->seq, ACK_SUCCESS);
             } else {
@@ -187,6 +229,23 @@ void handle_packet(const packet_t* packet) {
                     // Set environmental configuration
                     if (packet->length >= sizeof(config_environmental_t) + 1) {
                         config_environmental_t* env_cmd = (config_environmental_t*)(&packet->payload[1]);
+                        
+                        // Validate voltage: 100-250V (covers 110V and 220-240V systems)
+                        if (env_cmd->nominal_voltage < 100 || env_cmd->nominal_voltage > 250) {
+                            DEBUG_PRINT("CMD_CONFIG: Invalid voltage %d (valid: 100-250V)\n", 
+                                       env_cmd->nominal_voltage);
+                            protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
+                            break;
+                        }
+                        
+                        // Validate max current: 1-50A (reasonable range for espresso machines)
+                        if (env_cmd->max_current_draw < 1.0f || env_cmd->max_current_draw > 50.0f) {
+                            DEBUG_PRINT("CMD_CONFIG: Invalid max current %.1f (valid: 1-50A)\n", 
+                                       env_cmd->max_current_draw);
+                            protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
+                            break;
+                        }
+                        
                         environmental_electrical_t env_config = {
                             .nominal_voltage = env_cmd->nominal_voltage,
                             .max_current_draw = env_cmd->max_current_draw
@@ -275,6 +334,15 @@ void handle_packet(const packet_t* packet) {
             // Set cleaning reminder threshold
             if (packet->length >= 2) {
                 uint16_t threshold = (packet->payload[0] << 8) | packet->payload[1];
+                
+                // Validate threshold range (cleaning_set_threshold also validates, but add debug)
+                if (threshold < 10 || threshold > 1000) {
+                    DEBUG_PRINT("CMD_CLEANING_SET_THRESHOLD: Invalid threshold %d (valid: 10-1000)\n", 
+                               threshold);
+                    protocol_send_ack(MSG_CMD_CLEANING_SET_THRESHOLD, packet->seq, ACK_ERROR_INVALID);
+                    break;
+                }
+                
                 if (cleaning_set_threshold(threshold)) {
                     protocol_send_ack(MSG_CMD_CLEANING_SET_THRESHOLD, packet->seq, ACK_SUCCESS);
                 } else {
@@ -326,6 +394,9 @@ void handle_packet(const packet_t* packet) {
 int main(void) {
     // Record boot time
     g_boot_time = to_ms_since_boot(get_absolute_time());
+    
+    // Initialize mutex for thread-safe status sharing between cores
+    mutex_init(&g_status_mutex);
     
     // Initialize stdio (USB for debugging)
     stdio_init_all();
@@ -504,12 +575,15 @@ int main(void) {
                 control_update();
             }
             
-            // Update status for Core 1
+            // Update status for Core 1 (thread-safe with mutex)
             sensor_data_t sensor_data;
             sensors_get_data(&sensor_data);
             
             control_outputs_t outputs;
             control_get_outputs(&outputs);
+            
+            // Build status locally first, then copy under mutex
+            status_payload_t new_status = {0};
             
             // Machine-type aware status population
             // HX machines: brew_temp is invalid (no brew NTC), use group_temp
@@ -518,42 +592,46 @@ int main(void) {
             
             if (machine_features && machine_features->type == MACHINE_TYPE_HEAT_EXCHANGER) {
                 // HX: brew_temp not available, report group_temp as brew indicator
-                g_status.brew_temp = sensor_data.group_temp;  // Use group as brew proxy
-                g_status.steam_temp = sensor_data.steam_temp;
-                g_status.group_temp = sensor_data.group_temp;
+                new_status.brew_temp = sensor_data.group_temp;  // Use group as brew proxy
+                new_status.steam_temp = sensor_data.steam_temp;
+                new_status.group_temp = sensor_data.group_temp;
             } else if (machine_features && machine_features->type == MACHINE_TYPE_SINGLE_BOILER) {
                 // Single boiler: use brew NTC for both (same physical sensor)
-                g_status.brew_temp = sensor_data.brew_temp;
-                g_status.steam_temp = sensor_data.brew_temp;  // Same as brew for display
-                g_status.group_temp = sensor_data.group_temp;
+                new_status.brew_temp = sensor_data.brew_temp;
+                new_status.steam_temp = sensor_data.brew_temp;  // Same as brew for display
+                new_status.group_temp = sensor_data.group_temp;
             } else {
                 // Dual boiler: all sensors independent
-                g_status.brew_temp = sensor_data.brew_temp;
-                g_status.steam_temp = sensor_data.steam_temp;
-                g_status.group_temp = sensor_data.group_temp;
+                new_status.brew_temp = sensor_data.brew_temp;
+                new_status.steam_temp = sensor_data.steam_temp;
+                new_status.group_temp = sensor_data.group_temp;
             }
             
-            g_status.pressure = sensor_data.pressure;
-            g_status.brew_setpoint = control_get_setpoint(0);
-            g_status.steam_setpoint = control_get_setpoint(1);
-            g_status.brew_output = outputs.brew_heater;
-            g_status.steam_output = outputs.steam_heater;
-            g_status.pump_output = outputs.pump;
-            g_status.state = state_get();
-            g_status.water_level = sensor_data.water_level;
-            g_status.power_watts = outputs.power_watts;
-            g_status.uptime_ms = now;
-            g_status.shot_start_timestamp_ms = state_get_brew_start_timestamp_ms();
+            new_status.pressure = sensor_data.pressure;
+            new_status.brew_setpoint = control_get_setpoint(0);
+            new_status.steam_setpoint = control_get_setpoint(1);
+            new_status.brew_output = outputs.brew_heater;
+            new_status.steam_output = outputs.steam_heater;
+            new_status.pump_output = outputs.pump;
+            new_status.state = state_get();
+            new_status.water_level = sensor_data.water_level;
+            new_status.power_watts = outputs.power_watts;
+            new_status.uptime_ms = now;
+            new_status.shot_start_timestamp_ms = state_get_brew_start_timestamp_ms();
             
             // Set flags
-            g_status.flags = 0;
-            if (state_is_brewing()) g_status.flags |= STATUS_FLAG_BREWING;
-            if (outputs.pump > 0) g_status.flags |= STATUS_FLAG_PUMP_ON;
-            if (outputs.brew_heater > 0 || outputs.steam_heater > 0) g_status.flags |= STATUS_FLAG_HEATING;
-            if (sensor_data.water_level < SAFETY_MIN_WATER_LEVEL) g_status.flags |= STATUS_FLAG_WATER_LOW;
-            if (safety_is_safe_state()) g_status.flags |= STATUS_FLAG_ALARM;
+            new_status.flags = 0;
+            if (state_is_brewing()) new_status.flags |= STATUS_FLAG_BREWING;
+            if (outputs.pump > 0) new_status.flags |= STATUS_FLAG_PUMP_ON;
+            if (outputs.brew_heater > 0 || outputs.steam_heater > 0) new_status.flags |= STATUS_FLAG_HEATING;
+            if (sensor_data.water_level < SAFETY_MIN_WATER_LEVEL) new_status.flags |= STATUS_FLAG_WATER_LOW;
+            if (safety_is_safe_state()) new_status.flags |= STATUS_FLAG_ALARM;
             
+            // Thread-safe update of shared status
+            mutex_enter_blocking(&g_status_mutex);
+            memcpy(&g_status, &new_status, sizeof(status_payload_t));
             g_status_updated = true;
+            mutex_exit(&g_status_mutex);
         }
         
         // Small sleep

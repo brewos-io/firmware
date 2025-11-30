@@ -57,6 +57,10 @@ static uint32_t g_steam_level_last_change = 0;
 static bool g_steam_level_last_state = false;
 static bool g_steam_level_debounced = false;
 
+// Fill cycle monitoring (moved from function scope for proper state management)
+static uint32_t g_fill_level_check_time = 0;       // Last time we checked level state
+static bool g_fill_level_last_state = false;       // Last level state during fill monitoring
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -223,6 +227,10 @@ void water_management_init(void) {
     g_steam_level_last_state = false;
     g_steam_level_debounced = false;
     
+    // Initialize fill monitoring state
+    g_fill_level_check_time = 0;
+    g_fill_level_last_state = false;
+    
     // Initialize steam fill solenoid GPIO (if configured)
     const pcb_config_t* pcb = pcb_config_get();
     if (pcb && PIN_VALID(pcb->pins.relay_fill_solenoid)) {
@@ -335,6 +343,9 @@ static void update_steam_fill_cycle(void) {
                 control_set_pump(0);
                 set_steam_fill_solenoid(false);
                 g_fill_state = STEAM_FILL_IDLE;
+                // Reset monitoring state
+                g_fill_level_check_time = 0;
+                g_fill_level_last_state = false;
                 // Restore heater if it was on
                 if (g_steam_heater_was_on) {
                     // Heater will be restored by PID control
@@ -345,16 +356,15 @@ static void update_steam_fill_cycle(void) {
             
             // Check if level probe is still reading correctly (sanity check)
             // If probe state hasn't changed after reasonable time, might be stuck
-            static uint32_t last_level_check = 0;
-            static bool last_level_state = false;
-            if (now - last_level_check > 5000) {  // Check every 5 seconds
-                if (steam_level_low == last_level_state && 
+            // Uses module-scope variables for proper state tracking across calls
+            if (now - g_fill_level_check_time > 5000) {  // Check every 5 seconds
+                if (steam_level_low == g_fill_level_last_state && 
                     (now - g_fill_start_time) > 10000) {  // After 10 seconds of filling
                     // Level hasn't changed - probe might be stuck or water not flowing
                     DEBUG_PRINT("Water: WARNING - Steam level probe not changing after 10s fill\n");
                 }
-                last_level_check = now;
-                last_level_state = steam_level_low;
+                g_fill_level_check_time = now;
+                g_fill_level_last_state = steam_level_low;
             }
             
             // Check if level is now OK (probe touched)
@@ -364,6 +374,9 @@ static void update_steam_fill_cycle(void) {
                 control_set_pump(0);
                 set_steam_fill_solenoid(false);
                 g_fill_state = STEAM_FILL_COMPLETE;
+                // Reset monitoring state
+                g_fill_level_check_time = 0;
+                g_fill_level_last_state = false;
             }
             break;
             

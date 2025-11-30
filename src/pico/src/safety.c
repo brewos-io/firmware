@@ -84,13 +84,18 @@ static uint32_t g_buzzer_last_beep = 0;
 /**
  * Debounce water sensor input
  * Returns true if sensor indicates low water (after debounce)
+ * 
+ * @param gpio_pin GPIO pin number (use int8_t to support -1 for unconfigured)
+ * @param debounce_count Pointer to debounce counter
+ * @param last_state Pointer to last stable state
+ * @return true if sensor indicates low water (after debounce)
  */
-static bool check_water_sensor_debounced(uint8_t gpio_pin, uint8_t* debounce_count, bool* last_state) {
-    if (gpio_pin < 0) {
-        return false;  // Not configured
+static bool check_water_sensor_debounced(int8_t gpio_pin, uint8_t* debounce_count, bool* last_state) {
+    if (!PIN_VALID(gpio_pin)) {
+        return false;  // Not configured or invalid pin
     }
     
-    bool current_state = !hw_read_gpio(gpio_pin);  // Active LOW, so invert
+    bool current_state = !hw_read_gpio((uint8_t)gpio_pin);  // Active LOW, so invert
     
     if (current_state != *last_state) {
         // State changed, reset debounce
