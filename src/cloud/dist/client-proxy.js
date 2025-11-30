@@ -1,6 +1,9 @@
 import { WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
-import { verifyToken } from './auth.js';
+import { OAuth2Client } from 'google-auth-library';
+// Google OAuth client for WebSocket auth
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 /**
  * Client Proxy
  *
@@ -19,7 +22,7 @@ export class ClientProxy {
             this.broadcastToDeviceClients(deviceId, message);
         });
     }
-    handleConnection(ws, req) {
+    async handleConnection(ws, req) {
         const url = new URL(req.url || '', `http://${req.headers.host}`);
         const token = url.searchParams.get('token');
         const deviceId = url.searchParams.get('device');
@@ -27,9 +30,22 @@ export class ClientProxy {
             ws.close(4001, 'Missing token or device ID');
             return;
         }
-        // Verify JWT token
-        const payload = verifyToken(token);
-        if (!payload) {
+        // Verify Google ID token
+        let userId;
+        try {
+            const ticket = await googleClient.verifyIdToken({
+                idToken: token,
+                audience: GOOGLE_CLIENT_ID,
+            });
+            const payload = ticket.getPayload();
+            if (!payload?.sub) {
+                ws.close(4002, 'Invalid token');
+                return;
+            }
+            userId = payload.sub;
+        }
+        catch (error) {
+            console.error('[Client] Token verification failed:', error);
             ws.close(4002, 'Invalid or expired token');
             return;
         }
@@ -38,7 +54,7 @@ export class ClientProxy {
         const connection = {
             ws,
             sessionId,
-            userId: payload.userId,
+            userId,
             deviceId,
             connectedAt: new Date(),
         };

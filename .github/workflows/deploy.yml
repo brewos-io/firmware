@@ -6,9 +6,40 @@ on:
     paths:
       - 'src/cloud/**'
       - 'src/web/**'
+      - '.github/workflows/deploy.yml'
 
 jobs:
+  # First, verify the build works in CI before deploying
+  build-check:
+    name: Verify Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            src/web/package-lock.json
+            src/cloud/package-lock.json
+
+      - name: Build Web UI
+        run: |
+          cd src/web
+          npm ci
+          npm run build
+
+      - name: Check Cloud Service
+        run: |
+          cd src/cloud
+          npm ci
+          npx tsc --noEmit
+
   deploy:
+    name: Deploy
+    needs: build-check  # Only deploy if build succeeds
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to server
@@ -21,6 +52,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           envs: GOOGLE_CLIENT_ID
           script_stop: true
+          command_timeout: 15m
           script: |
             set -e
             cd /root/brewos
@@ -51,7 +83,28 @@ jobs:
             # Copy built web UI to cloud service
             cp -r dist ../cloud/web
             
-            # Restart cloud service
+            # Build new container without stopping old one
             cd ../cloud
+            docker compose build
+            
+            # Only restart after successful build
             docker compose down
-            docker compose up -d --build
+            docker compose up -d
+            
+            # Wait for service to be healthy
+            echo "Waiting for service to start..."
+            sleep 5
+            
+            # Health check
+            for i in 1 2 3 4 5; do
+              if curl -sf http://localhost:3001/api/health > /dev/null; then
+                echo "✓ Service is healthy!"
+                exit 0
+              fi
+              echo "Waiting... ($i/5)"
+              sleep 3
+            done
+            
+            echo "✗ Health check failed!"
+            docker compose logs --tail=50
+            exit 1
