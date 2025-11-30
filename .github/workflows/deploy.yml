@@ -19,7 +19,11 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /root/brewos
-            git pull origin main
+            
+            # Reset to match repo exactly (avoid conflicts from manual edits)
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
             
             # Rebuild web UI
             cd src/web
