@@ -7,7 +7,7 @@ The BrewOS cloud service is a WebSocket relay that enables remote access to your
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         CLOUD SERVICE                                   │
-│              (WebSocket Relay + SQLite + Google Auth)                   │
+│        (WebSocket Relay + SQLite + Session-Based Auth)                  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   /ws/device                              /ws/client                    │
@@ -21,7 +21,7 @@ The BrewOS cloud service is a WebSocket relay that enables remote access to your
 │         └────────────────┬───────────────────────┘                      │
 │                          ▼                                              │
 │                    ┌───────────┐                                        │
-│                    │  SQLite   │  (device ownership, profiles)          │
+│                    │  SQLite   │  (devices, profiles, sessions)         │
 │                    └───────────┘                                        │
 └─────────────────────────────────────────────────────────────────────────┘
          ▲                                        ▲
@@ -36,10 +36,48 @@ The BrewOS cloud service is a WebSocket relay that enables remote access to your
 ## Key Features
 
 - **SQLite Database** - Embedded, file-based, no external DB needed
-- **Google OAuth** - Direct Google Sign-In, no extra services needed
+- **Session-Based Auth** - OAuth for identity, own tokens for sessions
+- **Multi-Provider Ready** - Easy to add Apple, GitHub, etc.
 - **QR Code Pairing** - Scan to link devices to your account
 - **Pure WebSocket** - No MQTT dependency, deploy anywhere
 - **Low Latency** - Direct message relay between clients and devices
+
+## Authentication Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    SESSION-BASED AUTHENTICATION                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   STEP 1: Identity Verification (OAuth - ONE TIME)                      │
+│   ─────────────────────────────────────────────────                     │
+│   User → Google/Apple/GitHub → "This is user@example.com" ✓             │
+│                                                                          │
+│   STEP 2: Session Creation (Our System)                                 │
+│   ──────────────────────────────────────                                │
+│   POST /api/auth/google { credential: "google_id_token" }               │
+│   Server: Verify with Google (one-time) → Create user → Issue tokens    │
+│   Response: { accessToken, refreshToken, expiresAt, user }              │
+│                                                                          │
+│   STEP 3: All Subsequent API Calls                                      │
+│   ─────────────────────────────────                                     │
+│   Authorization: Bearer <accessToken>                                    │
+│   Google is no longer involved - we control the session                 │
+│                                                                          │
+│   STEP 4: Token Refresh (Silent)                                        │
+│   ──────────────────────────────                                        │
+│   POST /api/auth/refresh { refreshToken: "..." }                        │
+│   Response: { accessToken, refreshToken, expiresAt }                    │
+│   Implements refresh token rotation for security                        │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Benefits of this approach:**
+- **You control token expiry** - Not tied to Google's 1-hour limit
+- **Multi-provider support** - All OAuth providers result in same session format
+- **Revocable sessions** - Can logout users server-side at any time
+- **Better security** - Refresh token rotation, constant-time comparisons
 
 ## Project Structure
 
@@ -50,15 +88,19 @@ src/cloud/
 │   ├── device-relay.ts    # ESP32 device connection handler
 │   ├── client-proxy.ts    # Client app connection handler
 │   ├── lib/
-│   │   └── database.ts    # SQLite database (sql.js)
+│   │   ├── database.ts    # SQLite database (sql.js)
+│   │   └── date.ts        # UTC date utilities
 │   ├── middleware/
-│   │   └── auth.ts        # Google ID token verification
+│   │   └── auth.ts        # Session-based auth middleware
 │   ├── routes/
-│   │   └── devices.ts     # Device management API
+│   │   ├── auth.ts        # Auth endpoints (login, refresh, logout)
+│   │   ├── devices.ts     # Device management API
+│   │   └── push.ts        # Push notification API
 │   ├── services/
-│   │   └── device.ts      # Device CRUD operations
-│   └── types/
-│       └── sql.js.d.ts    # TypeScript types
+│   │   ├── session.ts     # Session management (create, verify, revoke)
+│   │   ├── device.ts      # Device CRUD operations
+│   │   └── push.ts        # Push notification service
+│   └── types.ts           # TypeScript types
 ├── package.json
 └── tsconfig.json
 ```
@@ -144,8 +186,18 @@ devices (id, owner_id, name, machine_brand, machine_model, is_online, ...)
 -- QR code pairing tokens
 device_claim_tokens (device_id, token_hash, expires_at)
 
--- User profiles (synced from Google Auth)
+-- User profiles (synced from OAuth provider)
 profiles (id, email, display_name, avatar_url)
+
+-- User sessions (our own tokens)
+sessions (id, user_id, access_token_hash, refresh_token_hash, 
+          access_expires_at, refresh_expires_at, user_agent, ip_address, ...)
+
+-- Push notification subscriptions
+push_subscriptions (user_id, device_id, endpoint, p256dh, auth)
+
+-- Notification preferences
+notification_preferences (user_id, machine_ready, water_empty, ...)
 ```
 
 **Data is stored in a single file:** `brewos.db`
@@ -154,17 +206,35 @@ For persistence on cloud platforms, mount a volume to `DATA_DIR`.
 
 ## API Endpoints
 
-### HTTP
+### Authentication
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/health` | GET | No | Health check with connection stats |
+| `/api/auth/google` | POST | No | Exchange Google credential for session tokens |
+| `/api/auth/refresh` | POST | No | Refresh session using refresh token |
+| `/api/auth/logout` | POST | Yes | Revoke current session |
+| `/api/auth/logout-all` | POST | Yes | Revoke all user sessions |
+| `/api/auth/sessions` | GET | Yes | List active sessions |
+| `/api/auth/sessions/:id` | DELETE | Yes | Revoke specific session |
+| `/api/auth/me` | GET | Yes | Get current user info |
+
+### Devices
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
 | `/api/devices` | GET | Yes | List user's devices |
 | `/api/devices/claim` | POST | Yes | Claim a device with QR token |
 | `/api/devices/register-claim` | POST | No | ESP32 registers claim token |
 | `/api/devices/:id` | GET | Yes | Get device details |
 | `/api/devices/:id` | PATCH | Yes | Update device (name, brand, model) |
 | `/api/devices/:id` | DELETE | Yes | Remove device from account |
+
+### Other
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/health` | GET | No | Health check with connection stats |
+| `/api/mode` | GET | No | Returns `{ mode: 'cloud' }` |
 | `/*` | GET | No | Serve web UI (SPA) |
 
 ### WebSocket
@@ -172,7 +242,7 @@ For persistence on cloud platforms, mount a volume to `DATA_DIR`.
 | Endpoint | Description |
 |----------|-------------|
 | `/ws/device` | ESP32 device connections |
-| `/ws/client` | Client app connections |
+| `/ws/client?token=...&device=...` | Client app connections (requires session token) |
 
 ## Device Pairing Flow
 
@@ -190,6 +260,21 @@ For persistence on cloud platforms, mount a volume to `DATA_DIR`.
    - App calls `/api/devices/claim` with device ID and token
    - Server verifies token hash matches
    - Device is added to user's account
+
+## Session Configuration
+
+Default session settings (configurable in `services/session.ts`):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Access Token Expiry | 60 minutes | Short-lived for security |
+| Refresh Token Expiry | 30 days | Long-lived for convenience |
+| Token Size | 32 bytes (256-bit) | Cryptographically secure |
+
+Sessions include:
+- **User agent** - For "manage sessions" UI
+- **IP address** - For security auditing
+- **Last used** - For session activity tracking
 
 ## Deployment
 
@@ -250,7 +335,31 @@ fly deploy
 ## Security Considerations
 
 1. **Use HTTPS/WSS in production** - Terminate TLS at load balancer
-2. **Keep Client ID secret** - Don't expose in public repos with sensitive data
-3. **Validate device ownership** - Check user has access to device
-4. **Rate limiting** - Add rate limiting for API endpoints
-5. **Backup SQLite** - Regular backups of `brewos.db` file
+2. **Session tokens are hashed** - Only hashes stored in database
+3. **Refresh token rotation** - New tokens issued on each refresh
+4. **Constant-time comparison** - Prevents timing attacks
+5. **Session revocation** - Logout everywhere capability
+6. **Rate limiting** - Add rate limiting for API endpoints (recommended)
+7. **Backup SQLite** - Regular backups of `brewos.db` file
+
+## Adding New OAuth Providers
+
+To add Apple Sign-In, GitHub, etc.:
+
+1. **Create route handler** in `routes/auth.ts`:
+   ```typescript
+   router.post('/apple', async (req, res) => {
+     const { credential } = req.body;
+     // Verify with Apple
+     const appleUser = await verifyAppleToken(credential);
+     // Create/update profile
+     ensureProfile(appleUser.sub, appleUser.email, ...);
+     // Create session (same as Google flow)
+     const tokens = createSession(appleUser.sub, metadata);
+     res.json({ ...tokens, user: appleUser });
+   });
+   ```
+
+2. **Add frontend button** - All providers end up with same session format
+
+The session system is provider-agnostic - once identity is verified, our sessions work the same way regardless of which OAuth provider was used.

@@ -1,13 +1,10 @@
 import { WebSocketServer, WebSocket, RawData } from 'ws';
 import { IncomingMessage } from 'http';
 import { v4 as uuidv4 } from 'uuid';
-import { OAuth2Client } from 'google-auth-library';
+import { verifyWebSocketToken } from './middleware/auth.js';
+import { userOwnsDevice } from './services/device.js';
 import type { DeviceRelay } from './device-relay.js';
 import type { DeviceMessage } from './types.js';
-
-// Google OAuth client for WebSocket auth
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 interface ClientConnection {
   ws: WebSocket;
@@ -22,6 +19,8 @@ interface ClientConnection {
  * 
  * Handles WebSocket connections from client apps (web, mobile).
  * Routes messages between clients and their associated devices.
+ * 
+ * Authentication uses our own session tokens (not OAuth provider tokens).
  */
 export class ClientProxy {
   private clients = new Map<string, ClientConnection>();
@@ -49,38 +48,31 @@ export class ClientProxy {
       return;
     }
 
-    // Verify Google ID token
-    let userId: string;
-    try {
-      const ticket = await googleClient.verifyIdToken({
-        idToken: token,
-        audience: GOOGLE_CLIENT_ID,
-      });
-      const payload = ticket.getPayload();
-      if (!payload?.sub) {
-        ws.close(4002, 'Invalid token');
-        return;
-      }
-      userId = payload.sub;
-    } catch (error) {
-      console.error('[Client] Token verification failed:', error);
+    // Verify our session token (not OAuth provider token)
+    const user = verifyWebSocketToken(token);
+    
+    if (!user) {
       ws.close(4002, 'Invalid or expired token');
       return;
     }
 
-    // TODO: Verify user has access to this device
+    // Verify user has access to this device
+    if (!userOwnsDevice(user.id, deviceId)) {
+      ws.close(4003, 'Access denied to device');
+      return;
+    }
 
     const sessionId = uuidv4();
     const connection: ClientConnection = {
       ws,
       sessionId,
-      userId,
+      userId: user.id,
       deviceId,
       connectedAt: new Date(),
     };
 
     this.registerClient(connection);
-    console.log(`[Client] Connected: ${sessionId} -> device ${deviceId}`);
+    console.log(`[Client] Connected: ${sessionId} -> device ${deviceId} (user: ${user.email})`);
 
     // Handle messages from client
     ws.on('message', (data: RawData) => {
@@ -178,4 +170,3 @@ export class ClientProxy {
     return this.clients.size;
   }
 }
-

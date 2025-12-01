@@ -4,7 +4,7 @@ import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { Card } from '@/components/Card';
 import { Logo } from '@/components/Logo';
 import { useAuth } from '@/lib/auth';
-import { isGoogleAuthConfigured } from '@/lib/google-auth';
+import { isGoogleAuthConfigured } from '@/lib/auth';
 import { AlertCircle } from 'lucide-react';
 
 export function Login() {

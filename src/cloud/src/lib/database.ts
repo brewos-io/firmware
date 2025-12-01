@@ -1,11 +1,11 @@
-import initSqlJs from 'sql.js';
-import type { Database as SqlJsDatabase } from 'sql.js';
-import fs from 'fs';
-import path from 'path';
+import initSqlJs from "sql.js";
+import type { Database as SqlJsDatabase } from "sql.js";
+import fs from "fs";
+import path from "path";
 
 // Database file path
-const DATA_DIR = process.env.DATA_DIR || '.';
-const DB_PATH = path.join(DATA_DIR, 'brewos.db');
+const DATA_DIR = process.env.DATA_DIR || ".";
+const DB_PATH = path.join(DATA_DIR, "brewos.db");
 
 let db: SqlJsDatabase;
 
@@ -26,7 +26,7 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
       console.log(`[DB] Created new database`);
     }
   } catch (error) {
-    console.error('[DB] Error loading database, creating new one:', error);
+    console.error("[DB] Error loading database, creating new one:", error);
     db = new SQL.Database();
   }
 
@@ -100,14 +100,48 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
     );
+
+    -- User sessions (our own tokens, not OAuth provider tokens)
+    -- This enables: revocation, multiple providers, custom expiry
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      access_token_hash TEXT NOT NULL UNIQUE,
+      refresh_token_hash TEXT NOT NULL UNIQUE,
+      access_expires_at TEXT NOT NULL,
+      refresh_expires_at TEXT NOT NULL,
+      user_agent TEXT,
+      ip_address TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      last_used_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
   `);
 
   // Create indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_devices_owner ON devices(owner_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_claim_tokens_expires ON device_claim_tokens(expires_at)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_push_subscriptions_device ON push_subscriptions(device_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_notification_preferences_user ON notification_preferences(user_id)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_claim_tokens_expires ON device_claim_tokens(expires_at)`
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id)`
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_push_subscriptions_device ON push_subscriptions(device_id)`
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_notification_preferences_user ON notification_preferences(user_id)`
+  );
+  db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_sessions_access_token ON sessions(access_token_hash)`
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_sessions_refresh_token ON sessions(refresh_token_hash)`
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(refresh_expires_at)`
+  );
 
   // Migrations for existing databases
   // Add machine_brand and machine_model columns if they don't exist
@@ -143,14 +177,14 @@ export function saveDatabase(): void {
     const buffer = Buffer.from(data);
     fs.writeFileSync(DB_PATH, buffer);
   } catch (error) {
-    console.error('[DB] Error saving database:', error);
+    console.error("[DB] Error saving database:", error);
   }
 }
 
 // Get database instance
 export function getDb(): SqlJsDatabase {
   if (!db) {
-    throw new Error('Database not initialized. Call initDatabase() first.');
+    throw new Error("Database not initialized. Call initDatabase() first.");
   }
   return db;
 }
@@ -217,16 +251,16 @@ export interface NotificationPreferences {
 }
 
 // Notification type enum matching the database columns
-export type NotificationType = 
-  | 'MACHINE_READY'
-  | 'WATER_EMPTY'
-  | 'DESCALE_DUE'
-  | 'SERVICE_DUE'
-  | 'BACKFLUSH_DUE'
-  | 'MACHINE_ERROR'
-  | 'PICO_OFFLINE'
-  | 'SCHEDULE_TRIGGERED'
-  | 'BREW_COMPLETE';
+export type NotificationType =
+  | "MACHINE_READY"
+  | "WATER_EMPTY"
+  | "DESCALE_DUE"
+  | "SERVICE_DUE"
+  | "BACKFLUSH_DUE"
+  | "MACHINE_ERROR"
+  | "PICO_OFFLINE"
+  | "SCHEDULE_TRIGGERED"
+  | "BREW_COMPLETE";
 
 // Helper to convert sql.js results to objects
 export function rowToObject<T>(columns: string[], values: unknown[]): T {
@@ -237,8 +271,11 @@ export function rowToObject<T>(columns: string[], values: unknown[]): T {
   return obj as T;
 }
 
-export function resultToObjects<T>(result: { columns: string[]; values: unknown[][] }): T[] {
-  return result.values.map(values => rowToObject<T>(result.columns, values));
+export function resultToObjects<T>(result: {
+  columns: string[];
+  values: unknown[][];
+}): T[] {
+  return result.values.map((values) => rowToObject<T>(result.columns, values));
 }
 
 // Auto-save every 30 seconds
@@ -247,16 +284,16 @@ setInterval(() => {
 }, 30 * 1000);
 
 // Save on exit
-process.on('exit', () => {
+process.on("exit", () => {
   saveDatabase();
 });
 
-process.on('SIGINT', () => {
+process.on("SIGINT", () => {
   saveDatabase();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on("SIGTERM", () => {
   saveDatabase();
   process.exit(0);
 });

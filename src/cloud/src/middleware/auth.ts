@@ -1,118 +1,106 @@
-import { Request, Response, NextFunction } from 'express';
-import { OAuth2Client, TokenPayload } from 'google-auth-library';
-import { ensureProfile } from '../services/device.js';
+/**
+ * Authentication Middleware
+ *
+ * Session-based authentication using our own tokens.
+ * OAuth providers are used only for identity verification at login time.
+ */
 
-// Google OAuth client
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+import { Request, Response, NextFunction } from "express";
+import {
+  verifyAccessToken,
+  type SessionUser,
+  type Session,
+} from "../services/session.js";
 
 // Extend Express Request type
 declare global {
   namespace Express {
     interface Request {
-      user?: {
-        id: string;
-        email: string;
-      };
+      user?: SessionUser;
+      session?: Session;
     }
   }
 }
 
 /**
- * Verify Google ID token
+ * Session-based authentication middleware
+ * Verifies our own access tokens (not OAuth provider tokens)
  */
-async function verifyGoogleToken(idToken: string): Promise<TokenPayload | null> {
-  try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken,
-      audience: GOOGLE_CLIENT_ID,
-    });
-    return ticket.getPayload() || null;
-  } catch (error) {
-    console.error('[Auth] Token verification failed:', error);
-    return null;
-  }
-}
-
-/**
- * Middleware to verify Google ID token
- */
-export function googleAuthMiddleware(
+export function sessionAuthMiddleware(
   req: Request,
   res: Response,
   next: NextFunction
 ): void {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing authorization header' });
+  if (!authHeader?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Missing authorization header" });
     return;
   }
 
-  const token = authHeader.slice(7);
+  const accessToken = authHeader.slice(7);
 
-  if (!GOOGLE_CLIENT_ID) {
-    console.error('[Auth] GOOGLE_CLIENT_ID not configured');
-    res.status(500).json({ error: 'Auth not configured' });
-    return;
+  try {
+    const result = verifyAccessToken(accessToken);
+
+    if (!result) {
+      res.status(401).json({ error: "Invalid or expired token" });
+      return;
+    }
+
+    // Attach user and session to request
+    req.user = result.user;
+    req.session = result.session;
+
+    next();
+  } catch (error) {
+    console.error("[Auth] Token verification error:", error);
+    res.status(401).json({ error: "Authentication failed" });
   }
-
-  verifyGoogleToken(token)
-    .then(payload => {
-      if (!payload || !payload.sub) {
-        res.status(401).json({ error: 'Invalid or expired token' });
-        return;
-      }
-
-      req.user = {
-        id: payload.sub,
-        email: payload.email || '',
-      };
-
-      // Ensure user profile exists in database
-      ensureProfile(
-        payload.sub,
-        payload.email,
-        payload.name,
-        payload.picture
-      );
-
-      next();
-    })
-    .catch(error => {
-      console.error('[Auth] Token verification failed:', error);
-      res.status(401).json({ error: 'Invalid or expired token' });
-    });
 }
 
 /**
- * Optional auth - doesn't require auth but attaches user if present
+ * Optional session auth - doesn't require auth but attaches user if present
  */
-export function optionalAuthMiddleware(
+export function optionalSessionAuthMiddleware(
   req: Request,
   _res: Response,
   next: NextFunction
 ): void {
   const authHeader = req.headers.authorization;
 
-  if (authHeader?.startsWith('Bearer ') && GOOGLE_CLIENT_ID) {
-    const token = authHeader.slice(7);
+  if (authHeader?.startsWith("Bearer ")) {
+    const accessToken = authHeader.slice(7);
 
-    verifyGoogleToken(token)
-      .then(payload => {
-        if (payload && payload.sub) {
-          req.user = {
-            id: payload.sub,
-            email: payload.email || '',
-          };
-        }
-      })
-      .catch(() => {
-        // Ignore errors - just continue without user
-      })
-      .finally(() => next());
-    return;
+    try {
+      const result = verifyAccessToken(accessToken);
+
+      if (result) {
+        req.user = result.user;
+        req.session = result.session;
+      }
+    } catch {
+      // Ignore errors - just continue without user
+    }
   }
 
   next();
 }
+
+/**
+ * Verify access token for WebSocket connections
+ * Returns user info if valid, null otherwise
+ */
+export function verifyWebSocketToken(accessToken: string): SessionUser | null {
+  try {
+    const result = verifyAccessToken(accessToken);
+    return result?.user || null;
+  } catch {
+    return null;
+  }
+}
+
+// Legacy exports for backward compatibility during migration
+// TODO: Remove after migration complete
+export { sessionAuthMiddleware as googleAuthMiddleware };
+export { optionalSessionAuthMiddleware as optionalAuthMiddleware };

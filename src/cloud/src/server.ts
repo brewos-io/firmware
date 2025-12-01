@@ -6,10 +6,17 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { DeviceRelay } from './device-relay.js';
 import { ClientProxy } from './client-proxy.js';
+import authRouter from './routes/auth.js';
 import devicesRouter from './routes/devices.js';
 import pushRouter from './routes/push.js';
 import { initDatabase } from './lib/database.js';
 import { cleanupExpiredTokens } from './services/device.js';
+import { 
+  cleanupExpiredSessions, 
+  startBatchUpdateInterval, 
+  stopBatchUpdateInterval,
+  getCacheStats,
+} from './services/session.js';
 import { initializePushNotifications } from './services/push.js';
 
 const app = express();
@@ -42,8 +49,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    devices: deviceRelay.getConnectedDeviceCount(),
-    clients: clientProxy.getConnectedClientCount(),
+    connections: {
+      devices: deviceRelay.getConnectedDeviceCount(),
+      clients: clientProxy.getConnectedClientCount(),
+    },
+    sessionCache: getCacheStats(),
   });
 });
 
@@ -53,6 +63,7 @@ app.get('/api/mode', (_req, res) => {
 });
 
 // API routes
+app.use('/api/auth', authRouter);
 app.use('/api/devices', devicesRouter);
 app.use('/api/push', pushRouter);
 
@@ -89,12 +100,22 @@ async function start() {
     // Initialize push notifications
     initializePushNotifications();
 
-    // Cleanup expired tokens every 5 minutes
+    // Start session cache batch update interval
+    startBatchUpdateInterval();
+
+    // Cleanup expired tokens and sessions periodically
     setInterval(() => {
       try {
-        const deleted = cleanupExpiredTokens();
-        if (deleted > 0) {
-          console.log(`[Cleanup] Deleted ${deleted} expired claim tokens`);
+        // Cleanup expired claim tokens
+        const deletedTokens = cleanupExpiredTokens();
+        if (deletedTokens > 0) {
+          console.log(`[Cleanup] Deleted ${deletedTokens} expired claim tokens`);
+        }
+        
+        // Cleanup expired sessions
+        const deletedSessions = cleanupExpiredSessions();
+        if (deletedSessions > 0) {
+          console.log(`[Cleanup] Deleted ${deletedSessions} expired sessions`);
         }
       } catch (error) {
         console.error('[Cleanup] Error:', error);
@@ -125,6 +146,7 @@ start();
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[Cloud] Shutting down...');
+  stopBatchUpdateInterval(); // Flush pending updates before shutdown
   deviceWss.close();
   clientWss.close();
   server.close();

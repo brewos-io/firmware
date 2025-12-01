@@ -1,5 +1,5 @@
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
-import { getDb, saveDatabase, Device, resultToObjects } from '../lib/database.js';
+import { getDb, saveDatabase, Device, Profile, resultToObjects } from '../lib/database.js';
 import { nowUTC, futureUTC, isExpired } from '../lib/date.js';
 
 /**
@@ -320,4 +320,20 @@ export function ensureProfile(
       [userId, email || null, displayName || null, avatarUrl || null, now]
     );
   }
+
+  saveDatabase();
+}
+
+/**
+ * Get user profile by ID
+ */
+export function getProfile(userId: string): Profile | null {
+  const db = getDb();
+  const result = db.exec(`SELECT * FROM profiles WHERE id = ?`, [userId]);
+
+  if (result.length === 0 || result[0].values.length === 0) {
+    return null;
+  }
+
+  return resultToObjects<Profile>(result[0])[0];
 }

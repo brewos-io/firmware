@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import App from './App'
 import './styles/index.css'
-import { GOOGLE_CLIENT_ID } from './lib/google-auth'
+import { GOOGLE_CLIENT_ID } from './lib/auth'
 import { registerServiceWorker } from './lib/push-notifications'
 
 // Register service worker for PWA

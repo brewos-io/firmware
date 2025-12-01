@@ -1,73 +1,86 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { CloudDevice, ConnectionMode } from './types';
-import { 
-  getStoredSession, 
-  clearSession, 
-  handleGoogleSuccess,
-  isSessionExpiringSoon,
-  type GoogleUser,
-} from './google-auth';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { CloudDevice, ConnectionMode } from "./types";
+import {
+  getStoredSession,
+  loginWithGoogle,
+  logout as authLogout,
+  getValidAccessToken,
+  isTokenExpired,
+  refreshSession,
+  type User,
+  type AuthSession,
+} from "./auth";
 
 /**
  * Fetch mode from server - the server knows if it's ESP32 (local) or cloud
  */
-async function fetchModeFromServer(): Promise<{ mode: ConnectionMode; apMode?: boolean }> {
+async function fetchModeFromServer(): Promise<{
+  mode: ConnectionMode;
+  apMode?: boolean;
+}> {
   try {
-    const response = await fetch('/api/mode');
+    const response = await fetch("/api/mode");
     if (response.ok) {
       const data = await response.json();
       return {
-        mode: data.mode === 'cloud' ? 'cloud' : 'local',
+        mode: data.mode === "cloud" ? "cloud" : "local",
         apMode: data.apMode,
       };
     }
   } catch {
     // If fetch fails, default to local (ESP32 might be in AP mode with no network)
   }
-  return { mode: 'local', apMode: false };
+  return { mode: "local", apMode: false };
 }
 
 /**
- * Monitor token expiration and automatically sign out when expired
- * Checks every minute
+ * Token refresh monitor
+ * Automatically refreshes tokens before they expire
  */
-let tokenMonitorInterval: number | null = null;
+let tokenRefreshInterval: number | null = null;
 
-function startTokenExpirationMonitor() {
+function startTokenRefreshMonitor(store: AppState) {
   // Clear existing monitor
-  if (tokenMonitorInterval !== null) {
-    clearInterval(tokenMonitorInterval);
+  if (tokenRefreshInterval !== null) {
+    clearInterval(tokenRefreshInterval);
   }
-  
-  // Check every minute
-  tokenMonitorInterval = window.setInterval(() => {
+
+  // Check every 30 seconds
+  tokenRefreshInterval = window.setInterval(async () => {
     const session = getStoredSession();
-    const store = useAppStore.getState();
-    
-    // If we have a user but session is expired/expiring, sign out
-    if (store.user && (!session || isSessionExpiringSoon(session, 0))) {
-      console.log('[Auth] Token expired, signing out');
-      store.signOut();
-      
-      // Clear monitor
-      if (tokenMonitorInterval !== null) {
-        clearInterval(tokenMonitorInterval);
-        tokenMonitorInterval = null;
-      }
-      
-      // Redirect to login if not already there
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login?expired=true';
+
+    if (!session) {
+      stopTokenRefreshMonitor();
+      return;
+    }
+
+    // If token is expiring soon, refresh it
+    if (isTokenExpired(session)) {
+      console.log("[Auth] Token expiring, refreshing...");
+      const newSession = await refreshSession(session);
+
+      if (newSession) {
+        // Update store with new session
+        store.updateSession(newSession);
+      } else {
+        // Refresh failed, sign out
+        console.log("[Auth] Refresh failed, signing out");
+        store.signOut();
+
+        // Redirect to login if not already there
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login?expired=true";
+        }
       }
     }
-  }, 60 * 1000); // Check every minute
+  }, 30 * 1000); // Check every 30 seconds
 }
 
-function stopTokenExpirationMonitor() {
-  if (tokenMonitorInterval !== null) {
-    clearInterval(tokenMonitorInterval);
-    tokenMonitorInterval = null;
+function stopTokenRefreshMonitor() {
+  if (tokenRefreshInterval !== null) {
+    clearInterval(tokenRefreshInterval);
+    tokenRefreshInterval = null;
   }
 }
 
@@ -76,116 +89,148 @@ interface AppState {
   mode: ConnectionMode;
   apMode: boolean;
   initialized: boolean;
-  
+
   // Auth (cloud only)
-  user: GoogleUser | null;
-  idToken: string | null;
+  user: User | null;
+  session: AuthSession | null;
   authLoading: boolean;
-  
+
   // Devices (cloud only)
   devices: CloudDevice[];
   selectedDeviceId: string | null;
   devicesLoading: boolean;
-  
+
   // Actions
   initialize: () => Promise<void>;
-  handleGoogleLogin: (credential: string) => void;
+  handleGoogleLogin: (credential: string) => Promise<void>;
   signOut: () => void;
-  
+  updateSession: (session: AuthSession) => void;
+
   // Device management
   fetchDevices: () => Promise<void>;
   selectDevice: (deviceId: string) => void;
-  claimDevice: (deviceId: string, token: string, name?: string) => Promise<boolean>;
+  claimDevice: (
+    deviceId: string,
+    token: string,
+    name?: string
+  ) => Promise<boolean>;
   removeDevice: (deviceId: string) => Promise<boolean>;
   renameDevice: (deviceId: string, name: string) => Promise<boolean>;
-  
+
   // Helpers
   getSelectedDevice: () => CloudDevice | null;
-  getAccessToken: () => string | null;
+  getAccessToken: () => Promise<string | null>;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // Initial state - will be updated by initialize()
-      mode: 'local',
+      // Initial state
+      mode: "local",
       apMode: false,
       initialized: false,
       user: null,
-      idToken: null,
+      session: null,
       authLoading: true,
       devices: [],
       selectedDeviceId: null,
       devicesLoading: false,
 
       initialize: async () => {
-        // Fetch mode from server - the server knows if it's ESP32 or cloud
+        // Fetch mode from server
         const { mode, apMode } = await fetchModeFromServer();
         set({ mode, apMode: apMode ?? false });
 
-        if (mode === 'local') {
+        if (mode === "local") {
           set({ initialized: true, authLoading: false });
           return;
         }
 
         // Cloud mode: check for stored session
         const session = getStoredSession();
-        
-        if (session) {
+
+        if (session && !isTokenExpired(session)) {
           set({
             user: session.user,
-            idToken: session.idToken,
+            session,
             authLoading: false,
             initialized: true,
           });
-          
+
           // Fetch devices
           get().fetchDevices();
-          
-          // Start token expiration monitoring
-          startTokenExpirationMonitor();
+
+          // Start token refresh monitoring
+          startTokenRefreshMonitor(get());
+        } else if (session) {
+          // Session exists but token expired, try to refresh
+          const newSession = await refreshSession(session);
+
+          if (newSession) {
+            set({
+              user: newSession.user,
+              session: newSession,
+              authLoading: false,
+              initialized: true,
+            });
+            get().fetchDevices();
+            startTokenRefreshMonitor(get());
+          } else {
+            // Refresh failed
+            set({ authLoading: false, initialized: true });
+          }
         } else {
           set({ authLoading: false, initialized: true });
         }
       },
 
-      handleGoogleLogin: (credential: string) => {
-        const session = handleGoogleSuccess(credential);
-        
-        if (session) {
+      handleGoogleLogin: async (credential: string) => {
+        try {
+          set({ authLoading: true });
+
+          const session = await loginWithGoogle(credential);
+
           set({
             user: session.user,
-            idToken: session.idToken,
+            session,
             authLoading: false,
           });
-          
+
           // Fetch devices after login
           get().fetchDevices();
-          
-          // Start token expiration monitoring
-          startTokenExpirationMonitor();
+
+          // Start token refresh monitoring
+          startTokenRefreshMonitor(get());
+        } catch (error) {
+          console.error("[Auth] Login failed:", error);
+          set({ authLoading: false });
+          throw error;
         }
       },
 
       signOut: () => {
-        clearSession();
-        stopTokenExpirationMonitor();
-        set({ 
-          user: null, 
-          idToken: null, 
-          devices: [], 
-          selectedDeviceId: null 
+        authLogout();
+        stopTokenRefreshMonitor();
+        set({
+          user: null,
+          session: null,
+          devices: [],
+          selectedDeviceId: null,
         });
       },
 
+      updateSession: (session: AuthSession) => {
+        set({ session, user: session.user });
+      },
+
       fetchDevices: async () => {
-        const token = get().getAccessToken();
+        const token = await get().getAccessToken();
         if (!token) return;
 
         set({ devicesLoading: true });
 
         try {
-          const response = await fetch('/api/devices', {
+          const response = await fetch("/api/devices", {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -194,19 +239,19 @@ export const useAppStore = create<AppState>()(
           if (response.ok) {
             const data = await response.json();
             const devices = data.devices as CloudDevice[];
-            
+
             set({ devices });
-            
+
             // Auto-select first device if none selected
             if (!get().selectedDeviceId && devices.length > 0) {
               set({ selectedDeviceId: devices[0].id });
             }
           } else if (response.status === 401) {
-            // Token expired, sign out
+            // Token expired/invalid, sign out
             get().signOut();
           }
         } catch (error) {
-          console.error('Failed to fetch devices:', error);
+          console.error("Failed to fetch devices:", error);
         }
 
         set({ devicesLoading: false });
@@ -217,14 +262,14 @@ export const useAppStore = create<AppState>()(
       },
 
       claimDevice: async (deviceId, token, name) => {
-        const accessToken = get().getAccessToken();
+        const accessToken = await get().getAccessToken();
         if (!accessToken) return false;
 
         try {
-          const response = await fetch('/api/devices/claim', {
-            method: 'POST',
+          const response = await fetch("/api/devices/claim", {
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${accessToken}`,
             },
             body: JSON.stringify({ deviceId, token, name }),
@@ -235,19 +280,19 @@ export const useAppStore = create<AppState>()(
             return true;
           }
         } catch (error) {
-          console.error('Failed to claim device:', error);
+          console.error("Failed to claim device:", error);
         }
 
         return false;
       },
 
       removeDevice: async (deviceId) => {
-        const token = get().getAccessToken();
+        const token = await get().getAccessToken();
         if (!token) return false;
 
         try {
           const response = await fetch(`/api/devices/${deviceId}`, {
-            method: 'DELETE',
+            method: "DELETE",
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -255,29 +300,30 @@ export const useAppStore = create<AppState>()(
 
           if (response.ok) {
             set((state) => ({
-              devices: state.devices.filter(d => d.id !== deviceId),
-              selectedDeviceId: state.selectedDeviceId === deviceId 
-                ? (state.devices[0]?.id ?? null)
-                : state.selectedDeviceId,
+              devices: state.devices.filter((d) => d.id !== deviceId),
+              selectedDeviceId:
+                state.selectedDeviceId === deviceId
+                  ? state.devices[0]?.id ?? null
+                  : state.selectedDeviceId,
             }));
             return true;
           }
         } catch (error) {
-          console.error('Failed to remove device:', error);
+          console.error("Failed to remove device:", error);
         }
 
         return false;
       },
 
       renameDevice: async (deviceId, name) => {
-        const token = get().getAccessToken();
+        const token = await get().getAccessToken();
         if (!token) return false;
 
         try {
           const response = await fetch(`/api/devices/${deviceId}`, {
-            method: 'PATCH',
+            method: "PATCH",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({ name }),
@@ -285,14 +331,14 @@ export const useAppStore = create<AppState>()(
 
           if (response.ok) {
             set((state) => ({
-              devices: state.devices.map(d =>
+              devices: state.devices.map((d) =>
                 d.id === deviceId ? { ...d, name } : d
               ),
             }));
             return true;
           }
         } catch (error) {
-          console.error('Failed to rename device:', error);
+          console.error("Failed to rename device:", error);
         }
 
         return false;
@@ -300,15 +346,15 @@ export const useAppStore = create<AppState>()(
 
       getSelectedDevice: () => {
         const { devices, selectedDeviceId } = get();
-        return devices.find(d => d.id === selectedDeviceId) ?? null;
+        return devices.find((d) => d.id === selectedDeviceId) ?? null;
       },
 
-      getAccessToken: () => {
-        return get().idToken;
+      getAccessToken: async () => {
+        return getValidAccessToken();
       },
     }),
     {
-      name: 'brewos-app-state',
+      name: "brewos-app-state",
       partialize: (state) => ({
         selectedDeviceId: state.selectedDeviceId,
       }),
