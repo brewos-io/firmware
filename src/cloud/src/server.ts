@@ -23,7 +23,7 @@ app.use(cors({
 app.use(express.json());
 
 // Serve static files (the shared web UI)
-const webDistPath = process.env.WEB_DIST_PATH || path.join(process.cwd(), '../web/dist');
+const webDistPath = path.resolve(process.env.WEB_DIST_PATH || path.join(process.cwd(), '../web/dist'));
 app.use(express.static(webDistPath));
 
 // Create HTTP server
@@ -45,6 +45,11 @@ app.get('/api/health', (_req, res) => {
     devices: deviceRelay.getConnectedDeviceCount(),
     clients: clientProxy.getConnectedClientCount(),
   });
+});
+
+// Mode endpoint - tells client this is cloud mode
+app.get('/api/mode', (_req, res) => {
+  res.json({ mode: 'cloud' });
 });
 
 // API routes

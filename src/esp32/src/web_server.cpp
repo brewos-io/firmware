@@ -63,6 +63,7 @@ void WebServer::setupRoutes() {
     // Check if in AP mode (for WiFi setup detection)
     _server.on("/api/mode", HTTP_GET, [this](AsyncWebServerRequest* request) {
         JsonDocument doc;
+        doc["mode"] = "local";
         doc["apMode"] = _wifiManager.isAPMode();
         doc["hostname"] = WiFi.getHostname();
         String response;

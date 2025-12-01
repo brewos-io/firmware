@@ -5,7 +5,7 @@ import { Card } from '@/components/Card';
 import { Logo } from '@/components/Logo';
 import { useAuth } from '@/lib/auth';
 import { isGoogleAuthConfigured } from '@/lib/google-auth';
-import { Coffee, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 
 export function Login() {
   const navigate = useNavigate();
@@ -25,8 +25,9 @@ export function Login() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-coffee-800 to-coffee-900 flex items-center justify-center p-4">
         <Card className="w-full max-w-md text-center">
-          <Coffee className="w-16 h-16 text-accent mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-coffee-900 mb-2">BrewOS</h1>
+          <div className="flex justify-center mb-4">
+            <Logo size="lg" forceDark />
+          </div>
           <p className="text-coffee-500 mb-6">
             Cloud features are not configured. Connect directly to your device at{' '}
             <a href="http://brewos.local" className="text-accent hover:underline">

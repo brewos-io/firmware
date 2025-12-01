@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CloudDevice, ConnectionMode } from './types';
 import { 
-  isGoogleAuthConfigured, 
   getStoredSession, 
   clearSession, 
   handleGoogleSuccess,
@@ -10,23 +9,28 @@ import {
 } from './google-auth';
 
 /**
- * Detect if running on ESP32 (local) or cloud
+ * Fetch mode from server - the server knows if it's ESP32 (local) or cloud
  */
-export function detectMode(): ConnectionMode {
-  // If no Google auth config, we're on ESP32
-  if (!isGoogleAuthConfigured) return 'local';
-  
-  // If hostname is brewos.local or IP, we're on ESP32
-  const host = window.location.hostname;
-  if (host === 'brewos.local' || host === 'localhost') return 'local';
-  if (host.match(/^192\.168\./) || host.match(/^10\./) || host.match(/^172\./)) return 'local';
-  
-  return 'cloud';
+async function fetchModeFromServer(): Promise<{ mode: ConnectionMode; apMode?: boolean }> {
+  try {
+    const response = await fetch('/api/mode');
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        mode: data.mode === 'cloud' ? 'cloud' : 'local',
+        apMode: data.apMode,
+      };
+    }
+  } catch {
+    // If fetch fails, default to local (ESP32 might be in AP mode with no network)
+  }
+  return { mode: 'local', apMode: false };
 }
 
 interface AppState {
   // Mode
   mode: ConnectionMode;
+  apMode: boolean;
   initialized: boolean;
   
   // Auth (cloud only)
@@ -59,8 +63,9 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // Initial state
-      mode: detectMode(),
+      // Initial state - will be updated by initialize()
+      mode: 'local',
+      apMode: false,
       initialized: false,
       user: null,
       idToken: null,
@@ -70,8 +75,9 @@ export const useAppStore = create<AppState>()(
       devicesLoading: false,
 
       initialize: async () => {
-        const mode = detectMode();
-        set({ mode });
+        // Fetch mode from server - the server knows if it's ESP32 or cloud
+        const { mode, apMode } = await fetchModeFromServer();
+        set({ mode, apMode: apMode ?? false });
 
         if (mode === 'local') {
           set({ initialized: true, authLoading: false });

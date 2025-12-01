@@ -21,11 +21,11 @@ import { Loading } from '@/components/Loading';
 
 function App() {
   const [loading, setLoading] = useState(true);
-  const [apMode, setApMode] = useState(false);
   const [setupComplete, setSetupComplete] = useState(true); // Default true to avoid flash
   
   const { 
-    mode, 
+    mode,
+    apMode,
     initialized, 
     user, 
     devices, 
@@ -40,30 +40,29 @@ function App() {
       // Initialize theme first for immediate visual consistency
       initTheme();
       
+      // Initialize app - this fetches mode from server
       await initialize();
+    };
 
-      if (mode === 'local') {
-        // Local mode: check AP mode and setup status
+    init();
+  }, [initialize, initTheme]);
+
+  // Setup local mode connection after initialization
+  useEffect(() => {
+    if (!initialized) return;
+
+    const setupLocalMode = async () => {
+      if (mode === 'local' && !apMode) {
+        // Check if setup is complete
         try {
-          const response = await fetch('/api/mode');
-          const data = await response.json();
-          setApMode(data.apMode);
-          
-          // Check if setup is complete (only if not in AP mode)
-          if (!data.apMode) {
-            try {
-              const setupResponse = await fetch('/api/setup/status');
-              if (setupResponse.ok) {
-                const setupData = await setupResponse.json();
-                setSetupComplete(setupData.complete);
-              }
-            } catch {
-              // If endpoint doesn't exist, assume setup is complete
-              setSetupComplete(true);
-            }
+          const setupResponse = await fetch('/api/setup/status');
+          if (setupResponse.ok) {
+            const setupData = await setupResponse.json();
+            setSetupComplete(setupData.complete);
           }
         } catch {
-          console.log('Could not check mode/setup status');
+          // If endpoint doesn't exist, assume setup is complete
+          setSetupComplete(true);
         }
 
         // Initialize WebSocket connection
@@ -82,12 +81,12 @@ function App() {
       setLoading(false);
     };
 
-    init();
+    setupLocalMode();
 
     return () => {
       getConnection()?.disconnect();
     };
-  }, [initialize, mode]);
+  }, [initialized, mode, apMode]);
 
   // Handle setup completion
   const handleSetupComplete = () => {
