@@ -14,7 +14,7 @@ interface LogoProps {
 
 const sizes = {
   sm: { icon: 'h-7 w-7', text: 'h-3.5', gap: 'gap-1.5' },
-  md: { icon: 'h-10 w-10', text: 'h-[18px]', gap: 'gap-2' },
+  md: { icon: 'h-11 w-11', text: 'h-5', gap: 'gap-2' },
   lg: { icon: 'h-14 w-14', text: 'h-7', gap: 'gap-2.5' },
   xl: { icon: 'h-20 w-20', text: 'h-10', gap: 'gap-3' },
 };
