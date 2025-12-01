@@ -23,6 +23,7 @@ typedef enum {
     SCREEN_SETTINGS,    // Settings menu
     SCREEN_TEMP_SETTINGS, // Temperature adjustment
     SCREEN_SCALE,       // Scale pairing
+    SCREEN_CLOUD,       // Cloud pairing QR code
     SCREEN_ALARM,       // Alarm display
     SCREEN_COUNT
 } screen_id_t;
@@ -218,6 +219,7 @@ private:
     void createSettingsScreen();
     void createTempSettingsScreen();
     void createScaleScreen();
+    void createCloudScreen();
     void createAlarmScreen();
     
     // Update methods
@@ -236,6 +238,9 @@ private:
     
     // Auto screen switching based on machine state
     void checkAutoScreenSwitch();
+    
+    // Rebuild all screens (for theme changes)
+    void rebuildScreens();
 };
 
 // Global UI instance

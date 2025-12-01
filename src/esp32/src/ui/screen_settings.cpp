@@ -1,7 +1,8 @@
 /**
  * BrewOS Settings Screen Implementation
  * 
- * Radial menu for settings navigation
+ * Simplified menu for settings navigation
+ * Optimized for 480x480 round display
  */
 
 #include "platform/platform.h"
@@ -9,31 +10,31 @@
 #include "display/theme.h"
 #include "display/display_config.h"
 
-// Menu item definitions
+// Simplified menu items (removed MQTT, System - configurable via web UI)
 static const char* item_icons[] = {
     LV_SYMBOL_WIFI,
-    LV_SYMBOL_UPLOAD,   // Cloud/MQTT
     LV_SYMBOL_BLUETOOTH,
-    LV_SYMBOL_SETTINGS, // Temperature
-    LV_SYMBOL_HOME,     // System
-    LV_SYMBOL_FILE      // About
+    LV_SYMBOL_SETTINGS,
+    LV_SYMBOL_UPLOAD,    // Cloud
+    LV_SYMBOL_EYE_OPEN,  // Theme
+    LV_SYMBOL_FILE
 };
 
 static const char* item_names[] = {
     "WiFi",
-    "MQTT",
     "Scale",
     "Temperature",
-    "System",
+    "Cloud",
+    "Theme",
     "About"
 };
 
 static const char* item_descriptions[] = {
-    "Network settings",
-    "Home Assistant",
-    "Pair Bluetooth scale",
+    "Enter setup mode",
+    "Connect scale",
     "Boiler temperatures",
-    "System settings",
+    "Pair with cloud",
+    "Dark / Light mode",
     "Device info"
 };
 

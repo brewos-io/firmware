@@ -1,12 +1,14 @@
 /**
  * BrewOS Settings Screen
  * 
- * Settings menu with radial options:
- * - WiFi
- * - MQTT
- * - Scale
+ * Simplified settings menu:
+ * - WiFi (enter setup mode)
+ * - Scale (connect)
  * - Temperature
- * - System
+ * - Theme (dark/light toggle)
+ * - About
+ * 
+ * Note: MQTT, System settings are configurable via web UI
  */
 
 #ifndef SCREEN_SETTINGS_H
@@ -16,14 +18,14 @@
 #include "ui.h"
 
 /**
- * Settings menu items
+ * Settings menu items (simplified)
  */
 typedef enum {
     SETTINGS_WIFI,
-    SETTINGS_MQTT,
     SETTINGS_SCALE,
     SETTINGS_TEMP,
-    SETTINGS_SYSTEM,
+    SETTINGS_CLOUD,
+    SETTINGS_THEME,
     SETTINGS_ABOUT,
     SETTINGS_COUNT
 } settings_item_t;

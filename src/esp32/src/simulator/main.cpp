@@ -15,6 +15,7 @@
 #include "ui/ui.h"
 #include "ui/screen_idle.h"
 #include "ui/screen_settings.h"
+#include "ui/screen_cloud.h"
 
 // =============================================================================
 // Configuration
@@ -148,29 +149,59 @@ static bool handle_sdl_events(void) {
                         }
                         break;
                     // Number keys to switch screens
+                    case SDLK_0: 
+                        LOG_I("📺 Screen: Setup");
+                        ui.showScreen(SCREEN_SETUP); 
+                        break;
                     case SDLK_1: 
+                        LOG_I("📺 Screen: Idle");
                         ui.showScreen(SCREEN_IDLE); 
                         lv_group_focus_obj(lv_group_get_focused(lv_group_get_default()));
                         break;
                     case SDLK_2: 
+                        LOG_I("📺 Screen: Home");
                         ui.showScreen(SCREEN_HOME); 
                         lv_group_focus_obj(lv_group_get_focused(lv_group_get_default()));
                         break;
                     case SDLK_3: 
+                        LOG_I("📺 Screen: Brewing");
                         ui.showScreen(SCREEN_BREWING); 
                         break;
                     case SDLK_4: 
+                        LOG_I("📺 Screen: Complete");
                         ui.showScreen(SCREEN_COMPLETE); 
                         break;
                     case SDLK_5: 
+                        LOG_I("📺 Screen: Settings");
                         ui.showScreen(SCREEN_SETTINGS); 
                         lv_group_focus_obj(lv_group_get_focused(lv_group_get_default()));
                         break;
                     case SDLK_6: 
+                        LOG_I("📺 Screen: Temperature");
+                        ui.showScreen(SCREEN_TEMP_SETTINGS); 
+                        break;
+                    case SDLK_7: 
+                        LOG_I("📺 Screen: Scale");
+                        ui.showScreen(SCREEN_SCALE); 
+                        break;
+                    case SDLK_8: 
+                        LOG_I("📺 Screen: Cloud");
+                        ui.showScreen(SCREEN_CLOUD); 
+                        break;
+                    case SDLK_9: 
+                        LOG_I("📺 Screen: Alarm");
                         ui.showScreen(SCREEN_ALARM); 
                         break;
-                    case SDLK_0: 
-                        ui.showScreen(SCREEN_SETUP); 
+                    
+                    // Theme toggle
+                    case SDLK_t:
+                        if (theme_get_mode() == THEME_MODE_DARK) {
+                            theme_set_mode(THEME_MODE_LIGHT);
+                            LOG_I("🎨 Theme: Light");
+                        } else {
+                            theme_set_mode(THEME_MODE_DARK);
+                            LOG_I("🎨 Theme: Dark");
+                        }
                         break;
                 }
                 break;
@@ -297,12 +328,16 @@ int main(int argc, char* argv[]) {
     printf("║  ENCODER:                                            ║\n");
     printf("║    Scroll / ↑↓        Rotate knob                    ║\n");
     printf("║    Click / Enter      Press button                   ║\n");
-    printf("║    Hold 1 sec         Long press                     ║\n");
+    printf("║    Hold 1 sec         Long press (go back)           ║\n");
     printf("║                                                      ║\n");
     printf("║  SCREENS (number keys):                              ║\n");
-    printf("║    0=Setup  1=Idle  2=Home  3=Brewing                ║\n");
-    printf("║    4=Complete  5=Settings  6=Alarm                   ║\n");
+    printf("║    0 = Setup (WiFi)    5 = Settings                  ║\n");
+    printf("║    1 = Idle            6 = Temperature               ║\n");
+    printf("║    2 = Home            7 = Scale                     ║\n");
+    printf("║    3 = Brewing         8 = Cloud                     ║\n");
+    printf("║    4 = Complete        9 = Alarm                     ║\n");
     printf("║                                                      ║\n");
+    printf("║  T = Toggle Theme (Dark/Light)                       ║\n");
     printf("║  ESC = Exit                                          ║\n");
     printf("╚══════════════════════════════════════════════════════╝\n");
     printf("\n");

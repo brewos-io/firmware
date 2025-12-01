@@ -12,6 +12,7 @@
 #include "ui/screen_brewing.h"
 #include "ui/screen_complete.h"
 #include "ui/screen_settings.h"
+#include "ui/screen_cloud.h"
 #include "ui/screen_alarm.h"
 #ifndef SIMULATOR
 #include "ui/screen_temp.h"
@@ -57,6 +58,11 @@ bool UI::begin() {
     // Initialize theme
     theme_init();
     
+    // Register theme change callback to rebuild screens
+    theme_set_change_callback([]() {
+        ui.rebuildScreens();
+    });
+    
     // Create all screens
     createSetupScreen();
     createIdleScreen();
@@ -66,6 +72,7 @@ bool UI::begin() {
     createSettingsScreen();
     createTempSettingsScreen();
     createScaleScreen();
+    createCloudScreen();
     createAlarmScreen();
     
     // Show initial screen based on WiFi state
@@ -137,6 +144,9 @@ void UI::update(const ui_state_t& state) {
 #ifndef SIMULATOR
             screen_scale_update(&_state);
 #endif
+            break;
+        case SCREEN_CLOUD:
+            // Cloud screen updates are event-driven (refresh button)
             break;
         case SCREEN_ALARM:
             updateAlarmScreen();
@@ -238,6 +248,11 @@ void UI::handleEncoder(int direction) {
 #endif
             break;
             
+        case SCREEN_CLOUD:
+            // Cloud screen navigation
+            screen_cloud_encoder(direction);
+            break;
+            
         case SCREEN_BREWING:
             // During brewing, encoder could adjust target weight
             if (_onSetTargetWeight) {
@@ -306,6 +321,11 @@ void UI::handleButtonPress() {
 #endif
             break;
             
+        case SCREEN_CLOUD:
+            // Refresh pairing code
+            screen_cloud_select();
+            break;
+            
         case SCREEN_ALARM:
             // Acknowledge alarm
             clearAlarm();
@@ -329,6 +349,7 @@ void UI::handleLongPress() {
         case SCREEN_SETTINGS:
         case SCREEN_TEMP_SETTINGS:
         case SCREEN_SCALE:
+        case SCREEN_CLOUD:
             // Long press goes back
             showScreen(SCREEN_HOME);
             break;
@@ -404,16 +425,36 @@ void UI::createSettingsScreen() {
     screen_settings_set_select_callback([](settings_item_t item) {
         switch (item) {
             case SETTINGS_WIFI:
+                // Enter WiFi setup mode
                 ui.showScreen(SCREEN_SETUP);
                 break;
             case SETTINGS_SCALE:
+                // Connect to scale
                 ui.showScreen(SCREEN_SCALE);
                 break;
             case SETTINGS_TEMP:
+                // Temperature settings
                 ui.showScreen(SCREEN_TEMP_SETTINGS);
                 break;
+            case SETTINGS_CLOUD:
+                // Cloud pairing
+                ui.showScreen(SCREEN_CLOUD);
+                break;
+            case SETTINGS_THEME:
+                // Toggle theme between dark/light
+                if (theme_get_mode() == THEME_MODE_DARK) {
+                    theme_set_mode(THEME_MODE_LIGHT);
+                    ui.showNotification("Light Theme", 1500);
+                } else {
+                    theme_set_mode(THEME_MODE_DARK);
+                    ui.showNotification("Dark Theme", 1500);
+                }
+                break;
+            case SETTINGS_ABOUT:
+                // Show device info notification
+                ui.showNotification("BrewOS v1.0", 3000);
+                break;
             default:
-                ui.showNotification("Coming soon", 2000);
                 break;
         }
     });
@@ -463,6 +504,23 @@ void UI::createScaleScreen() {
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(label, LV_ALIGN_CENTER, 0, 30);
 #endif
+}
+
+void UI::createCloudScreen() {
+    _screens[SCREEN_CLOUD] = screen_cloud_create();
+    
+    // Set refresh callback to generate new pairing token
+    screen_cloud_set_refresh_callback([]() {
+        // In real implementation, this would call pairingManager.generateToken()
+        // and update the screen with the new token
+        // For now, show a placeholder
+        screen_cloud_update("BRW-12345678", "ABC123XY", 
+                           "brewos://pair?id=BRW-12345678&token=ABC123XY", 600);
+    });
+    
+    // Initialize with placeholder data
+    screen_cloud_update("BRW---------", "--------", 
+                       "brewos://pair", 0);
 }
 
 void UI::createAlarmScreen() {
@@ -577,4 +635,48 @@ lv_color_t UI::getStateColor(uint8_t state) {
         case UI_STATE_SAFE: return COLOR_ERROR;
         default: return COLOR_TEXT_MUTED;
     }
+}
+
+void UI::rebuildScreens() {
+    LOG_I("Rebuilding screens for theme change...");
+    
+    // Remember current screen
+    screen_id_t current = _currentScreen;
+    
+    // Store old screen pointers
+    lv_obj_t* old_screens[SCREEN_COUNT];
+    for (int i = 0; i < SCREEN_COUNT; i++) {
+        old_screens[i] = _screens[i];
+        _screens[i] = nullptr;
+    }
+    
+    // Create new screens with new theme colors
+    createSetupScreen();
+    createIdleScreen();
+    createHomeScreen();
+    createBrewingScreen();
+    createCompleteScreen();
+    createSettingsScreen();
+    createTempSettingsScreen();
+    createScaleScreen();
+    createCloudScreen();
+    createAlarmScreen();
+    
+    // Switch to new screen first (before deleting old ones)
+    if (_screens[current]) {
+        lv_scr_load(_screens[current]);
+        _currentScreen = current;
+    }
+    
+    // Now safely delete old screens
+    for (int i = 0; i < SCREEN_COUNT; i++) {
+        if (old_screens[i]) {
+            lv_obj_del(old_screens[i]);
+        }
+    }
+    
+    // Update with current state
+    update(_state);
+    
+    LOG_I("Screens rebuilt");
 }
