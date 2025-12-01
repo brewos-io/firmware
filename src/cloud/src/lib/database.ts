@@ -80,6 +80,24 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
     );
+
+    -- Notification preferences per user
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      machine_ready INTEGER DEFAULT 1,
+      water_empty INTEGER DEFAULT 1,
+      descale_due INTEGER DEFAULT 1,
+      service_due INTEGER DEFAULT 1,
+      backflush_due INTEGER DEFAULT 1,
+      machine_error INTEGER DEFAULT 1,
+      pico_offline INTEGER DEFAULT 1,
+      schedule_triggered INTEGER DEFAULT 1,
+      brew_complete INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
   `);
 
   // Create indexes
@@ -87,6 +105,7 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
   db.run(`CREATE INDEX IF NOT EXISTS idx_claim_tokens_expires ON device_claim_tokens(expires_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_push_subscriptions_device ON push_subscriptions(device_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_notification_preferences_user ON notification_preferences(user_id)`);
 
   // Migrations for existing databases
   // Add machine_brand and machine_model columns if they don't exist
@@ -178,6 +197,34 @@ export interface PushSubscription {
   created_at: string;
   updated_at: string;
 }
+
+export interface NotificationPreferences {
+  id: string;
+  user_id: string;
+  machine_ready: number;
+  water_empty: number;
+  descale_due: number;
+  service_due: number;
+  backflush_due: number;
+  machine_error: number;
+  pico_offline: number;
+  schedule_triggered: number;
+  brew_complete: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Notification type enum matching the database columns
+export type NotificationType = 
+  | 'MACHINE_READY'
+  | 'WATER_EMPTY'
+  | 'DESCALE_DUE'
+  | 'SERVICE_DUE'
+  | 'BACKFLUSH_DUE'
+  | 'MACHINE_ERROR'
+  | 'PICO_OFFLINE'
+  | 'SCHEDULE_TRIGGERED'
+  | 'BREW_COMPLETE';
 
 // Helper to convert sql.js results to objects
 export function rowToObject<T>(columns: string[], values: unknown[]): T {

@@ -1,6 +1,19 @@
 import webpush from 'web-push';
-import { getDb, saveDatabase, resultToObjects, PushSubscription } from '../lib/database.js';
+import { getDb, saveDatabase, resultToObjects, PushSubscription, NotificationPreferences, NotificationType } from '../lib/database.js';
 import { randomUUID } from 'crypto';
+
+// Map notification types to database columns
+const notificationTypeToColumn: Record<NotificationType, keyof NotificationPreferences> = {
+  'MACHINE_READY': 'machine_ready',
+  'WATER_EMPTY': 'water_empty',
+  'DESCALE_DUE': 'descale_due',
+  'SERVICE_DUE': 'service_due',
+  'BACKFLUSH_DUE': 'backflush_due',
+  'MACHINE_ERROR': 'machine_error',
+  'PICO_OFFLINE': 'pico_offline',
+  'SCHEDULE_TRIGGERED': 'schedule_triggered',
+  'BREW_COMPLETE': 'brew_complete',
+};
 
 // Initialize web-push with VAPID keys
 let vapidKeys: { publicKey: string; privateKey: string } | null = null;
@@ -253,6 +266,7 @@ export async function sendPushNotificationToUser(
 
 /**
  * Send push notification to all subscriptions for a device
+ * Respects user notification preferences
  */
 export async function sendPushNotificationToDevice(
   deviceId: string,
@@ -264,12 +278,23 @@ export async function sendPushNotificationToDevice(
     tag?: string;
     data?: Record<string, unknown>;
     requireInteraction?: boolean;
-  }
+  },
+  notificationType?: NotificationType
 ): Promise<number> {
   const subscriptions = getDevicePushSubscriptions(deviceId);
   let successCount = 0;
 
   for (const subscription of subscriptions) {
+    // Check user preferences if notification type is provided
+    if (notificationType) {
+      const prefs = getNotificationPreferences(subscription.user_id);
+      const column = notificationTypeToColumn[notificationType];
+      if (prefs && column && !prefs[column]) {
+        // User has disabled this notification type
+        continue;
+      }
+    }
+    
     const success = await sendPushNotification(subscription, payload);
     if (success) {
       successCount++;
@@ -277,5 +302,86 @@ export async function sendPushNotificationToDevice(
   }
 
   return successCount;
+}
+
+/**
+ * Get notification preferences for a user
+ */
+export function getNotificationPreferences(userId: string): NotificationPreferences | null {
+  const db = getDb();
+  const result = db.exec(
+    `SELECT * FROM notification_preferences WHERE user_id = ?`,
+    [userId]
+  );
+
+  if (result.length === 0 || result[0].values.length === 0) {
+    return null;
+  }
+
+  return resultToObjects<NotificationPreferences>(result[0])[0];
+}
+
+/**
+ * Get or create notification preferences with defaults
+ */
+export function getOrCreateNotificationPreferences(userId: string): NotificationPreferences {
+  let prefs = getNotificationPreferences(userId);
+  
+  if (!prefs) {
+    const db = getDb();
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    
+    db.run(
+      `INSERT INTO notification_preferences (id, user_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?)`,
+      [id, userId, now, now]
+    );
+    saveDatabase();
+    
+    prefs = getNotificationPreferences(userId)!;
+  }
+  
+  return prefs;
+}
+
+/**
+ * Update notification preferences for a user
+ */
+export function updateNotificationPreferences(
+  userId: string,
+  preferences: Partial<Omit<NotificationPreferences, 'id' | 'user_id' | 'created_at' | 'updated_at'>>
+): NotificationPreferences {
+  // Ensure preferences exist
+  getOrCreateNotificationPreferences(userId);
+  
+  const db = getDb();
+  const now = new Date().toISOString();
+  
+  // Build update query dynamically
+  const updates: string[] = ['updated_at = ?'];
+  const values: (string | number)[] = [now];
+  
+  const allowedFields = [
+    'machine_ready', 'water_empty', 'descale_due', 'service_due',
+    'backflush_due', 'machine_error', 'pico_offline', 'schedule_triggered', 'brew_complete'
+  ] as const;
+  
+  for (const field of allowedFields) {
+    if (field in preferences) {
+      updates.push(`${field} = ?`);
+      values.push(preferences[field] ? 1 : 0);
+    }
+  }
+  
+  values.push(userId);
+  
+  db.run(
+    `UPDATE notification_preferences SET ${updates.join(', ')} WHERE user_id = ?`,
+    values
+  );
+  saveDatabase();
+  
+  return getNotificationPreferences(userId)!;
 }
 

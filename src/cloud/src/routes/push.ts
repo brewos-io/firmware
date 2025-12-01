@@ -6,8 +6,11 @@ import {
   getVAPIDPublicKey,
   getUserPushSubscriptions,
   sendPushNotificationToDevice,
+  getOrCreateNotificationPreferences,
+  updateNotificationPreferences,
 } from '../services/push.js';
 import { userOwnsDevice, getDevice } from '../services/device.js';
+import type { NotificationType } from '../lib/database.js';
 
 const router = Router();
 
@@ -90,6 +93,82 @@ router.get('/subscriptions', googleAuthMiddleware, (req, res) => {
 });
 
 /**
+ * GET /api/push/preferences
+ * Get user's notification preferences (requires auth)
+ */
+router.get('/preferences', googleAuthMiddleware, (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const preferences = getOrCreateNotificationPreferences(userId);
+
+    // Convert numeric booleans to actual booleans for cleaner API
+    res.json({
+      preferences: {
+        machineReady: !!preferences.machine_ready,
+        waterEmpty: !!preferences.water_empty,
+        descaleDue: !!preferences.descale_due,
+        serviceDue: !!preferences.service_due,
+        backflushDue: !!preferences.backflush_due,
+        machineError: !!preferences.machine_error,
+        picoOffline: !!preferences.pico_offline,
+        scheduleTriggered: !!preferences.schedule_triggered,
+        brewComplete: !!preferences.brew_complete,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to get notification preferences:', error);
+    res.status(500).json({ error: 'Failed to get notification preferences' });
+  }
+});
+
+/**
+ * PUT /api/push/preferences
+ * Update user's notification preferences (requires auth)
+ */
+router.put('/preferences', googleAuthMiddleware, (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { preferences } = req.body;
+
+    if (!preferences || typeof preferences !== 'object') {
+      return res.status(400).json({ error: 'Invalid preferences data' });
+    }
+
+    // Map camelCase to snake_case
+    const dbPreferences: Record<string, boolean> = {};
+    if ('machineReady' in preferences) dbPreferences.machine_ready = preferences.machineReady;
+    if ('waterEmpty' in preferences) dbPreferences.water_empty = preferences.waterEmpty;
+    if ('descaleDue' in preferences) dbPreferences.descale_due = preferences.descaleDue;
+    if ('serviceDue' in preferences) dbPreferences.service_due = preferences.serviceDue;
+    if ('backflushDue' in preferences) dbPreferences.backflush_due = preferences.backflushDue;
+    if ('machineError' in preferences) dbPreferences.machine_error = preferences.machineError;
+    if ('picoOffline' in preferences) dbPreferences.pico_offline = preferences.picoOffline;
+    if ('scheduleTriggered' in preferences) dbPreferences.schedule_triggered = preferences.scheduleTriggered;
+    if ('brewComplete' in preferences) dbPreferences.brew_complete = preferences.brewComplete;
+
+    const updated = updateNotificationPreferences(userId, dbPreferences);
+
+    res.json({
+      success: true,
+      preferences: {
+        machineReady: !!updated.machine_ready,
+        waterEmpty: !!updated.water_empty,
+        descaleDue: !!updated.descale_due,
+        serviceDue: !!updated.service_due,
+        backflushDue: !!updated.backflush_due,
+        machineError: !!updated.machine_error,
+        picoOffline: !!updated.pico_offline,
+        scheduleTriggered: !!updated.schedule_triggered,
+        brewComplete: !!updated.brew_complete,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to update notification preferences:', error);
+    res.status(500).json({ error: 'Failed to update notification preferences' });
+  }
+});
+
+/**
  * POST /api/push/notify
  * Send push notification from ESP32 device (no auth - device ID is the auth)
  */
@@ -113,7 +192,7 @@ router.post('/notify', async (req, res) => {
     }
 
     // Map notification type to title/body
-    const notificationType = notification.type || 'info';
+    const notificationType = (notification.type || 'info') as NotificationType;
     let title = 'BrewOS';
     let body = notification.message || 'You have a new notification';
     let requireInteraction = false;
@@ -158,22 +237,37 @@ router.post('/notify', async (req, res) => {
         tag = 'pico-offline';
         requireInteraction = true;
         break;
+      case 'SCHEDULE_TRIGGERED':
+        title = 'Schedule Triggered';
+        body = notification.message || 'A schedule has been triggered';
+        tag = 'schedule-triggered';
+        break;
+      case 'BREW_COMPLETE':
+        title = 'Brew Complete';
+        body = notification.message || 'Your coffee is ready!';
+        tag = 'brew-complete';
+        break;
     }
 
     // Send push notification to all subscriptions for this device
-    const sentCount = await sendPushNotificationToDevice(deviceId, {
-      title,
-      body,
-      icon: '/logo-icon.svg',
-      badge: '/logo-icon.svg',
-      tag,
-      requireInteraction,
-      data: {
-        deviceId,
-        type: notificationType,
-        url: `/device/${deviceId}`,
+    // Pass notification type to respect user preferences
+    const sentCount = await sendPushNotificationToDevice(
+      deviceId,
+      {
+        title,
+        body,
+        icon: '/logo-icon.svg',
+        badge: '/logo-icon.svg',
+        tag,
+        requireInteraction,
+        data: {
+          deviceId,
+          type: notificationType,
+          url: `/device/${deviceId}`,
+        },
       },
-    });
+      notificationType
+    );
 
     res.json({ success: true, sentCount });
   } catch (error) {
