@@ -137,7 +137,7 @@ export function Brewing() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted">
               Ratio
             </label>
-            <div className="h-[50px] flex items-center justify-center text-2xl font-bold text-theme">
+            <div className="h-[50px] flex items-center justify-center text-2xl font-bold text-theme bg-theme-secondary border border-theme rounded-xl">
               1:{ratio}
             </div>
           </div>
