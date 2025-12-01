@@ -31,8 +31,10 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
   }
 
   // Initialize schema
+  // NOTE: All datetime columns use SQLite's datetime('now') which returns UTC
+  // Frontend is responsible for converting to user's local timezone
   db.run(`
-    -- Devices table
+    -- Devices table (all timestamps are UTC)
     CREATE TABLE IF NOT EXISTS devices (
       id TEXT PRIMARY KEY,
       owner_id TEXT,

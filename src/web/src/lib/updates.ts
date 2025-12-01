@@ -4,6 +4,8 @@
  * Handles version checking, comparison, and update channel management.
  */
 
+import { formatDate as formatDateUtil } from './date';
+
 export type UpdateChannel = 'stable' | 'beta';
 
 export interface VersionInfo {
@@ -248,11 +250,6 @@ export function setUpdateChannel(channel: UpdateChannel): void {
  * Format release date
  */
 export function formatReleaseDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  return formatDateUtil(dateString, { dateStyle: 'medium' });
 }
 

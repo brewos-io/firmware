@@ -1,5 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import { getDb, saveDatabase, Device, resultToObjects } from '../lib/database.js';
+import { nowUTC, futureUTC, isExpired } from '../lib/date.js';
 
 /**
  * Generate a hash for token comparison
@@ -15,7 +16,7 @@ function hashToken(token: string): string {
 export function createClaimToken(deviceId: string, token: string): void {
   const db = getDb();
   const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+  const expiresAt = futureUTC(10, 'minutes'); // Expires in 10 minutes (UTC)
   const id = randomUUID();
 
   // Delete existing token for this device
@@ -50,8 +51,8 @@ export function verifyClaimToken(deviceId: string, token: string): boolean {
   const storedHash = row[0] as string;
   const expiresAt = row[1] as string;
 
-  // Check expiration
-  if (new Date(expiresAt) < new Date()) {
+  // Check expiration (all timestamps are UTC)
+  if (isExpired(expiresAt)) {
     return false;
   }
 
@@ -89,7 +90,7 @@ export function claimDevice(
     }
   }
 
-  const now = new Date().toISOString();
+  const now = nowUTC();
   const deviceName = name || 'My BrewOS';
 
   // Check if device exists
@@ -170,7 +171,7 @@ export function updateDeviceStatus(
   firmwareVersion?: string
 ): void {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = nowUTC();
 
   if (firmwareVersion) {
     db.run(
@@ -192,7 +193,7 @@ export function updateDeviceStatus(
  */
 export function removeDevice(deviceId: string, userId: string): void {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = nowUTC();
 
   db.run(
     `UPDATE devices SET owner_id = NULL, claimed_at = NULL, updated_at = ? WHERE id = ? AND owner_id = ?`,
@@ -215,7 +216,7 @@ export function renameDevice(
   name: string
 ): void {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = nowUTC();
 
   db.run(
     `UPDATE devices SET name = ?, updated_at = ? WHERE id = ? AND owner_id = ?`,
@@ -238,7 +239,7 @@ export function updateDeviceMachineInfo(
   data: { name?: string; brand?: string; model?: string }
 ): void {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = nowUTC();
 
   // Build update query dynamically based on provided fields
   const updates: string[] = ['updated_at = ?'];
@@ -296,7 +297,7 @@ export function ensureProfile(
   avatarUrl?: string
 ): void {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = nowUTC();
 
   // Check if profile exists
   const result = db.exec(`SELECT id FROM profiles WHERE id = ?`, [userId]);

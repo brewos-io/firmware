@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/connection';
 import { Card, CardHeader, CardTitle } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
+import { formatDate } from '@/lib/date';
 import { 
   BarChart3, 
   Coffee, 
@@ -376,7 +377,7 @@ interface MaintenanceCardProps {
 function MaintenanceCard({ label, shotsSince, lastTimestamp, threshold, onMark }: MaintenanceCardProps) {
   const isOverdue = shotsSince >= threshold;
   const lastDate = lastTimestamp > 0 
-    ? new Date(lastTimestamp * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    ? formatDate(lastTimestamp, { dateStyle: 'short' })
     : 'Never';
 
   return (

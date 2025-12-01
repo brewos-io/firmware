@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { getDb, saveDatabase, resultToObjects, PushSubscription, NotificationPreferences, NotificationType } from '../lib/database.js';
 import { randomUUID } from 'crypto';
+import { nowUTC } from '../lib/date.js';
 
 // Map notification types to database columns
 const notificationTypeToColumn: Record<NotificationType, keyof NotificationPreferences> = {
@@ -83,7 +84,7 @@ export function subscribeToPush(
   }
 ): PushSubscription {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = nowUTC();
 
   // Check if subscription already exists (by endpoint)
   const existingResult = db.exec(
@@ -343,7 +344,7 @@ export function getOrCreateNotificationPreferences(userId: string): Notification
   if (!prefs) {
     const db = getDb();
     const id = randomUUID();
-    const now = new Date().toISOString();
+    const now = nowUTC();
     
     db.run(
       `INSERT INTO notification_preferences (id, user_id, created_at, updated_at)
@@ -369,7 +370,7 @@ export function updateNotificationPreferences(
   getOrCreateNotificationPreferences(userId);
   
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = nowUTC();
   
   // Build update query dynamically
   const updates: string[] = ['updated_at = ?'];

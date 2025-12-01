@@ -22,6 +22,7 @@ import {
   Save,
 } from 'lucide-react';
 import { formatUptime, formatBytes } from '@/lib/utils';
+import { formatDate, formatTime } from '@/lib/date';
 import { isGoogleAuthConfigured } from '@/lib/google-auth';
 
 interface PairingData {
@@ -237,7 +238,7 @@ export function System() {
           />
           <StatBox 
             label="Last Cleaning" 
-            value={stats.lastGroupCleanTimestamp ? new Date(stats.lastGroupCleanTimestamp * 1000).toLocaleDateString() : 'Never'} 
+            value={formatDate(stats.lastGroupCleanTimestamp)} 
           />
         </div>
       </Card>
@@ -263,7 +264,7 @@ export function System() {
             logs.map((log) => (
               <div key={log.id} className="py-1 border-b border-coffee-800 last:border-0">
                 <span className="text-coffee-500">
-                  {new Date(log.time).toLocaleTimeString()}
+                  {formatTime(log.time)}
                 </span>
                 <span className={`ml-2 ${getLogColor(log.level)}`}>
                   [{log.level.toUpperCase()}]

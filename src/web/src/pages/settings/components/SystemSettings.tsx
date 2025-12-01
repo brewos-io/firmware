@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { formatUptime, formatBytes } from '@/lib/utils';
+import { formatTime } from '@/lib/date';
 import {
   Cpu,
   HardDrive,
@@ -389,7 +390,7 @@ export function SystemSettings() {
           {logs.length > 0 ? (
             logs.map((log) => (
               <div key={log.id} className="py-1 border-b border-coffee-800 last:border-0">
-                <span className="text-coffee-500">{new Date(log.time).toLocaleTimeString()}</span>
+                <span className="text-coffee-500">{formatTime(log.time)}</span>
                 <span className={`ml-2 ${getLogColor(log.level)}`}>[{log.level.toUpperCase()}]</span>
                 <span className="text-cream-200 ml-2">{log.message}</span>
               </div>
