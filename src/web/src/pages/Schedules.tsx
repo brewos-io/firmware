@@ -245,7 +245,7 @@ export function Schedules() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-coffee-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
       </div>
     );
   }
@@ -273,12 +273,12 @@ export function Schedules() {
           </CardTitle>
         </CardHeader>
 
-        <p className="text-sm text-coffee-500 mb-4">
+        <p className="text-sm text-theme-muted mb-4">
           Schedule your machine to turn on or off at specific times.
         </p>
 
         {schedules.length === 0 && !isAdding ? (
-          <div className="text-center py-8 text-coffee-400">
+          <div className="text-center py-8 text-theme-muted">
             <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>No schedules configured</p>
             <p className="text-sm">Add a schedule to automate your machine</p>
@@ -290,8 +290,8 @@ export function Schedules() {
                 key={schedule.id}
                 className={`p-4 rounded-xl border transition-all ${
                   schedule.enabled 
-                    ? 'bg-cream-50 border-cream-200' 
-                    : 'bg-cream-100/50 border-cream-200/50 opacity-60'
+                    ? 'bg-theme-secondary border-theme' 
+                    : 'bg-theme-secondary/50 border-theme/50 opacity-60'
                 } ${isEditing === schedule.id ? 'ring-2 ring-accent' : ''}`}
               >
                 {isEditing === schedule.id ? (
@@ -310,21 +310,21 @@ export function Schedules() {
                     <div className="flex items-center gap-4">
                       <div className={`p-2 rounded-lg ${
                         schedule.action === 'on' 
-                          ? 'bg-emerald-100 text-emerald-600' 
-                          : 'bg-orange-100 text-orange-600'
+                          ? 'bg-emerald-500/20 text-emerald-500' 
+                          : 'bg-orange-500/20 text-orange-500'
                       }`}>
                         {schedule.action === 'on' ? <Power className="w-5 h-5" /> : <PowerOff className="w-5 h-5" />}
                       </div>
                       <div>
-                        <div className="font-medium text-coffee-900">
+                        <div className="font-medium text-theme">
                           {schedule.name || `${schedule.action === 'on' ? 'Turn On' : 'Turn Off'}`}
                         </div>
-                        <div className="text-sm text-coffee-500">
+                        <div className="text-sm text-theme-muted">
                           {formatTime(schedule.hour, schedule.minute)} • {getDaysLabel(schedule.days)}
                         </div>
                         {/* Show heating strategy only for dual boiler machines */}
                         {schedule.action === 'on' && isDualBoiler && (
-                          <div className="text-xs text-coffee-400 mt-1">
+                          <div className="text-xs text-theme-muted mt-1">
                             <Flame className="w-3 h-3 inline mr-1" />
                             {STRATEGIES.find(s => s.value === schedule.strategy)?.label || 'Sequential'}
                           </div>
@@ -381,7 +381,7 @@ export function Schedules() {
           </CardTitle>
         </CardHeader>
 
-        <p className="text-sm text-coffee-500 mb-4">
+        <p className="text-sm text-theme-muted mb-4">
           Automatically turn off the machine after a period of inactivity.
         </p>
 
@@ -439,7 +439,7 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-coffee-500 mb-1.5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted mb-1.5">
             Action
           </label>
           <div className="flex gap-2 h-[50px]">
@@ -447,8 +447,8 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
               onClick={() => onChange({ ...data, action: 'on' })}
               className={`flex-1 px-3 rounded-xl border text-sm font-medium transition-all flex items-center justify-center ${
                 data.action === 'on'
-                  ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
-                  : 'bg-cream-100 border-coffee-200 text-coffee-600 hover:border-coffee-300'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500'
+                  : 'bg-theme-secondary border-theme text-theme-secondary hover:border-theme-light'
               }`}
             >
               <Power className="w-4 h-4 mr-2" />
@@ -458,8 +458,8 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
               onClick={() => onChange({ ...data, action: 'off' })}
               className={`flex-1 px-3 rounded-xl border text-sm font-medium transition-all flex items-center justify-center ${
                 data.action === 'off'
-                  ? 'bg-orange-100 border-orange-400 text-orange-700'
-                  : 'bg-cream-100 border-coffee-200 text-coffee-600 hover:border-coffee-300'
+                  ? 'bg-orange-500/20 border-orange-500 text-orange-500'
+                  : 'bg-theme-secondary border-theme text-theme-secondary hover:border-theme-light'
               }`}
             >
               <PowerOff className="w-4 h-4 mr-2" />
@@ -469,7 +469,7 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
         </div>
 
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-coffee-500 mb-1.5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted mb-1.5">
             Time
           </label>
           <div className="flex gap-2 h-[50px]">
@@ -479,9 +479,9 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
               max={23}
               value={data.hour}
               onChange={(e) => onChange({ ...data, hour: parseInt(e.target.value) || 0 })}
-              className="w-20 text-center px-3 bg-cream-100 border border-coffee-200 rounded-xl text-coffee-900 outline-none transition-colors focus:border-accent focus:bg-white"
+              className="w-20 text-center px-3 bg-theme-secondary border border-theme rounded-xl text-theme outline-none transition-colors focus:border-accent"
             />
-            <span className="self-center text-coffee-400 font-bold">:</span>
+            <span className="self-center text-theme-muted font-bold">:</span>
             <input
               type="number"
               min={0}
@@ -489,14 +489,14 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
               step={5}
               value={data.minute.toString().padStart(2, '0')}
               onChange={(e) => onChange({ ...data, minute: parseInt(e.target.value) || 0 })}
-              className="w-20 text-center px-3 bg-cream-100 border border-coffee-200 rounded-xl text-coffee-900 outline-none transition-colors focus:border-accent focus:bg-white"
+              className="w-20 text-center px-3 bg-theme-secondary border border-theme rounded-xl text-theme outline-none transition-colors focus:border-accent"
             />
           </div>
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-semibold uppercase tracking-wider text-coffee-500 mb-1.5">
+        <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted mb-1.5">
           Days
         </label>
         <div className="flex gap-1.5 mb-2">
@@ -507,7 +507,7 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
               className={`w-9 h-9 rounded-lg text-xs font-bold transition-all border ${
                 data.days & day.value
                   ? 'bg-accent text-white border-accent'
-                  : 'bg-cream-100 text-coffee-500 border-coffee-200 hover:border-coffee-300'
+                  : 'bg-theme-secondary text-theme-muted border-theme hover:border-theme-light'
               }`}
             >
               {day.short}
@@ -521,14 +521,14 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
           >
             Mon–Fri
           </button>
-          <span className="text-coffee-300">•</span>
+          <span className="text-theme-muted">•</span>
           <button
             onClick={() => setPresetDays('weekends')}
             className="text-accent hover:underline"
           >
             Sat–Sun
           </button>
-          <span className="text-coffee-300">•</span>
+          <span className="text-theme-muted">•</span>
           <button
             onClick={() => setPresetDays('everyday')}
             className="text-accent hover:underline"
@@ -541,13 +541,13 @@ function ScheduleForm({ data, onChange, onSave, onCancel, toggleDay, setPresetDa
       {/* Heating strategy selection - only for dual boiler machines */}
       {data.action === 'on' && isDualBoiler && (
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-coffee-500 mb-1.5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted mb-1.5">
             Heating Strategy
           </label>
           <select
             value={data.strategy}
             onChange={(e) => onChange({ ...data, strategy: parseInt(e.target.value) })}
-            className="w-full h-[50px] px-4 bg-cream-100 border border-coffee-200 rounded-xl text-coffee-900 outline-none transition-colors focus:border-accent focus:bg-white"
+            className="w-full h-[50px] px-4 bg-theme-secondary border border-theme rounded-xl text-theme outline-none transition-colors focus:border-accent"
           >
             {STRATEGIES.map(s => (
               <option key={s.value} value={s.value}>
