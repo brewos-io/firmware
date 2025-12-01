@@ -1,6 +1,6 @@
 # Machine Configurations
 
-> **Document Status:** This document has been reviewed and updated based on technical feedback. Key improvements include: corrected PWM period specification (25Hz), added voltage variation considerations, flash wear leveling notes, HX SSR safety requirements, and flow control interaction notes.
+> **Document Status:** This document has been reviewed and updated based on technical feedback. Key improvements include: dual-mode SSR control clarification (25Hz hardware PWM for standard modes, 1Hz software control for HEAT_SMART_STAGGER phase synchronization), voltage variation considerations, flash wear leveling notes, HX SSR safety requirements, overlap handling clarification, and flow control interaction notes.
 
 ## Overview
 
@@ -71,28 +71,40 @@ Different heating strategies optimize for different use cases:
 
 ### How Power Control Works
 
-All heating strategies control power via **SSR PWM** (Pulse Width Modulation):
+All heating strategies control power via **SSR switching** (Pulse Width Modulation):
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                        SSR PWM POWER CONTROL                                 │
+│                        SSR POWER CONTROL MODES                               │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│   The SSR switches ON/OFF within a 40ms period (25Hz).                     │
-│   Duty cycle (%) determines TIME the element is ON:                         │
+│   STANDARD MODES (PARALLEL, SEQUENTIAL, BREW_ONLY):                         │
+│   ─────────────────────────────────────────────────                         │
+│   Hardware PWM at 25Hz (40ms period).                                       │
+│   Duty cycle (%) determines TIME the element is ON per period.              │
 │                                                                              │
 │   100% duty: ████████████████████████████████████████  ON=100%, OFF=0%      │
 │    50% duty: ████████████████████░░░░░░░░░░░░░░░░░░░░  ON=50%,  OFF=50%     │
 │    25% duty: ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ON=25%,  OFF=75%     │
 │              |←────────────── 40ms (25Hz) ──────────→|                     │
 │                                                                              │
-│   The heater element's thermal mass smooths out the pulses.                 │
-│   PID outputs duty cycle → SSR PWM → controlled heating.                   │
+│   • 25Hz is fine for thermal mass - boiler water smooths the pulses        │
+│   • Zero-crossing SSRs switch at AC zero crossings (safe, low EMI)         │
+│   • No phase coordination needed for single-heater or sequential modes     │
 │                                                                              │
-│   Note: 25Hz (40ms period) is optimal for zero-crossing SSRs:              │
-│   • Fast enough to prevent visible flicker on shared circuits              │
-│   • Slow enough to minimize EMI and SSR switching losses                    │
-│   • Thermal mass of boiler water naturally filters the pulses               │
+│   HEAT_SMART_STAGGER MODE:                                                  │
+│   ────────────────────────                                                  │
+│   Software GPIO control at 1Hz (1000ms period).                            │
+│   Uses timer-based scheduling for PHASE SYNCHRONIZATION.                    │
+│                                                                              │
+│   Brew:  [████████████████████]                   (0-400ms)                 │
+│   Steam:                      [████████████████████] (400-800ms)            │
+│          |←───────────────── 1000ms (1Hz) ─────────────→|                  │
+│                                                                              │
+│   • 1Hz period enables precise scheduling of ON/OFF transitions            │
+│   • Heaters are strictly interleaved to prevent simultaneous ON            │
+│   • Peak current = single heater only (safe for 15A circuits)              │
+│   • Requires disabling hardware PWM, using direct GPIO control              │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -918,6 +930,10 @@ typedef struct {
     uint8_t  max_ssr_duty;
 
     // Watchdog timeout (ms)
+    // IMPORTANT: Main control loop MUST complete faster than this!
+    // Typical value: 2000ms (2 seconds)
+    // If loop takes longer, watchdog triggers safe shutdown.
+    // Ensure all I/O operations are non-blocking.
     uint16_t watchdog_timeout_ms;
 
 } safety_config_t;
@@ -990,7 +1006,11 @@ typedef struct {
     bool     preinfusion_enabled;
     uint16_t preinfusion_time_ms;   // Pump ON time
     uint16_t preinfusion_pause_ms;  // Pause before full pressure
-    uint8_t  preinfusion_pressure;  // Target pressure % (if flow control)
+    uint8_t  preinfusion_pressure;  // Target pressure % for PWM pump control
+                                    // Only used if supports_flow_control=true
+                                    // 0-100: PWM duty cycle to pump motor
+                                    // Note: This is NOT pressure profiling with a
+                                    // needle valve - it's simple pump PWM dimming
 
     // ═══════════════════════════════════════════════════════════════
     // BREW SETTINGS
@@ -1753,18 +1773,34 @@ Steam:                [████████████]
    ```c
    // Brew always starts at t=0
    uint32_t brew_start = 0;
-   uint32_t brew_duration = (brew_duty_pct * 10);  // Convert % to ms
+   uint32_t brew_duration = (brew_duty_pct * 10);  // Convert % to ms (0-1000)
 
    // Steam starts AFTER brew finishes (strict interleaving)
    uint32_t steam_start = brew_duration;
    uint32_t steam_duration = (steam_duty_pct * 10);
 
-   // If total > 1000ms, steam wraps (creates controlled overlap)
+   // IMPORTANT: If (brew + steam) > 1000ms, overlap is UNAVOIDABLE
+   // The "wrap" just determines WHERE the overlap occurs
    if (steam_start + steam_duration > 1000) {
-       steam_start = 0;  // Wrap to beginning
-       // Overlap is intentional and controlled
+       // Option A: Accept overlap at end of period
+       // Steam runs from steam_start until 1000ms, then from 0 until remainder
+       // This WILL overlap with brew at t=0!
+
+       // Option B: Reject and clamp (safer)
+       uint32_t available = 1000 - brew_duration;
+       if (steam_duration > available) {
+           steam_duration = available;  // Clamp to prevent overlap
+           // Log warning: "Steam duty clamped to prevent overlap"
+       }
    }
    ```
+
+   **Mathematical Reality:** You cannot fit >100% duty into 100% time without overlap.
+   If `brew_duty + steam_duty > 100`, overlap is mathematically unavoidable.
+   The firmware must either:
+
+   - **Accept overlap** (risky for 15A circuits)
+   - **Clamp duties** (safer, but reduces heating performance)
 
 3. **Use hardware timer** to schedule SSR ON/OFF transitions within the 1-second PWM period
 

@@ -36,7 +36,10 @@
 #define HW_SPI_MAX31855_DATA_BITS 32    // MAX31855 returns 32-bit data
 
 // PWM Configuration
-#define HW_PWM_FREQ_HZ 25               // 25Hz for SSR (zero-crossing)
+// Hardware PWM at 25Hz for standard heater control modes (PARALLEL, SEQUENTIAL, BREW_ONLY)
+// Note: HEAT_SMART_STAGGER uses software GPIO control at 1Hz (1000ms period)
+// for phase synchronization - see control_common.c
+#define HW_PWM_FREQ_HZ 25               // 25Hz for SSR hardware PWM
 #define HW_PWM_RESOLUTION_BITS 8        // 8-bit resolution (0-255)
 
 // =============================================================================
