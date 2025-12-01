@@ -133,10 +133,32 @@ export function Layout() {
         </div>
       </header>
 
-      {/* Navigation */}
+      {/* Navigation - Desktop: horizontal tabs, Mobile: bottom bar style */}
       <nav className="sticky top-16 z-40 bg-white border-b border-cream-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-1 py-2 overflow-x-auto scrollbar-hide">
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+          {/* Mobile: evenly distributed icons with labels */}
+          <div className="flex sm:hidden justify-around py-1">
+            {navigation.map((item) => (
+              <NavLink
+                key={item.name}
+                to={item.href}
+                end={item.href === '/' || item.href.endsWith(`/${deviceId || selectedDevice?.id}`)}
+                className={({ isActive }) =>
+                  cn(
+                    'flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl text-xs font-medium transition-all min-w-0 flex-1 max-w-20',
+                    isActive
+                      ? 'bg-coffee-800 text-white shadow-soft'
+                      : 'text-coffee-500 hover:bg-cream-200 hover:text-coffee-700'
+                  )
+                }
+              >
+                <item.icon className="w-5 h-5" />
+                <span className="truncate">{item.name}</span>
+              </NavLink>
+            ))}
+          </div>
+          {/* Desktop: horizontal tabs with full labels */}
+          <div className="hidden sm:flex gap-1 py-2">
             {navigation.map((item) => (
               <NavLink
                 key={item.name}
@@ -152,7 +174,7 @@ export function Layout() {
                 }
               >
                 <item.icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{item.name}</span>
+                <span>{item.name}</span>
               </NavLink>
             ))}
           </div>
