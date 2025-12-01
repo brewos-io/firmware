@@ -178,7 +178,6 @@ See [SETUP.md](SETUP.md) for detailed instructions.
 |----------|-------------|
 | **Getting Started** | |
 | [Setup Guide](SETUP.md) | Development environment setup |
-| [Quick Start](docs/pico/Quick_Start.md) | Quick reference for common tasks |
 | [System Architecture](docs/Architecture.md) | Full system overview with cloud |
 | **Pico Firmware** | |
 | [Architecture](docs/pico/Architecture.md) | Module structure, dual-core design |

@@ -42,7 +42,6 @@ docs/
 
 ### Getting Started
 - [Machine Compatibility](Compatibility.md) ⭐ *Validated machines*
-- [Pico Quick Start](pico/Quick_Start.md)
 - [ESP32 Implementation](esp32/Implementation_Plan.md)
 
 ### Architecture

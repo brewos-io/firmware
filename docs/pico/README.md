@@ -8,7 +8,6 @@ The Raspberry Pi Pico handles real-time machine control for the BrewOS coffee ma
 |----------|-------------|
 | [Architecture](Architecture.md) | System architecture and design |
 | [Implementation Plan](Implementation_Plan.md) | Development roadmap |
-| [Quick Start](Quick_Start.md) | Getting started guide |
 | [Debugging](Debugging.md) | Debug and troubleshooting |
 | [Requirements](Requirements.md) | Functional requirements |
 
@@ -59,7 +58,6 @@ docs/pico/
 ├── README.md              # This file
 ├── Architecture.md
 ├── Implementation_Plan.md
-├── Quick_Start.md
 ├── Debugging.md
 ├── Requirements.md
 ├── Machine_Configurations.md
