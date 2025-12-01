@@ -51,6 +51,6 @@ interface CardDescriptionProps {
 
 export function CardDescription({ children }: CardDescriptionProps) {
   return (
-    <p className="text-sm text-coffee-500 mt-1">{children}</p>
+    <p className="text-sm text-theme-muted mt-1">{children}</p>
   );
 }

@@ -386,17 +386,17 @@ export function SystemSettings() {
           <CardTitle icon={<Terminal className="w-5 h-5" />}>System Logs</CardTitle>
         </CardHeader>
 
-        <div className="max-h-64 overflow-y-auto bg-coffee-900 rounded-xl p-4 font-mono text-xs">
+        <div className="max-h-64 overflow-y-auto bg-gray-900 rounded-xl p-4 font-mono text-xs">
           {logs.length > 0 ? (
             logs.map((log) => (
-              <div key={log.id} className="py-1 border-b border-coffee-800 last:border-0">
-                <span className="text-coffee-500">{formatTime(log.time)}</span>
+              <div key={log.id} className="py-1 border-b border-gray-800 last:border-0">
+                <span className="text-gray-500">{formatTime(log.time)}</span>
                 <span className={`ml-2 ${getLogColor(log.level)}`}>[{log.level.toUpperCase()}]</span>
-                <span className="text-cream-200 ml-2">{log.message}</span>
+                <span className="text-gray-200 ml-2">{log.message}</span>
               </div>
             ))
           ) : (
-            <p className="text-coffee-500 text-center py-4">No logs yet</p>
+            <p className="text-gray-500 text-center py-4">No logs yet</p>
           )}
         </div>
       </Card>
@@ -411,8 +411,8 @@ export function SystemSettings() {
 
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
-            <h4 className="font-semibold text-coffee-800 mb-1">Restart Device</h4>
-            <p className="text-sm text-coffee-500">Reboot the ESP32. Settings will be preserved.</p>
+            <h4 className="font-semibold text-theme mb-1">Restart Device</h4>
+            <p className="text-sm text-theme-muted">Reboot the ESP32. Settings will be preserved.</p>
           </div>
           <Button variant="secondary" onClick={restartDevice}>
             <RefreshCw className="w-4 h-4" />
@@ -425,7 +425,7 @@ export function SystemSettings() {
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <h4 className="font-semibold text-red-600 mb-1">Factory Reset</h4>
-            <p className="text-sm text-coffee-500">Erase all settings and return to factory defaults. This cannot be undone.</p>
+            <p className="text-sm text-theme-muted">Erase all settings and return to factory defaults. This cannot be undone.</p>
           </div>
           <Button variant="danger" onClick={factoryReset}>
             <Trash2 className="w-4 h-4" />
@@ -443,8 +443,8 @@ function getLogColor(level: string): string {
     case 'warn':
     case 'warning': return 'text-amber-400';
     case 'info': return 'text-blue-400';
-    case 'debug': return 'text-gray-400';
-    default: return 'text-cream-400';
+    case 'debug': return 'text-gray-500';
+    default: return 'text-gray-400';
   }
 }
 

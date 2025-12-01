@@ -140,12 +140,12 @@ export function CloudSettings() {
               <QrCode className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h2 className="font-semibold text-coffee-900">Pair with Cloud</h2>
-              <p className="text-sm text-coffee-500">Scan to add to your account</p>
+              <h2 className="font-semibold text-theme">Pair with Cloud</h2>
+              <p className="text-sm text-theme-muted">Scan to add to your account</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl p-6 border border-cream-200 flex flex-col items-center">
+          <div className="bg-white rounded-xl p-6 border border-theme flex flex-col items-center">
             {loadingQR ? (
               <div className="w-48 h-48 flex items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-accent" />
@@ -153,7 +153,7 @@ export function CloudSettings() {
             ) : error ? (
               <div className="w-48 h-48 flex flex-col items-center justify-center text-center">
                 <X className="w-8 h-8 text-red-500 mb-2" />
-                <p className="text-sm text-coffee-500">{error}</p>
+                <p className="text-sm text-theme-muted">{error}</p>
                 <Button variant="secondary" size="sm" onClick={fetchPairingQR} className="mt-3">
                   Retry
                 </Button>
@@ -166,7 +166,7 @@ export function CloudSettings() {
                 {isExpired ? (
                   <Badge variant="warning" className="mt-3">Code expired</Badge>
                 ) : (
-                  <p className="text-xs text-coffee-400 mt-2">
+                  <p className="text-xs text-theme-muted mt-2">
                     Expires in {Math.floor(pairing.expiresIn / 60)}m {pairing.expiresIn % 60}s
                   </p>
                 )}
@@ -199,17 +199,17 @@ export function CloudSettings() {
           </div>
 
           {pairing && (
-            <div className="mt-4 pt-4 border-t border-cream-200">
-              <h3 className="text-sm font-medium text-coffee-900 mb-2">Manual Pairing Code</h3>
+            <div className="mt-4 pt-4 border-t border-theme">
+              <h3 className="text-sm font-medium text-theme mb-2">Manual Pairing Code</h3>
               <div className="flex items-center gap-2">
-                <code className="flex-1 bg-cream-100 px-3 py-2 rounded-lg text-xs font-mono text-coffee-700 break-all">
+                <code className="flex-1 bg-theme-secondary px-3 py-2 rounded-lg text-xs font-mono text-theme-secondary break-all">
                   {pairing.deviceId}:{pairing.token}
                 </code>
                 <Button variant="secondary" size="sm" onClick={copyPairingCode}>
                   {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 </Button>
               </div>
-              <p className="text-xs text-coffee-400 mt-2">
+              <p className="text-xs text-theme-muted mt-2">
                 Enter this code at cloud.brewos.io if you can't scan the QR
               </p>
             </div>
@@ -224,16 +224,16 @@ export function CloudSettings() {
                 <Cloud className="w-5 h-5 text-accent" />
               </div>
               <div>
-                <h2 className="font-semibold text-coffee-900">Cloud Status</h2>
-                <p className="text-sm text-coffee-500">Connection to BrewOS Cloud</p>
+                <h2 className="font-semibold text-theme">Cloud Status</h2>
+                <p className="text-sm text-theme-muted">Connection to BrewOS Cloud</p>
               </div>
             </div>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between py-2">
                 <div className="flex items-center gap-2">
-                  <Wifi className="w-4 h-4 text-coffee-400" />
-                  <span className="text-sm text-coffee-700">Cloud Connection</span>
+                  <Wifi className="w-4 h-4 text-theme-muted" />
+                  <span className="text-sm text-theme-secondary">Cloud Connection</span>
                 </div>
                 <Badge variant={cloudConfig?.connected ? 'success' : 'default'}>
                   {cloudConfig?.connected ? 'Connected' : 'Disconnected'}
@@ -241,19 +241,19 @@ export function CloudSettings() {
               </div>
               <div className="flex items-center justify-between py-2">
                 <div className="flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-coffee-400" />
-                  <span className="text-sm text-coffee-700">Server</span>
+                  <Globe className="w-4 h-4 text-theme-muted" />
+                  <span className="text-sm text-theme-secondary">Server</span>
                 </div>
-                <span className="text-sm text-coffee-500 font-mono">
+                <span className="text-sm text-theme-muted font-mono">
                   {cloudConfig?.serverUrl || 'Not configured'}
                 </span>
               </div>
               <div className="flex items-center justify-between py-2">
                 <div className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-coffee-400" />
-                  <span className="text-sm text-coffee-700">Device ID</span>
+                  <Shield className="w-4 h-4 text-theme-muted" />
+                  <span className="text-sm text-theme-secondary">Device ID</span>
                 </div>
-                <span className="text-sm text-coffee-500 font-mono">
+                <span className="text-sm text-theme-muted font-mono">
                   {pairing?.deviceId || '—'}
                 </span>
               </div>
@@ -262,19 +262,19 @@ export function CloudSettings() {
 
           <Card>
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-coffee-100 rounded-lg">
-                <Cloud className="w-5 h-5 text-coffee-600" />
+              <div className="p-2 bg-theme-secondary rounded-lg">
+                <Cloud className="w-5 h-5 text-theme-secondary" />
               </div>
               <div>
-                <h2 className="font-semibold text-coffee-900">Cloud Settings</h2>
-                <p className="text-sm text-coffee-500">Configure cloud connection</p>
+                <h2 className="font-semibold text-theme">Cloud Settings</h2>
+                <p className="text-sm text-theme-muted">Configure cloud connection</p>
               </div>
             </div>
 
             <div className="space-y-4">
               <div>
                 <Toggle label="Enable Cloud Connection" checked={cloudEnabled} onChange={setCloudEnabled} />
-                <p className="text-xs text-coffee-400 mt-1 ml-14">Allow remote access via BrewOS Cloud</p>
+                <p className="text-xs text-theme-muted mt-1 ml-14">Allow remote access via BrewOS Cloud</p>
               </div>
               <Input
                 label="Cloud Server URL"

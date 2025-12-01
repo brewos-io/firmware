@@ -22,7 +22,7 @@ export function AboutSection() {
             <Logo size="xl" forceLight />
           </div>
           <p className="text-cream-300 mb-4">Open-source espresso machine controller</p>
-          <div className="flex items-center justify-center gap-4 text-sm text-cream-400">
+          <div className="flex items-center justify-center gap-4 text-sm text-cream-300">
             <span>ESP32: {esp32.version || 'Unknown'}</span>
             <span>•</span>
             <span>Pico: {pico.version || 'Unknown'}</span>
@@ -79,20 +79,20 @@ export function AboutSection() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
-            <span className="text-coffee-500">ESP32 Version</span>
-            <p className="font-mono font-medium text-coffee-900">{esp32.version || '—'}</p>
+            <span className="text-theme-muted">ESP32 Version</span>
+            <p className="font-mono font-medium text-theme">{esp32.version || '—'}</p>
           </div>
           <div>
-            <span className="text-coffee-500">Pico Version</span>
-            <p className="font-mono font-medium text-coffee-900">{pico.version || '—'}</p>
+            <span className="text-theme-muted">Pico Version</span>
+            <p className="font-mono font-medium text-theme">{pico.version || '—'}</p>
           </div>
           <div>
-            <span className="text-coffee-500">UI Version</span>
-            <p className="font-mono font-medium text-coffee-900">1.0.0</p>
+            <span className="text-theme-muted">UI Version</span>
+            <p className="font-mono font-medium text-theme">1.0.0</p>
           </div>
           <div>
-            <span className="text-coffee-500">Build</span>
-            <p className="font-mono font-medium text-coffee-900">
+            <span className="text-theme-muted">Build</span>
+            <p className="font-mono font-medium text-theme">
               {import.meta.env.MODE === 'production' ? 'Production' : 'Development'}
             </p>
           </div>
@@ -101,10 +101,10 @@ export function AboutSection() {
 
       {/* Credits */}
       <Card className="text-center">
-        <p className="text-coffee-500 mb-2">
+        <p className="text-theme-muted mb-2">
           Made with <Heart className="w-4 h-4 inline text-red-500" /> for espresso lovers
         </p>
-        <p className="text-sm text-coffee-400">© {new Date().getFullYear()} BrewOS Contributors</p>
+        <p className="text-sm text-theme-muted">© {new Date().getFullYear()} BrewOS Contributors</p>
       </Card>
     </div>
   );
@@ -122,8 +122,8 @@ function AboutFeatureCard({ icon, title, description }: AboutFeatureCardProps) {
       <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center mx-auto mb-3 text-accent">
         {icon}
       </div>
-      <h3 className="font-semibold text-coffee-900 mb-1">{title}</h3>
-      <p className="text-sm text-coffee-500">{description}</p>
+      <h3 className="font-semibold text-theme mb-1">{title}</h3>
+      <p className="text-sm text-theme-muted">{description}</p>
     </Card>
   );
 }
@@ -141,14 +141,14 @@ function AboutLinkCard({ icon, title, description, href }: AboutLinkCardProps) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-start gap-4 p-4 bg-cream-100 rounded-xl hover:bg-cream-200 transition-colors group"
+      className="flex items-start gap-4 p-4 bg-theme-secondary rounded-xl hover:bg-theme-tertiary transition-colors group"
     >
-      <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-coffee-600 group-hover:text-accent transition-colors">
+      <div className="w-10 h-10 bg-theme-card rounded-lg flex items-center justify-center text-theme-secondary group-hover:text-accent transition-colors">
         {icon}
       </div>
       <div>
-        <h4 className="font-semibold text-coffee-900 group-hover:text-accent transition-colors">{title}</h4>
-        <p className="text-sm text-coffee-500">{description}</p>
+        <h4 className="font-semibold text-theme group-hover:text-accent transition-colors">{title}</h4>
+        <p className="text-sm text-theme-muted">{description}</p>
       </div>
     </a>
   );

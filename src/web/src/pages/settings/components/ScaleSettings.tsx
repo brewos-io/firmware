@@ -81,7 +81,7 @@ export function ScaleSettings() {
           </div>
 
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-coffee-500">Status:</span>
+            <span className="text-sm text-theme-muted">Status:</span>
             <Badge variant={scale.stable ? 'success' : 'warning'}>
               {scale.stable ? 'Stable' : 'Unstable'}
             </Badge>
@@ -103,11 +103,11 @@ export function ScaleSettings() {
       {!scale.connected && (
         <Card>
           <div className="text-center py-8">
-            <div className="w-20 h-20 bg-cream-200 rounded-full flex items-center justify-center mx-auto mb-4">
-              <ScaleIcon className="w-10 h-10 text-coffee-400" />
+            <div className="w-20 h-20 bg-theme-secondary rounded-full flex items-center justify-center mx-auto mb-4">
+              <ScaleIcon className="w-10 h-10 text-theme-muted" />
             </div>
-            <h2 className="text-xl font-bold text-coffee-900 mb-2">No Scale Connected</h2>
-            <p className="text-coffee-500 mb-6">
+            <h2 className="text-xl font-bold text-theme mb-2">No Scale Connected</h2>
+            <p className="text-theme-muted mb-6">
               Search for nearby Bluetooth scales to pair with your BrewOS device.
             </p>
             
@@ -141,17 +141,17 @@ export function ScaleSettings() {
               {scanResults.map((result) => (
                 <div
                   key={result.address}
-                  className="flex items-center justify-between p-4 bg-cream-100 rounded-xl"
+                  className="flex items-center justify-between p-4 bg-theme-secondary rounded-xl"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-cream-200 rounded-full flex items-center justify-center">
-                      <ScaleIcon className="w-5 h-5 text-coffee-500" />
+                    <div className="w-10 h-10 bg-theme-tertiary rounded-full flex items-center justify-center">
+                      <ScaleIcon className="w-5 h-5 text-theme-muted" />
                     </div>
                     <div>
-                      <div className="font-semibold text-coffee-900">
+                      <div className="font-semibold text-theme">
                         {result.name || 'Unknown Scale'}
                       </div>
-                      <div className="text-xs text-coffee-400 flex items-center gap-2">
+                      <div className="text-xs text-theme-muted flex items-center gap-2">
                         <Signal className="w-3 h-3" />
                         {result.rssi} dBm
                         {result.type && (
@@ -167,12 +167,12 @@ export function ScaleSettings() {
               ))}
             </div>
           ) : scanning ? (
-            <div className="flex items-center justify-center gap-3 py-8 text-coffee-500">
+            <div className="flex items-center justify-center gap-3 py-8 text-theme-muted">
               <Loader2 className="w-5 h-5 animate-spin" />
               <span>Searching for scales...</span>
             </div>
           ) : (
-            <p className="text-center text-coffee-500 py-8">
+            <p className="text-center text-theme-muted py-8">
               No scales found. Make sure your scale is powered on and in pairing mode.
             </p>
           )}
@@ -196,10 +196,10 @@ export function ScaleSettings() {
           ].map((item) => (
             <div
               key={item.brand}
-              className="p-4 bg-cream-100 rounded-xl"
+              className="p-4 bg-theme-secondary rounded-xl"
             >
-              <div className="font-semibold text-coffee-800">{item.brand}</div>
-              <div className="text-sm text-coffee-500">{item.models}</div>
+              <div className="font-semibold text-theme">{item.brand}</div>
+              <div className="text-sm text-theme-muted">{item.models}</div>
             </div>
           ))}
         </div>
@@ -217,9 +217,9 @@ interface ScaleInfoItemProps {
 
 function ScaleInfoItem({ label, value, highlight, icon }: ScaleInfoItemProps) {
   return (
-    <div className="p-3 bg-white/60 rounded-xl">
-      <div className="text-xs text-coffee-500 mb-1">{label}</div>
-      <div className={`flex items-center gap-1.5 ${highlight ? 'text-xl font-bold' : 'font-semibold'} text-coffee-900`}>
+    <div className="p-3 bg-theme-card/60 rounded-xl">
+      <div className="text-xs text-theme-muted mb-1">{label}</div>
+      <div className={`flex items-center gap-1.5 ${highlight ? 'text-xl font-bold' : 'font-semibold'} text-theme`}>
         {icon}
         {value}
       </div>

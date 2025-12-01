@@ -90,22 +90,22 @@ export function TimeSettings() {
       </CardHeader>
 
       {/* Current Time Status */}
-      <div className="mb-6 p-4 bg-cream-100 rounded-xl">
+      <div className="mb-6 p-4 bg-theme-secondary rounded-xl">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-coffee-500">Current Time</span>
+          <span className="text-sm text-theme-muted">Current Time</span>
           <Badge variant={timeStatus?.synced ? 'success' : 'warning'}>
             {timeStatus?.synced ? 'Synced' : 'Not synced'}
           </Badge>
         </div>
-        <div className="text-2xl font-mono font-bold text-coffee-900">
+        <div className="text-2xl font-mono font-bold text-theme">
           {timeStatus?.currentTime || '—'}
         </div>
-        <div className="text-sm text-coffee-500 mt-1">
+        <div className="text-sm text-theme-muted mt-1">
           {timeStatus?.timezone || 'Unknown timezone'}
         </div>
       </div>
 
-      <p className="text-sm text-coffee-500 mb-4">
+      <p className="text-sm text-theme-muted mb-4">
         Configure time synchronization for accurate schedule triggers.
       </p>
 
@@ -121,7 +121,7 @@ export function TimeSettings() {
 
         {/* Timezone */}
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-coffee-500 mb-1.5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted mb-1.5">
             Timezone
           </label>
           <select
@@ -138,10 +138,10 @@ export function TimeSettings() {
         </div>
 
         {/* DST */}
-        <div className="flex items-center justify-between p-3 bg-cream-50 rounded-xl">
+        <div className="flex items-center justify-between p-3 bg-theme-secondary rounded-xl">
           <div>
-            <div className="font-medium text-coffee-800">Daylight Saving Time</div>
-            <div className="text-sm text-coffee-500">
+            <div className="font-medium text-theme">Daylight Saving Time</div>
+            <div className="text-sm text-theme-muted">
               Add {settings.dstOffsetMinutes} minutes during DST period
             </div>
           </div>
@@ -189,13 +189,13 @@ export function RegionalSettings() {
       <CardHeader>
         <CardTitle icon={<Globe className="w-5 h-5" />}>Regional</CardTitle>
       </CardHeader>
-      <p className="text-sm text-coffee-500 mb-4">
+      <p className="text-sm text-theme-muted mb-4">
         Customize display settings for your region.
       </p>
       
       <div className="space-y-4">
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-coffee-500 mb-1.5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted mb-1.5">
             First Day of Week
           </label>
           <div className="flex gap-2">
@@ -204,7 +204,7 @@ export function RegionalSettings() {
               className={`flex-1 py-2.5 px-4 rounded-xl border text-sm font-medium transition-all ${
                 preferences.firstDayOfWeek === 'sunday'
                   ? 'bg-accent text-white border-accent'
-                  : 'bg-cream-100 border-coffee-200 text-coffee-600 hover:border-coffee-300'
+                  : 'bg-theme-secondary border-theme text-theme-secondary hover:border-theme-light'
               }`}
             >
               Sunday
@@ -214,13 +214,13 @@ export function RegionalSettings() {
               className={`flex-1 py-2.5 px-4 rounded-xl border text-sm font-medium transition-all ${
                 preferences.firstDayOfWeek === 'monday'
                   ? 'bg-accent text-white border-accent'
-                  : 'bg-cream-100 border-coffee-200 text-coffee-600 hover:border-coffee-300'
+                  : 'bg-theme-secondary border-theme text-theme-secondary hover:border-theme-light'
               }`}
             >
               Monday
             </button>
           </div>
-          <p className="mt-1.5 text-xs text-coffee-400">
+          <p className="mt-1.5 text-xs text-theme-muted">
             Affects how weekdays and weekends are displayed in schedules
           </p>
         </div>
@@ -231,9 +231,9 @@ export function RegionalSettings() {
               type="checkbox"
               checked={preferences.use24HourTime}
               onChange={(e) => setPreference('use24HourTime', e.target.checked)}
-              className="w-4 h-4 rounded border-cream-300 text-accent focus:ring-accent"
+              className="w-4 h-4 rounded border-theme text-accent focus:ring-accent"
             />
-            <span className="text-sm text-coffee-700">Use 24-hour time format</span>
+            <span className="text-sm text-theme-secondary">Use 24-hour time format</span>
           </label>
         </div>
       </div>
