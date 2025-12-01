@@ -4,31 +4,54 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
+        // Theme-aware colors using CSS variables
         coffee: {
-          50: '#faf8f5',
-          100: '#f5f0e8',
-          200: '#e8e0d5',
-          300: '#d4c8b8',
-          400: '#b5a08a',
-          500: '#9b7a68',
-          600: '#7c5a47',
-          700: '#5c3d2e',
-          800: '#391f12',
-          900: '#1a0f0a',
+          50: 'var(--coffee-50)',
+          100: 'var(--coffee-100)',
+          200: 'var(--coffee-200)',
+          300: 'var(--coffee-300)',
+          400: 'var(--coffee-400)',
+          500: 'var(--coffee-500)',
+          600: 'var(--coffee-600)',
+          700: 'var(--coffee-700)',
+          800: 'var(--coffee-800)',
+          900: 'var(--coffee-900)',
         },
         cream: {
-          100: '#faf8f5',
-          200: '#f5f0e8',
-          300: '#e8e0d5',
-          400: '#d4c8b8',
+          100: 'var(--cream-100)',
+          200: 'var(--cream-200)',
+          300: 'var(--cream-300)',
+          400: 'var(--cream-400)',
         },
         accent: {
-          DEFAULT: '#c4703c',
-          light: '#e8a066',
-          glow: 'rgba(196, 112, 60, 0.25)',
+          DEFAULT: 'var(--accent)',
+          light: 'var(--accent-light)',
+          glow: 'var(--accent-glow)',
+        },
+      },
+      backgroundColor: {
+        theme: {
+          DEFAULT: 'var(--bg)',
+          secondary: 'var(--bg-secondary)',
+          tertiary: 'var(--bg-tertiary)',
+          card: 'var(--card-bg)',
+        },
+      },
+      textColor: {
+        theme: {
+          DEFAULT: 'var(--text)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
+        },
+      },
+      borderColor: {
+        theme: {
+          DEFAULT: 'var(--border)',
+          light: 'var(--border-light)',
         },
       },
       fontFamily: {
@@ -40,12 +63,11 @@ export default {
         'spin-slow': 'spin 2s linear infinite',
       },
       boxShadow: {
-        'soft': '0 4px 20px rgba(26, 15, 10, 0.08)',
-        'card': '0 2px 12px rgba(26, 15, 10, 0.06)',
-        'glow': '0 0 20px rgba(196, 112, 60, 0.3)',
+        'soft': '0 4px 20px var(--shadow-color)',
+        'card': '0 2px 12px var(--shadow-color)',
+        'glow': '0 0 20px var(--accent-glow)',
       },
     },
   },
   plugins: [],
 }
-

@@ -8,9 +8,11 @@ import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Toggle } from '@/components/Toggle';
 import { Badge } from '@/components/Badge';
-import { QRCodeDisplay } from '@/components/QRCode';
+import { Logo } from '@/components/Logo';
 import { cn } from '@/lib/utils';
 import { formatUptime, formatBytes } from '@/lib/utils';
+import { useThemeStore } from '@/lib/themeStore';
+import { themeList } from '@/lib/themes';
 import { 
   Thermometer, 
   Zap, 
@@ -46,10 +48,13 @@ import {
   Info,
   Server,
   ChevronDown,
+  Palette,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
-type SettingsTab = 'machine' | 'temperature' | 'power' | 'network' | 'scale' | 'cloud' | 'time' | 'system' | 'about';
+type SettingsTab = 'machine' | 'temperature' | 'power' | 'network' | 'scale' | 'cloud' | 'time' | 'appearance' | 'system' | 'about';
 
 const getSettingsTabs = (isCloud: boolean): { id: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }[] => {
   const tabs: { id: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -67,6 +72,7 @@ const getSettingsTabs = (isCloud: boolean): { id: SettingsTab; label: string; ic
   
   tabs.push(
     { id: 'time', label: 'Time', icon: Clock },
+    { id: 'appearance', label: 'Theme', icon: Palette },
     { id: 'system', label: 'System', icon: Server },
     { id: 'about', label: 'About', icon: Info },
   );
@@ -83,6 +89,9 @@ export function Settings() {
   const wifi = useStore((s) => s.wifi);
   const mqtt = useStore((s) => s.mqtt);
   const { mode } = useAppStore();
+  
+  // Theme
+  const { theme: currentTheme, setTheme } = useThemeStore();
   
   const isCloud = mode === 'cloud';
   const SETTINGS_TABS = getSettingsTabs(isCloud);
@@ -196,86 +205,88 @@ export function Settings() {
 
   return (
     <div className="space-y-6">
-      {/* Tab Navigation */}
-      {/* Mobile/Tablet: Custom dropdown with icons */}
-      <div className="lg:hidden" ref={dropdownRef}>
-        <div className="relative">
-          {/* Dropdown trigger */}
-          <button
-            onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="w-full flex items-center justify-between bg-white border border-coffee-200 rounded-xl px-4 py-3.5 text-base font-medium text-coffee-800 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent shadow-sm"
-          >
-            <div className="flex items-center gap-3">
-              <CurrentIcon className="w-5 h-5 text-accent" />
-              <span>{currentTab?.label}</span>
-            </div>
-            <ChevronDown className={cn(
-              "w-5 h-5 text-coffee-400 transition-transform duration-200",
-              dropdownOpen && "rotate-180"
-            )} />
-          </button>
-          
-          {/* Dropdown menu */}
-          {dropdownOpen && (
-            <div className="absolute z-50 mt-2 w-full bg-white border border-coffee-200 rounded-xl shadow-lg overflow-hidden">
-              <div className="py-1 max-h-80 overflow-y-auto">
-                {SETTINGS_TABS.map((tab) => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        setDropdownOpen(false);
-                      }}
-                      className={cn(
-                        'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors',
-                        isActive
-                          ? 'bg-coffee-800 text-white'
-                          : 'text-coffee-700 hover:bg-cream-100'
-                      )}
-                    >
-                      <Icon className={cn(
-                        "w-5 h-5 flex-shrink-0",
-                        isActive ? "text-white" : "text-accent"
-                      )} />
-                      <span className="font-medium">{tab.label}</span>
-                      {isActive && (
-                        <Check className="w-4 h-4 ml-auto" />
-                      )}
-                    </button>
-                  );
-                })}
+      {/* Tab Navigation - Single container for both mobile and desktop */}
+      <div>
+        {/* Mobile/Tablet: Custom dropdown with icons */}
+        <div className="lg:hidden" ref={dropdownRef}>
+          <div className="relative">
+            {/* Dropdown trigger */}
+            <button
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="w-full flex items-center justify-between settings-tab rounded-xl px-4 py-3.5 text-base font-medium text-theme focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent shadow-sm"
+            >
+              <div className="flex items-center gap-3">
+                <CurrentIcon className="w-5 h-5 text-accent" />
+                <span>{currentTab?.label}</span>
               </div>
-            </div>
-          )}
+              <ChevronDown className={cn(
+                "w-5 h-5 text-theme-muted transition-transform duration-200",
+                dropdownOpen && "rotate-180"
+              )} />
+            </button>
+            
+            {/* Dropdown menu */}
+            {dropdownOpen && (
+              <div className="absolute z-50 mt-2 w-full dropdown-menu rounded-xl overflow-hidden">
+                <div className="py-1 max-h-80 overflow-y-auto">
+                  {SETTINGS_TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => {
+                          setActiveTab(tab.id);
+                          setDropdownOpen(false);
+                        }}
+                        className={cn(
+                          'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors',
+                          isActive
+                            ? 'dropdown-item-active'
+                            : 'dropdown-item'
+                        )}
+                      >
+                        <Icon className={cn(
+                          "w-5 h-5 flex-shrink-0",
+                          isActive ? "" : "text-accent"
+                        )} />
+                        <span className="font-medium">{tab.label}</span>
+                        {isActive && (
+                          <Check className="w-4 h-4 ml-auto" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Desktop: Horizontal scrollable tabs */}
-      <div className="hidden lg:block bg-white rounded-xl border border-coffee-200 p-2">
-        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
-          {SETTINGS_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all',
-                  isActive
-                    ? 'bg-coffee-800 text-white shadow-soft'
-                    : 'text-coffee-600 hover:bg-cream-200'
-                )}
-                title={tab.label}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+        {/* Desktop: Horizontal scrollable tabs */}
+        <div className="hidden lg:block settings-tab rounded-xl p-2">
+          <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+            {SETTINGS_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all',
+                    isActive
+                      ? 'settings-tab-active'
+                      : 'settings-tab-inactive'
+                  )}
+                  title={tab.label}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -597,6 +608,151 @@ export function Settings() {
             <RegionalSettings />
           </Card>
         </>
+      )}
+
+      {/* Appearance / Theme Settings */}
+      {activeTab === 'appearance' && (
+        <Card>
+          <CardHeader>
+            <CardTitle icon={<Palette className="w-5 h-5" />}>
+              Theme
+            </CardTitle>
+          </CardHeader>
+          
+          {/* Current Theme Badge */}
+          <div className="flex items-center gap-3 mb-6 p-3 bg-theme-secondary rounded-xl">
+            <div 
+              className="w-10 h-10 rounded-lg shadow-sm flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: currentTheme.preview.primary }}
+            >
+              {currentTheme.isDark ? (
+                <Moon className="w-5 h-5" style={{ color: currentTheme.preview.secondary }} />
+              ) : (
+                <Sun className="w-5 h-5" style={{ color: currentTheme.preview.secondary }} />
+              )}
+            </div>
+            <div>
+              <p className="font-semibold text-theme">Current: {currentTheme.name}</p>
+              <p className="text-xs text-theme-muted">{currentTheme.description}</p>
+            </div>
+          </div>
+
+          {/* Light Themes Section */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Sun className="w-4 h-4 text-amber-500" />
+              <h4 className="text-sm font-semibold text-theme-secondary uppercase tracking-wider">Light</h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {themeList.filter(t => !t.isDark).map((theme) => {
+                const isActive = currentTheme.id === theme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    onClick={() => setTheme(theme.id)}
+                    className={cn(
+                      'relative p-3 rounded-xl border-2 transition-all text-left group overflow-hidden',
+                      isActive
+                        ? 'ring-2 ring-offset-2'
+                        : 'hover:scale-[1.02]'
+                    )}
+                    style={{
+                      backgroundColor: theme.colors.bg,
+                      borderColor: isActive ? theme.preview.accent : theme.colors.border,
+                      '--tw-ring-color': theme.preview.accent,
+                      '--tw-ring-offset-color': 'var(--bg)',
+                    } as React.CSSProperties}
+                  >
+                    {/* Theme Preview Colors */}
+                    <div className="flex gap-1.5 mb-2">
+                      <div 
+                        className="w-6 h-6 rounded-md shadow-sm ring-1 ring-black/10"
+                        style={{ backgroundColor: theme.colors.cardBg }}
+                        title="Card"
+                      />
+                      <div 
+                        className="w-6 h-6 rounded-md shadow-sm ring-1 ring-black/10"
+                        style={{ backgroundColor: theme.preview.primary }}
+                        title="Primary"
+                      />
+                      <div 
+                        className="w-6 h-6 rounded-md shadow-sm ring-1 ring-black/10"
+                        style={{ backgroundColor: theme.preview.accent }}
+                        title="Accent"
+                      />
+                    </div>
+                    
+                    {/* Theme Info */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium" style={{ color: theme.colors.text }}>{theme.name}</span>
+                      {isActive && (
+                        <Check className="w-3.5 h-3.5" style={{ color: theme.preview.accent }} />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Dark Themes Section */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Moon className="w-4 h-4 text-indigo-400" />
+              <h4 className="text-sm font-semibold text-theme-secondary uppercase tracking-wider">Dark</h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {themeList.filter(t => t.isDark).map((theme) => {
+                const isActive = currentTheme.id === theme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    onClick={() => setTheme(theme.id)}
+                    className={cn(
+                      'relative p-3 rounded-xl border-2 transition-all text-left group overflow-hidden',
+                      isActive
+                        ? 'ring-2 ring-offset-2'
+                        : 'hover:scale-[1.02]'
+                    )}
+                    style={{
+                      backgroundColor: theme.colors.bg,
+                      borderColor: isActive ? theme.preview.accent : theme.colors.border,
+                      '--tw-ring-color': theme.preview.accent,
+                      '--tw-ring-offset-color': 'var(--bg)',
+                    } as React.CSSProperties}
+                  >
+                    {/* Theme Preview Colors */}
+                    <div className="flex gap-1.5 mb-2">
+                      <div 
+                        className="w-6 h-6 rounded-md shadow-sm ring-1 ring-white/20"
+                        style={{ backgroundColor: theme.colors.cardBg }}
+                        title="Card"
+                      />
+                      <div 
+                        className="w-6 h-6 rounded-md shadow-sm ring-1 ring-white/20"
+                        style={{ backgroundColor: theme.preview.primary }}
+                        title="Primary"
+                      />
+                      <div 
+                        className="w-6 h-6 rounded-md shadow-sm ring-1 ring-white/20"
+                        style={{ backgroundColor: theme.preview.accent }}
+                        title="Accent"
+                      />
+                    </div>
+                    
+                    {/* Theme Info */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium" style={{ color: theme.colors.text }}>{theme.name}</span>
+                      {isActive && (
+                        <Check className="w-3.5 h-3.5" style={{ color: theme.preview.accent }} />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* System Settings */}
@@ -1567,7 +1723,9 @@ function AboutSection() {
       {/* Hero */}
       <Card className="text-center bg-gradient-to-br from-coffee-800 to-coffee-900 text-white border-0">
         <div className="py-8">
-          <img src="/logo.png" alt="BrewOS" className="h-20 mx-auto mb-6 brightness-0 invert" />
+          <div className="flex justify-center mb-6">
+            <Logo size="xl" forceLight />
+          </div>
           <p className="text-cream-300 mb-4">Open-source espresso machine controller</p>
           <div className="flex items-center justify-center gap-4 text-sm text-cream-400">
             <span>ESP32: {esp32.version || 'Unknown'}</span>

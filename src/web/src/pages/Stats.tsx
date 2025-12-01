@@ -97,8 +97,8 @@ export function Stats() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-coffee-900">Statistics</h1>
-          <p className="text-coffee-500 mt-1">Track your brewing journey</p>
+          <h1 className="text-2xl font-bold text-theme">Statistics</h1>
+          <p className="text-theme-muted mt-1">Track your brewing journey</p>
         </div>
         <Button variant="secondary" onClick={fetchExtendedStats} disabled={loading}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -152,7 +152,7 @@ export function Stats() {
               {weeklyData.map((data) => (
                 <div key={data.day} className="flex-1 flex flex-col items-center">
                   <div className="w-full flex flex-col items-center justify-end h-32">
-                    <span className="text-xs font-semibold text-coffee-700 mb-1">
+                    <span className="text-xs font-semibold text-theme-secondary mb-1">
                       {data.shots > 0 ? data.shots : ''}
                     </span>
                     <div 
@@ -163,12 +163,12 @@ export function Stats() {
                       }}
                     />
                   </div>
-                  <span className="text-xs text-coffee-500 mt-2 font-medium">{data.day}</span>
+                  <span className="text-xs text-theme-muted mt-2 font-medium">{data.day}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-coffee-400">
+            <div className="flex items-center justify-center h-full text-theme-muted">
               <p>No data available yet. Start brewing!</p>
             </div>
           )}
@@ -324,26 +324,26 @@ interface MetricCardProps {
 function MetricCard({ icon, label, value, subtext, warning, color = 'accent' }: MetricCardProps) {
   const colorClasses = {
     accent: 'from-accent/10 to-accent/5 text-accent',
-    emerald: 'from-emerald-500/10 to-emerald-500/5 text-emerald-600',
-    amber: 'from-amber-500/10 to-amber-500/5 text-amber-600',
-    blue: 'from-blue-500/10 to-blue-500/5 text-blue-600',
-    purple: 'from-purple-500/10 to-purple-500/5 text-purple-600',
+    emerald: 'from-emerald-500/10 to-emerald-500/5 text-emerald-500',
+    amber: 'from-amber-500/10 to-amber-500/5 text-amber-500',
+    blue: 'from-blue-500/10 to-blue-500/5 text-blue-500',
+    purple: 'from-purple-500/10 to-purple-500/5 text-purple-500',
   };
 
   return (
     <Card className={`bg-gradient-to-br ${colorClasses[color].split(' ')[0]} ${colorClasses[color].split(' ')[1]}`}>
       <div className="flex items-start justify-between mb-3">
-        <div className={`p-2 rounded-lg bg-white/60 ${colorClasses[color].split(' ')[2]}`}>
+        <div className={`p-2 rounded-lg bg-theme-card ${colorClasses[color].split(' ')[2]}`}>
           {icon}
         </div>
         {warning && <Badge variant="warning">!</Badge>}
       </div>
-      <div className={`text-3xl font-bold ${warning ? 'text-amber-600' : 'text-coffee-900'}`}>
+      <div className={`text-3xl font-bold ${warning ? 'text-amber-500' : 'text-theme'}`}>
         {value}
       </div>
-      <div className="text-sm text-coffee-500 mt-1">{label}</div>
+      <div className="text-sm text-theme-muted mt-1">{label}</div>
       {subtext && (
-        <div className="text-xs text-coffee-400 mt-0.5">{subtext}</div>
+        <div className="text-xs text-theme-muted mt-0.5 opacity-75">{subtext}</div>
       )}
     </Card>
   );
@@ -357,12 +357,12 @@ interface StatRowProps {
 
 function StatRow({ label, value, icon }: StatRowProps) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-cream-200 last:border-0">
-      <div className="flex items-center gap-2 text-coffee-500">
+    <div className="flex items-center justify-between py-2 border-b border-theme last:border-0">
+      <div className="flex items-center gap-2 text-theme-muted">
         {icon}
         <span className="text-sm">{label}</span>
       </div>
-      <span className="text-sm font-semibold text-coffee-900">{value}</span>
+      <span className="text-sm font-semibold text-theme">{value}</span>
     </div>
   );
 }
@@ -382,17 +382,17 @@ function MaintenanceCard({ label, shotsSince, lastTimestamp, threshold, onMark }
     : 'Never';
 
   return (
-    <div className={`p-4 rounded-xl ${isOverdue ? 'bg-amber-50 border border-amber-200' : 'bg-cream-100'}`}>
+    <div className={`p-4 rounded-xl ${isOverdue ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-theme-secondary'}`}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-coffee-700">{label}</span>
+        <span className="text-sm font-medium text-theme-secondary">{label}</span>
         {isOverdue && <Badge variant="warning">Due</Badge>}
       </div>
-      <div className={`text-2xl font-bold ${isOverdue ? 'text-amber-600' : 'text-coffee-900'}`}>
+      <div className={`text-2xl font-bold ${isOverdue ? 'text-amber-500' : 'text-theme'}`}>
         {shotsSince}
       </div>
-      <div className="text-xs text-coffee-500 mb-3">shots since last</div>
+      <div className="text-xs text-theme-muted mb-3">shots since last</div>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-coffee-400">Last: {lastDate}</span>
+        <span className="text-xs text-theme-muted">Last: {lastDate}</span>
         <Button size="sm" variant={isOverdue ? 'primary' : 'secondary'} onClick={onMark}>
           Mark Done
         </Button>
@@ -412,10 +412,10 @@ function MilestoneCard({ label, achieved, icon }: MilestoneCardProps) {
     <div className={`p-4 rounded-xl text-center transition-all ${
       achieved 
         ? 'bg-gradient-to-br from-accent/10 to-accent/5 border border-accent/20' 
-        : 'bg-cream-100 opacity-50'
+        : 'bg-theme-secondary opacity-50'
     }`}>
       <div className="text-2xl mb-2">{icon}</div>
-      <div className={`text-sm font-medium ${achieved ? 'text-coffee-800' : 'text-coffee-400'}`}>
+      <div className={`text-sm font-medium ${achieved ? 'text-theme' : 'text-theme-muted'}`}>
         {label}
       </div>
       {achieved && (

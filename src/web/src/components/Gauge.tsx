@@ -33,17 +33,17 @@ export function Gauge({
     <div className="card">
       <div className="flex items-center gap-2 mb-4">
         {icon && <span className="text-accent">{icon}</span>}
-        <span className="font-semibold text-coffee-700">{label}</span>
+        <span className="font-semibold text-theme-secondary">{label}</span>
       </div>
       
       <div className="flex items-baseline gap-1 mb-3">
-        <span className="text-4xl font-bold text-coffee-900 tabular-nums">
+        <span className="text-4xl font-bold text-theme tabular-nums">
           {value.toFixed(1)}
         </span>
-        <span className="text-xl text-coffee-500">{unit}</span>
+        <span className="text-xl text-theme-muted">{unit}</span>
       </div>
       
-      <div className="relative h-3 bg-cream-200 rounded-full overflow-hidden">
+      <div className="relative h-3 bg-theme-secondary rounded-full overflow-hidden">
         <div
           className={cn(
             'absolute inset-y-0 left-0 rounded-full transition-all duration-500',
@@ -53,18 +53,17 @@ export function Gauge({
         />
         {setpoint && showSetpoint && (
           <div
-            className="absolute top-0 bottom-0 w-0.5 bg-coffee-800"
+            className="absolute top-0 bottom-0 w-0.5 bg-theme"
             style={{ left: `${(setpoint / max) * 100}%` }}
           />
         )}
       </div>
       
       {setpoint && showSetpoint && (
-        <div className="mt-2 text-sm text-coffee-500">
-          Setpoint: <span className="font-semibold text-coffee-700">{setpoint.toFixed(1)}{unit}</span>
+        <div className="mt-2 text-sm text-theme-muted">
+          Setpoint: <span className="font-semibold text-theme-secondary">{setpoint.toFixed(1)}{unit}</span>
         </div>
       )}
     </div>
   );
 }
-

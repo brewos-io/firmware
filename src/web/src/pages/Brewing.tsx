@@ -50,36 +50,36 @@ export function Brewing() {
     <div className="space-y-6">
       {/* Active Shot */}
       {shot.active && (
-        <Card className="bg-gradient-to-br from-accent/10 to-coffee-800/10 border-accent/30">
+        <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/30">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-coffee-900">Active Shot</h2>
-            <span className="text-3xl font-mono font-bold text-coffee-900">
+            <h2 className="text-xl font-bold text-theme">Active Shot</h2>
+            <span className="text-3xl font-mono font-bold text-theme">
               {formatDuration(shotTime)}
             </span>
           </div>
           
           <div className="grid grid-cols-2 gap-6 mb-4">
             <div className="text-center">
-              <div className="text-4xl font-bold text-coffee-900 tabular-nums">
+              <div className="text-4xl font-bold text-theme tabular-nums">
                 {shot.weight.toFixed(1)}
               </div>
-              <div className="text-sm text-coffee-500">grams</div>
+              <div className="text-sm text-theme-muted">grams</div>
             </div>
             <div className="text-center">
-              <div className="text-4xl font-bold text-coffee-900 tabular-nums">
+              <div className="text-4xl font-bold text-theme tabular-nums">
                 {shot.flowRate.toFixed(1)}
               </div>
-              <div className="text-sm text-coffee-500">g/s flow</div>
+              <div className="text-sm text-theme-muted">g/s flow</div>
             </div>
           </div>
 
-          <div className="relative h-3 bg-cream-200 rounded-full overflow-hidden">
+          <div className="relative h-3 bg-theme-secondary rounded-full overflow-hidden">
             <div
               className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-amber-400 to-accent transition-all duration-200"
               style={{ width: `${Math.min(100, (shot.weight / bbw.targetWeight) * 100)}%` }}
             />
           </div>
-          <p className="text-sm text-coffee-500 mt-2">
+          <p className="text-sm text-theme-muted mt-2">
             Target: {bbw.targetWeight}g
           </p>
         </Card>
@@ -127,10 +127,10 @@ export function Brewing() {
           />
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-coffee-500">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted">
               Ratio
             </label>
-            <div className="h-[50px] flex items-center justify-center text-2xl font-bold text-coffee-900">
+            <div className="h-[50px] flex items-center justify-center text-2xl font-bold text-theme">
               1:{ratio}
             </div>
           </div>
@@ -154,9 +154,9 @@ export function Brewing() {
               type="checkbox"
               checked={formState.autoTare}
               onChange={(e) => setFormState({ ...formState, autoTare: e.target.checked })}
-              className="w-4 h-4 rounded border-cream-300 text-accent focus:ring-accent"
+              className="w-4 h-4 rounded border-theme text-accent focus:ring-accent"
             />
-            <span className="text-sm text-coffee-700">Auto-tare when portafilter placed</span>
+            <span className="text-sm text-theme-secondary">Auto-tare when portafilter placed</span>
           </label>
 
           <Button onClick={saveSettings}>
@@ -180,19 +180,19 @@ export function Brewing() {
         {scale.connected ? (
           <>
             <div className="grid grid-cols-2 gap-6 mb-6">
-              <div className="text-center p-4 bg-cream-100 rounded-xl">
+              <div className="text-center p-4 bg-theme-secondary rounded-xl">
                 <Droplet className="w-6 h-6 text-accent mx-auto mb-2" />
-                <div className="text-3xl font-bold text-coffee-900 tabular-nums">
+                <div className="text-3xl font-bold text-theme tabular-nums">
                   {scale.weight.toFixed(1)}
                 </div>
-                <div className="text-sm text-coffee-500">grams</div>
+                <div className="text-sm text-theme-muted">grams</div>
               </div>
-              <div className="text-center p-4 bg-cream-100 rounded-xl">
+              <div className="text-center p-4 bg-theme-secondary rounded-xl">
                 <Timer className="w-6 h-6 text-accent mx-auto mb-2" />
-                <div className="text-3xl font-bold text-coffee-900 tabular-nums">
+                <div className="text-3xl font-bold text-theme tabular-nums">
                   {scale.flowRate.toFixed(1)}
                 </div>
-                <div className="text-sm text-coffee-500">g/s flow</div>
+                <div className="text-sm text-theme-muted">g/s flow</div>
               </div>
             </div>
 
@@ -207,8 +207,8 @@ export function Brewing() {
           </>
         ) : (
           <div className="text-center py-8">
-            <Scale className="w-12 h-12 text-coffee-300 mx-auto mb-3" />
-            <p className="text-coffee-500">No scale connected</p>
+            <Scale className="w-12 h-12 text-theme-muted mx-auto mb-3" />
+            <p className="text-theme-muted">No scale connected</p>
             <Button variant="secondary" className="mt-4" onClick={() => window.location.href = '/scale'}>
               Go to Scale Settings
             </Button>
@@ -218,4 +218,3 @@ export function Brewing() {
     </div>
   );
 }
-

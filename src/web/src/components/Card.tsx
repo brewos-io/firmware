@@ -40,8 +40,7 @@ export function CardTitle({ children, icon }: CardTitleProps) {
   return (
     <div className="flex items-center gap-3">
       {icon && <span className="text-accent">{icon}</span>}
-      <h3 className="text-lg font-bold text-coffee-800">{children}</h3>
+      <h3 className="text-lg font-bold text-theme">{children}</h3>
     </div>
   );
 }
-

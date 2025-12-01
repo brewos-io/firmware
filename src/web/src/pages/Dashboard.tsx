@@ -36,7 +36,7 @@ export function Dashboard() {
       <Card>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-coffee-900 mb-2">Machine Status</h2>
+            <h2 className="text-2xl font-bold text-theme mb-2">Machine Status</h2>
             <Badge className={getMachineStateColor(machine.state)}>
               {getMachineStateLabel(machine.state)}
             </Badge>
@@ -50,8 +50,8 @@ export function Dashboard() {
                 className={`
                   px-4 py-2 rounded-xl text-sm font-semibold transition-all
                   ${machine.mode === mode
-                    ? 'bg-coffee-800 text-white shadow-soft'
-                    : 'bg-cream-200 text-coffee-600 hover:bg-cream-300'
+                    ? 'nav-active'
+                    : 'bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary'
                   }
                 `}
               >
@@ -93,18 +93,18 @@ export function Dashboard() {
             <CardTitle icon={<GaugeIcon className="w-5 h-5" />}>Pressure</CardTitle>
           </CardHeader>
           <div className="flex items-baseline gap-2 mb-4">
-            <span className="text-5xl font-bold text-coffee-900 tabular-nums">
+            <span className="text-5xl font-bold text-accent tabular-nums">
               {pressure.toFixed(1)}
             </span>
-            <span className="text-2xl text-coffee-500">bar</span>
+            <span className="text-2xl text-theme-muted">bar</span>
           </div>
-          <div className="relative h-4 bg-cream-200 rounded-full overflow-hidden">
+          <div className="relative h-4 bg-theme-secondary rounded-full overflow-hidden">
             <div
               className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 transition-all duration-300"
               style={{ width: `${Math.min(100, (pressure / 15) * 100)}%` }}
             />
             {/* Markers */}
-            <div className="absolute inset-0 flex justify-between px-1 text-[8px] text-coffee-500">
+            <div className="absolute inset-0 flex justify-between px-1 text-[8px] text-theme-muted">
               {[0, 5, 10, 15].map((mark) => (
                 <span key={mark} className="relative top-5">{mark}</span>
               ))}
@@ -118,19 +118,19 @@ export function Dashboard() {
             <CardTitle icon={<Zap className="w-5 h-5" />}>Power</CardTitle>
           </CardHeader>
           <div className="flex items-baseline gap-2 mb-4">
-            <span className="text-5xl font-bold text-coffee-900 tabular-nums">
+            <span className="text-5xl font-bold text-accent tabular-nums">
               {Math.round(power.current)}
             </span>
-            <span className="text-2xl text-coffee-500">W</span>
+            <span className="text-2xl text-theme-muted">W</span>
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-coffee-400">Today</span>
-              <p className="font-semibold text-coffee-700">{power.todayKwh.toFixed(1)} kWh</p>
+              <span className="text-theme-muted">Today</span>
+              <p className="font-semibold text-theme-secondary">{power.todayKwh.toFixed(1)} kWh</p>
             </div>
             <div>
-              <span className="text-coffee-400">Voltage</span>
-              <p className="font-semibold text-coffee-700">{power.voltage} V</p>
+              <span className="text-theme-muted">Voltage</span>
+              <p className="font-semibold text-theme-secondary">{power.voltage} V</p>
             </div>
           </div>
         </Card>
@@ -174,19 +174,18 @@ interface QuickStatProps {
 
 function QuickStat({ icon, label, value, status }: QuickStatProps) {
   const statusColors = {
-    success: 'text-emerald-600',
-    warning: 'text-amber-600',
-    error: 'text-red-600',
+    success: 'text-emerald-500',
+    warning: 'text-amber-500',
+    error: 'text-red-500',
   };
 
   return (
     <Card className="flex flex-col items-center text-center p-4">
       <span className="text-accent mb-2">{icon}</span>
-      <span className={`text-lg font-bold ${status ? statusColors[status] : 'text-coffee-900'}`}>
+      <span className={`text-lg font-bold ${status ? statusColors[status] : 'text-theme'}`}>
         {value}
       </span>
-      <span className="text-xs text-coffee-500">{label}</span>
+      <span className="text-xs text-theme-muted">{label}</span>
     </Card>
   );
 }
-

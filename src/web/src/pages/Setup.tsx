@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/Card';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
+import { Logo } from '@/components/Logo';
 import { Wifi, Loader2, Check, RefreshCw } from 'lucide-react';
 
 interface Network {
@@ -72,9 +73,11 @@ export function Setup() {
     <div className="min-h-screen bg-gradient-to-br from-coffee-800 to-coffee-900 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <div className="text-center mb-6">
-          <img src="/logo.png" alt="BrewOS" className="h-12 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-coffee-900">WiFi Setup</h1>
-          <p className="text-coffee-500 mt-1">Connect your BrewOS to WiFi</p>
+          <div className="flex justify-center mb-4">
+            <Logo size="lg" />
+          </div>
+          <h1 className="text-2xl font-bold text-theme">WiFi Setup</h1>
+          <p className="text-theme-muted mt-1">Connect your BrewOS to WiFi</p>
         </div>
 
         {status === 'success' ? (

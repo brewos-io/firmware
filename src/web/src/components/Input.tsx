@@ -16,7 +16,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="space-y-1.5">
         {label && (
-          <label className="block text-xs font-semibold uppercase tracking-wider text-coffee-500">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted">
             {label}
           </label>
         )}
@@ -32,16 +32,16 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             {...props}
           />
           {unit && (
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-coffee-400 whitespace-nowrap">
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-theme-muted whitespace-nowrap">
               {unit}
             </span>
           )}
         </div>
         {hint && !error && (
-          <p className="text-xs text-coffee-400">{hint}</p>
+          <p className="text-xs text-theme-muted">{hint}</p>
         )}
         {error && (
-          <p className="text-xs text-red-600">{error}</p>
+          <p className="text-xs text-red-500">{error}</p>
         )}
       </div>
     );
@@ -49,4 +49,3 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 );
 
 Input.displayName = 'Input';
-

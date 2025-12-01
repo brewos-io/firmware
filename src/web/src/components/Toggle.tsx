@@ -21,18 +21,17 @@ export function Toggle({ checked, onChange, disabled, label }: ToggleProps) {
         onClick={() => !disabled && onChange(!checked)}
         className={cn(
           'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-200',
-          checked ? 'bg-accent' : 'bg-cream-300'
+          checked ? 'bg-accent' : 'bg-theme-tertiary'
         )}
       >
         <span
           className={cn(
-            'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md transform transition-transform duration-200 mt-0.5',
-            checked ? 'translate-x-5' : 'translate-x-0.5'
+            'pointer-events-none inline-block h-5 w-5 rounded-full shadow-md transform transition-transform duration-200 mt-0.5',
+            checked ? 'translate-x-5 bg-white' : 'translate-x-0.5 bg-theme-card'
           )}
         />
       </button>
-      {label && <span className="text-sm font-medium text-coffee-700">{label}</span>}
+      {label && <span className="text-sm font-medium text-theme-secondary">{label}</span>}
     </label>
   );
 }
-

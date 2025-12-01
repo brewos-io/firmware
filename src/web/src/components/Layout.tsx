@@ -2,6 +2,7 @@ import { Outlet, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '@/lib/store';
 import { useAppStore } from '@/lib/mode';
 import { DeviceSelector } from './DeviceSelector';
+import { Logo } from './Logo';
 import { 
   LayoutGrid, 
   Coffee, 
@@ -52,25 +53,21 @@ export function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-cream-100">
+    <div className="min-h-screen bg-theme">
       {/* Header */}
-      <header className="sticky top-0 z-50 glass border-b border-cream-200">
+      <header className="sticky top-0 z-50 header-glass border-b border-theme">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo & Mode */}
             <div className="flex items-center gap-4">
-              <img 
-                src="/logo.png" 
-                alt="BrewOS" 
-                className="h-8 w-auto"
-              />
+              <Logo size="md" />
               
               {/* Cloud: Device Selector */}
               {isCloud && <DeviceSelector />}
               
               {/* Local: Machine Name */}
               {!isCloud && deviceName && (
-                <span className="hidden sm:block text-sm font-medium text-coffee-600">
+                <span className="hidden sm:block text-sm font-medium text-theme-secondary">
                   {deviceName}
                 </span>
               )}
@@ -79,26 +76,26 @@ export function Layout() {
             {/* Right side */}
             <div className="flex items-center gap-3">
               {/* Connection Status */}
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-cream-200/80">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-theme-tertiary">
                 {isCloud ? (
                   <>
                     <Cloud className="w-4 h-4 text-accent" />
-                    <span className="text-xs font-medium text-coffee-700">Cloud</span>
+                    <span className="text-xs font-medium text-theme-secondary">Cloud</span>
                   </>
                 ) : isConnected ? (
                   <>
-                    <Wifi className="w-4 h-4 text-emerald-600" />
-                    <span className="text-xs font-medium text-coffee-700">Local</span>
+                    <Wifi className="w-4 h-4 text-emerald-500" />
+                    <span className="text-xs font-medium text-theme-secondary">Local</span>
                   </>
                 ) : isConnecting ? (
                   <>
                     <Wifi className="w-4 h-4 text-amber-500 animate-pulse" />
-                    <span className="text-xs font-medium text-coffee-700">Connecting...</span>
+                    <span className="text-xs font-medium text-theme-secondary">Connecting...</span>
                   </>
                 ) : (
                   <>
                     <WifiOff className="w-4 h-4 text-red-500" />
-                    <span className="text-xs font-medium text-coffee-700">Disconnected</span>
+                    <span className="text-xs font-medium text-theme-secondary">Disconnected</span>
                   </>
                 )}
               </div>
@@ -108,18 +105,18 @@ export function Layout() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => navigate('/devices')}
-                    className="p-2 rounded-lg hover:bg-cream-200 text-coffee-600"
+                    className="p-2 rounded-lg hover:bg-theme-tertiary text-theme-secondary transition-colors"
                     title="Manage Devices"
                   >
                     <Home className="w-5 h-5" />
                   </button>
-                  <div className="flex items-center gap-2 pl-2 border-l border-cream-300">
-                    <span className="text-xs text-coffee-500 hidden sm:block max-w-32 truncate">
+                  <div className="flex items-center gap-2 pl-2 border-l border-theme">
+                    <span className="text-xs text-theme-muted hidden sm:block max-w-32 truncate">
                       {user.email}
                     </span>
                     <button
                       onClick={handleSignOut}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-cream-200 text-coffee-600 text-xs font-medium"
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-theme-tertiary text-theme-secondary text-xs font-medium transition-colors"
                       title="Sign Out"
                     >
                       <LogOut className="w-4 h-4" />
@@ -134,7 +131,7 @@ export function Layout() {
       </header>
 
       {/* Navigation - Desktop: horizontal tabs, Mobile: bottom bar style */}
-      <nav className="sticky top-16 z-40 bg-white border-b border-cream-200">
+      <nav className="sticky top-16 z-40 nav-bg border-b border-theme">
         <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
           {/* Mobile: evenly distributed icons with labels */}
           <div className="flex sm:hidden justify-around py-1">
@@ -147,8 +144,8 @@ export function Layout() {
                   cn(
                     'flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl text-xs font-medium transition-all min-w-0 flex-1 max-w-20',
                     isActive
-                      ? 'bg-coffee-800 text-white shadow-soft'
-                      : 'text-coffee-500 hover:bg-cream-200 hover:text-coffee-700'
+                      ? 'nav-active'
+                      : 'nav-inactive'
                   )
                 }
               >
@@ -168,8 +165,8 @@ export function Layout() {
                   cn(
                     'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all',
                     isActive
-                      ? 'bg-coffee-800 text-white shadow-soft'
-                      : 'text-coffee-600 hover:bg-cream-200'
+                      ? 'nav-active'
+                      : 'nav-inactive'
                   )
                 }
               >
@@ -188,4 +185,3 @@ export function Layout() {
     </div>
   );
 }
-

@@ -9,7 +9,7 @@ interface BadgeProps {
 
 export function Badge({ children, variant = 'default', className }: BadgeProps) {
   const variants = {
-    default: 'bg-cream-200 text-coffee-700',
+    default: 'bg-theme-secondary text-theme-secondary',
     success: 'badge-success',
     warning: 'badge-warning',
     error: 'badge-error',
@@ -22,4 +22,3 @@ export function Badge({ children, variant = 'default', className }: BadgeProps) 
     </span>
   );
 }
-

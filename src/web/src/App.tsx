@@ -16,6 +16,7 @@ import { FirstRunWizard } from '@/pages/FirstRunWizard';
 import { initConnection, getConnection } from '@/lib/connection';
 import { initializeStore } from '@/lib/store';
 import { useAppStore } from '@/lib/mode';
+import { useThemeStore } from '@/lib/themeStore';
 import { Loader2 } from 'lucide-react';
 
 function App() {
@@ -31,9 +32,14 @@ function App() {
     initialize,
     getSelectedDevice,
   } = useAppStore();
+  
+  const initTheme = useThemeStore((s) => s.initTheme);
 
   useEffect(() => {
     const init = async () => {
+      // Initialize theme first for immediate visual consistency
+      initTheme();
+      
       await initialize();
 
       if (mode === 'local') {
@@ -91,10 +97,10 @@ function App() {
   // Show loading state
   if (loading || !initialized) {
     return (
-      <div className="min-h-screen bg-cream-100 flex items-center justify-center">
+      <div className="min-h-screen bg-theme flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto mb-4" />
-          <p className="text-coffee-500">Loading...</p>
+          <p className="text-theme-muted">Loading...</p>
         </div>
       </div>
     );

@@ -1,4 +1,5 @@
 import { Card, CardHeader, CardTitle } from '@/components/Card';
+import { Logo } from '@/components/Logo';
 import { useStore } from '@/lib/store';
 import { 
   Github, 
@@ -17,11 +18,9 @@ export function About() {
       {/* Hero */}
       <Card className="text-center bg-gradient-to-br from-coffee-800 to-coffee-900 text-white border-0">
         <div className="py-8">
-          <img 
-            src="/logo.png" 
-            alt="BrewOS" 
-            className="h-20 mx-auto mb-6 brightness-0 invert"
-          />
+          <div className="flex justify-center mb-6">
+            <Logo size="xl" forceLight />
+          </div>
           <p className="text-cream-300 mb-4">
             Open-source espresso machine controller
           </p>
@@ -82,20 +81,20 @@ export function About() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
-            <span className="text-coffee-500">ESP32 Version</span>
-            <p className="font-mono font-medium text-coffee-900">{esp32.version || '—'}</p>
+            <span className="text-theme-muted">ESP32 Version</span>
+            <p className="font-mono font-medium text-theme">{esp32.version || '—'}</p>
           </div>
           <div>
-            <span className="text-coffee-500">Pico Version</span>
-            <p className="font-mono font-medium text-coffee-900">{pico.version || '—'}</p>
+            <span className="text-theme-muted">Pico Version</span>
+            <p className="font-mono font-medium text-theme">{pico.version || '—'}</p>
           </div>
           <div>
-            <span className="text-coffee-500">UI Version</span>
-            <p className="font-mono font-medium text-coffee-900">1.0.0</p>
+            <span className="text-theme-muted">UI Version</span>
+            <p className="font-mono font-medium text-theme">1.0.0</p>
           </div>
           <div>
-            <span className="text-coffee-500">Build</span>
-            <p className="font-mono font-medium text-coffee-900">
+            <span className="text-theme-muted">Build</span>
+            <p className="font-mono font-medium text-theme">
               {import.meta.env.MODE === 'production' ? 'Production' : 'Development'}
             </p>
           </div>
@@ -104,10 +103,10 @@ export function About() {
 
       {/* Credits */}
       <Card className="text-center">
-        <p className="text-coffee-500 mb-2">
+        <p className="text-theme-muted mb-2">
           Made with <Heart className="w-4 h-4 inline text-red-500" /> for espresso lovers
         </p>
-        <p className="text-sm text-coffee-400">
+        <p className="text-sm text-theme-muted opacity-75">
           © {new Date().getFullYear()} BrewOS Contributors
         </p>
       </Card>
@@ -127,8 +126,8 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
       <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center mx-auto mb-3 text-accent">
         {icon}
       </div>
-      <h3 className="font-semibold text-coffee-900 mb-1">{title}</h3>
-      <p className="text-sm text-coffee-500">{description}</p>
+      <h3 className="font-semibold text-theme mb-1">{title}</h3>
+      <p className="text-sm text-theme-muted">{description}</p>
     </Card>
   );
 }
@@ -146,18 +145,17 @@ function LinkCard({ icon, title, description, href }: LinkCardProps) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-start gap-4 p-4 bg-cream-100 rounded-xl hover:bg-cream-200 transition-colors group"
+      className="flex items-start gap-4 p-4 bg-theme-secondary rounded-xl hover:bg-theme-tertiary transition-colors group"
     >
-      <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-coffee-600 group-hover:text-accent transition-colors">
+      <div className="w-10 h-10 bg-theme-card rounded-lg flex items-center justify-center text-theme-secondary group-hover:text-accent transition-colors">
         {icon}
       </div>
       <div>
-        <h4 className="font-semibold text-coffee-900 group-hover:text-accent transition-colors">
+        <h4 className="font-semibold text-theme group-hover:text-accent transition-colors">
           {title}
         </h4>
-        <p className="text-sm text-coffee-500">{description}</p>
+        <p className="text-sm text-theme-muted">{description}</p>
       </div>
     </a>
   );
 }
-

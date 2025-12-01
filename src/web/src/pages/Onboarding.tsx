@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
+import { Logo } from '@/components/Logo';
 import { useAppStore } from '@/lib/mode';
 import { 
   Coffee, 
@@ -86,16 +87,14 @@ export function Onboarding() {
         {step === 'welcome' && (
           <Card className="text-center">
             <div className="py-8">
-              <img 
-                src="/logo.png" 
-                alt="BrewOS" 
-                className="h-16 mx-auto mb-6"
-              />
+              <div className="flex justify-center mb-6">
+                <Logo size="lg" />
+              </div>
               
-              <h1 className="text-3xl font-bold text-coffee-900 mb-2">
+              <h1 className="text-3xl font-bold text-theme mb-2">
                 Welcome to BrewOS
               </h1>
-              <p className="text-coffee-500 mb-8 max-w-sm mx-auto">
+              <p className="text-theme-muted mb-8 max-w-sm mx-auto">
                 Control your espresso machine from anywhere. Let's add your first machine.
               </p>
 

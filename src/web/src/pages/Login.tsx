@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { Card } from '@/components/Card';
+import { Logo } from '@/components/Logo';
 import { useAuth } from '@/lib/auth';
 import { isGoogleAuthConfigured } from '@/lib/google-auth';
 import { Coffee, AlertCircle } from 'lucide-react';
@@ -41,9 +42,11 @@ export function Login() {
     <div className="min-h-screen bg-gradient-to-br from-coffee-800 to-coffee-900 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/logo.png" alt="BrewOS" className="h-16 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-coffee-900">Welcome to BrewOS</h1>
-          <p className="text-coffee-500 mt-2">
+          <div className="flex justify-center mb-4">
+            <Logo size="lg" />
+          </div>
+          <h1 className="text-2xl font-bold text-theme">Welcome to BrewOS</h1>
+          <p className="text-theme-muted mt-2">
             Sign in to manage your espresso machines from anywhere
           </p>
         </div>

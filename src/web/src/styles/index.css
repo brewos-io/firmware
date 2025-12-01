@@ -2,45 +2,142 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme CSS Variables - Default (Classic Coffee) */
+:root {
+  --bg: #faf8f5;
+  --bg-secondary: #f5f0e8;
+  --bg-tertiary: #e8e0d5;
+  --text: #1a0f0a;
+  --text-secondary: #5c3d2e;
+  --text-muted: #9b7a68;
+  
+  --coffee-50: #faf8f5;
+  --coffee-100: #f5f0e8;
+  --coffee-200: #e8e0d5;
+  --coffee-300: #d4c8b8;
+  --coffee-400: #b5a08a;
+  --coffee-500: #9b7a68;
+  --coffee-600: #7c5a47;
+  --coffee-700: #5c3d2e;
+  --coffee-800: #391f12;
+  --coffee-900: #1a0f0a;
+  
+  --cream-100: #faf8f5;
+  --cream-200: #f5f0e8;
+  --cream-300: #e8e0d5;
+  --cream-400: #d4c8b8;
+  
+  --accent: #c4703c;
+  --accent-light: #e8a066;
+  --accent-glow: rgba(196, 112, 60, 0.25);
+  
+  --card-bg: #ffffff;
+  --border: #e8e0d5;
+  --border-light: #f5f0e8;
+  --shadow-color: rgba(26, 15, 10, 0.08);
+  
+  /* Navigation specific */
+  --nav-bg: #ffffff;
+  --nav-active-bg: #391f12;
+  --nav-active-text: #ffffff;
+  --nav-inactive-text: #7c5a47;
+  --nav-hover-bg: #f5f0e8;
+  
+  /* Header glass effect */
+  --header-glass-bg: rgba(255, 255, 255, 0.85);
+  --header-glass-blur: 12px;
+}
+
 @layer base {
   * {
-    @apply border-cream-300;
+    border-color: var(--border);
   }
   
   body {
-    @apply bg-cream-100 text-coffee-900 antialiased;
+    background-color: var(--bg);
+    color: var(--text);
+    @apply antialiased;
+  }
+  
+  /* Theme transition for smooth switching */
+  *, *::before, *::after {
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+    transition-timing-function: ease-out;
+    transition-duration: 200ms;
+  }
+  
+  /* Disable transitions for specific elements */
+  .no-transition, .no-transition * {
+    transition: none !important;
   }
 }
 
 @layer components {
+  /* Card component */
   .card {
-    @apply bg-white rounded-2xl border border-cream-200 p-6 shadow-card;
+    background-color: var(--card-bg);
+    @apply rounded-2xl p-6;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 12px var(--shadow-color);
   }
   
+  /* Buttons */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed;
   }
   
   .btn-primary {
-    @apply bg-coffee-800 text-white hover:bg-coffee-700 active:scale-[0.98] shadow-soft;
+    background-color: var(--nav-active-bg);
+    color: var(--nav-active-text);
+    box-shadow: 0 4px 20px var(--shadow-color);
+  }
+  .btn-primary:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: scale(0.98);
   }
   
   .btn-secondary {
-    @apply bg-cream-200 text-coffee-700 border border-cream-300 hover:bg-cream-300;
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--bg-tertiary);
   }
   
   .btn-accent {
-    @apply bg-accent text-white hover:bg-accent-light;
+    background-color: var(--accent);
+    color: white;
+  }
+  .btn-accent:hover:not(:disabled) {
+    background-color: var(--accent-light);
   }
   
   .btn-ghost {
-    @apply bg-transparent text-coffee-600 hover:bg-cream-200;
+    background-color: transparent;
+    color: var(--text-secondary);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background-color: var(--bg-secondary);
   }
   
+  /* Input component */
   .input {
-    @apply w-full px-4 py-3 bg-cream-100 border border-coffee-200 rounded-xl text-coffee-900 placeholder:text-coffee-400 outline-none transition-colors focus:border-accent focus:bg-white;
+    @apply w-full px-4 py-3 rounded-xl outline-none;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .input::placeholder {
+    color: var(--text-muted);
+  }
+  .input:focus {
+    border-color: var(--accent);
+    background-color: var(--card-bg);
+    box-shadow: 0 0 0 3px var(--accent-glow);
   }
   
+  /* Badges */
   .badge {
     @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold;
   }
@@ -48,27 +145,148 @@
   .badge-success {
     @apply bg-emerald-100 text-emerald-700;
   }
+  .dark .badge-success {
+    @apply bg-emerald-900/30 text-emerald-400;
+  }
   
   .badge-warning {
     @apply bg-amber-100 text-amber-700;
+  }
+  .dark .badge-warning {
+    @apply bg-amber-900/30 text-amber-400;
   }
   
   .badge-error {
     @apply bg-red-100 text-red-700;
   }
+  .dark .badge-error {
+    @apply bg-red-900/30 text-red-400;
+  }
   
   .badge-info {
     @apply bg-blue-100 text-blue-700;
+  }
+  .dark .badge-info {
+    @apply bg-blue-900/30 text-blue-400;
+  }
+  
+  /* Navigation */
+  .nav-bg {
+    background-color: var(--nav-bg);
+  }
+  
+  .nav-active {
+    background-color: var(--nav-active-bg);
+    color: var(--nav-active-text);
+    box-shadow: 0 4px 20px var(--shadow-color);
+  }
+  
+  .nav-inactive {
+    color: var(--nav-inactive-text);
+  }
+  .nav-inactive:hover {
+    background-color: var(--nav-hover-bg);
+    color: var(--text);
+  }
+  
+  /* Header glass effect */
+  .header-glass {
+    background-color: var(--header-glass-bg);
+    backdrop-filter: blur(var(--header-glass-blur));
+    -webkit-backdrop-filter: blur(var(--header-glass-blur));
+  }
+  
+  /* Settings tabs */
+  .settings-tab {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border);
+  }
+  
+  .settings-tab-active {
+    background-color: var(--nav-active-bg);
+    color: var(--nav-active-text);
+    box-shadow: 0 4px 20px var(--shadow-color);
+  }
+  
+  .settings-tab-inactive {
+    color: var(--text-secondary);
+  }
+  .settings-tab-inactive:hover {
+    background-color: var(--bg-secondary);
+  }
+  
+  /* Dropdown menu */
+  .dropdown-menu {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 40px var(--shadow-color);
+  }
+  
+  .dropdown-item {
+    color: var(--text-secondary);
+  }
+  .dropdown-item:hover {
+    background-color: var(--bg-secondary);
+  }
+  .dropdown-item-active {
+    background-color: var(--nav-active-bg);
+    color: var(--nav-active-text);
   }
 }
 
 @layer utilities {
   .text-gradient {
-    @apply bg-gradient-to-r from-coffee-800 to-accent bg-clip-text text-transparent;
+    background: linear-gradient(to right, var(--text), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
   
   .glass {
-    @apply bg-white/80 backdrop-blur-xl;
+    background-color: var(--header-glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  
+  /* Theme-aware utilities */
+  .bg-theme {
+    background-color: var(--bg);
+  }
+  .bg-theme-secondary {
+    background-color: var(--bg-secondary);
+  }
+  .bg-theme-tertiary {
+    background-color: var(--bg-tertiary);
+  }
+  .bg-theme-card {
+    background-color: var(--card-bg);
+  }
+  .text-theme {
+    color: var(--text);
+  }
+  .text-theme-card {
+    color: var(--text);
+  }
+  .text-theme-secondary {
+    color: var(--text-secondary);
+  }
+  .text-theme-muted {
+    color: var(--text-muted);
+  }
+  .border-theme {
+    border-color: var(--border);
+  }
+  .border-theme-light {
+    border-color: var(--border-light);
+  }
+  .text-accent {
+    color: var(--accent);
+  }
+  .bg-accent {
+    background-color: var(--accent);
+  }
+  .ring-accent {
+    --tw-ring-color: var(--accent);
   }
 }
 
@@ -79,11 +297,15 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-cream-100;
+  background-color: var(--bg-secondary);
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-cream-400 rounded-full hover:bg-coffee-400;
+  background-color: var(--border);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
 }
 
 /* Number input arrows */
@@ -97,3 +319,8 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* Selection */
+::selection {
+  background-color: var(--accent);
+  color: white;
+}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
+import { Logo } from '@/components/Logo';
 import { getConnection } from '@/lib/connection';
 import { 
   Coffee, 
@@ -172,11 +173,13 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
       case 'welcome':
         return (
           <div className="text-center py-8">
-            <img src="/logo.png" alt="BrewOS" className="h-20 mx-auto mb-6" />
-            <h1 className="text-3xl font-bold text-coffee-900 mb-3">
+            <div className="flex justify-center mb-6">
+              <Logo size="xl" />
+            </div>
+            <h1 className="text-3xl font-bold text-theme mb-3">
               Welcome to BrewOS
             </h1>
-            <p className="text-coffee-500 max-w-md mx-auto mb-8">
+            <p className="text-theme-muted max-w-md mx-auto mb-8">
               Let's set up your espresso machine. This will only take a minute.
             </p>
             

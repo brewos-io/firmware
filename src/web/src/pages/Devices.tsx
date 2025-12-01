@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Badge } from '@/components/Badge';
+import { Logo } from '@/components/Logo';
 import { useAppStore } from '@/lib/mode';
 import {
   Coffee,
@@ -127,11 +128,9 @@ export function Devices() {
   return (
     <div className="min-h-screen bg-cream-100">
       {/* Header */}
-      <header className="bg-white border-b border-cream-200 sticky top-0 z-50">
+      <header className="bg-theme-card border-b border-theme sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="BrewOS" className="h-8" />
-          </div>
+          <Logo size="md" />
           <div className="flex items-center gap-4">
             <span className="text-sm text-coffee-600">{user?.email}</span>
             <Button variant="ghost" size="sm" onClick={handleLogout}>
