@@ -18,6 +18,7 @@ import {
   Power,
 } from 'lucide-react';
 import { formatUptime, getMachineStateLabel, getMachineStateColor } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 export function Dashboard() {
   const machine = useStore((s) => s.machine);
@@ -65,52 +66,75 @@ export function Dashboard() {
 
       {/* Machine Status */}
       <Card>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-theme mb-2">Machine Status</h2>
-            <Badge className={getMachineStateColor(machine.state)}>
-              {getMachineStateLabel(machine.state)}
-            </Badge>
+        <div className="space-y-6">
+          {/* Status Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                'w-16 h-16 rounded-2xl flex items-center justify-center transition-all',
+                machine.mode === 'on' 
+                  ? 'bg-accent/20 text-accent' 
+                  : machine.mode === 'eco'
+                  ? 'bg-emerald-500/20 text-emerald-500'
+                  : 'bg-theme-tertiary text-theme-muted'
+              )}>
+                <Power className={cn(
+                  'w-8 h-8 transition-transform',
+                  machine.mode === 'on' && 'animate-pulse'
+                )} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-theme mb-1">Machine Status</h2>
+                <Badge className={getMachineStateColor(machine.state)}>
+                  {getMachineStateLabel(machine.state)}
+                </Badge>
+              </div>
+            </div>
           </div>
-          
-          <div className="flex gap-2">
-            <button
-              onClick={() => setMode('standby')}
-              className={`
-                px-4 py-2 rounded-xl text-sm font-semibold transition-all
-                ${machine.mode === 'standby'
-                  ? 'nav-active'
-                  : 'bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary'
-                }
-              `}
-            >
-              <Power className="w-4 h-4 inline mr-1.5" />
-              Standby
-            </button>
-            <button
-              onClick={handleOnClick}
-              className={`
-                px-4 py-2 rounded-xl text-sm font-semibold transition-all
-                ${machine.mode === 'on'
-                  ? 'nav-active'
-                  : 'bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary'
-                }
-              `}
-            >
-              On
-            </button>
-            <button
-              onClick={() => setMode('eco')}
-              className={`
-                px-4 py-2 rounded-xl text-sm font-semibold transition-all
-                ${machine.mode === 'eco'
-                  ? 'nav-active'
-                  : 'bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary'
-                }
-              `}
-            >
-              Eco
-            </button>
+
+          {/* Power Controls */}
+          <div className="border-t border-theme pt-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => setMode('standby')}
+                className={cn(
+                  'flex-1 px-4 py-3 rounded-xl text-sm font-semibold transition-all',
+                  'flex items-center justify-center gap-2',
+                  machine.mode === 'standby'
+                    ? 'nav-active'
+                    : 'bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary'
+                )}
+              >
+                <Power className="w-4 h-4" />
+                <span>Standby</span>
+              </button>
+              <button
+                onClick={handleOnClick}
+                className={cn(
+                  'flex-1 px-4 py-3 rounded-xl text-sm font-semibold transition-all',
+                  'flex items-center justify-center gap-2',
+                  machine.mode === 'on'
+                    ? 'nav-active'
+                    : 'bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary'
+                )}
+              >
+                <Zap className="w-4 h-4" />
+                <span>On</span>
+              </button>
+              <button
+                onClick={() => setMode('eco')}
+                className={cn(
+                  'flex-1 px-4 py-3 rounded-xl text-sm font-semibold transition-all',
+                  'flex items-center justify-center gap-2',
+                  machine.mode === 'eco'
+                    ? 'nav-active'
+                    : 'bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary'
+                )}
+              >
+                <Droplets className="w-4 h-4" />
+                <span>Eco</span>
+              </button>
+            </div>
           </div>
         </div>
       </Card>
