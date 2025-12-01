@@ -60,8 +60,9 @@ Different heating strategies optimize for different use cases:
 │   • Priority boiler gets its requested duty, other fills remaining time    │
 │   • Both PIDs remain active (faster warm-up than sequential)               │
 │   • Use case: Balance warm-up speed vs circuit capacity                    │
-│   • ⚠️  IMPORTANT: Peak current is still full element current when ON!     │
-│   • Does NOT reduce instantaneous power - only reduces overlap time        │
+│   • ⚠️  CRITICAL: Requires PHASE SYNCHRONIZATION to prevent overlap!        │
+│   • Current implementation: Duty limiting only (phase sync = future)        │
+│   • Without phase sync: Both can turn ON simultaneously → breaker trip!     │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -147,16 +148,71 @@ All heating strategies control power via **SSR PWM** (Pulse Width Modulation):
 
 ### What Each Strategy Actually Does for Peak Current
 
-| Strategy             | Both Elements ON Simultaneously? | Peak Current |
-| -------------------- | -------------------------------- | ------------ |
-| `HEAT_BREW_ONLY`     | No (steam off)                   | ~6A          |
-| `HEAT_SEQUENTIAL`    | **No** (one after other)         | **~6A** ✓    |
-| `HEAT_PARALLEL`      | **Yes**                          | ~12A         |
-| `HEAT_SMART_STAGGER` | Partially (time-shared)          | ~6-12A       |
+| Strategy             | Both Elements ON Simultaneously? | Peak Current | Phase Sync Required?      |
+| -------------------- | -------------------------------- | ------------ | ------------------------- |
+| `HEAT_BREW_ONLY`     | No (steam off)                   | ~6A          | N/A                       |
+| `HEAT_SEQUENTIAL`    | **No** (one after other)         | **~6A** ✓    | No                        |
+| `HEAT_PARALLEL`      | **Yes**                          | ~12A         | N/A                       |
+| `HEAT_SMART_STAGGER` | **Yes** (without phase sync) ⚠️  | ~6-12A       | **YES** (not implemented) |
+| `HEAT_SMART_STAGGER` | **No** (with phase sync) ✓       | ~6A          | **YES** (future)          |
 
 **For breaker/generator protection:** Use `HEAT_SEQUENTIAL` - this guarantees only one element is ever ON at a time.
 
-**`HEAT_SMART_STAGGER`** reduces _average_ combined duty, but during the overlap periods, both elements CAN be ON simultaneously. It's better than `PARALLEL` but not as safe as `SEQUENTIAL` for current-limited installations.
+**`HEAT_SMART_STAGGER` - Critical Implementation Note:**
+
+The `HEAT_SMART_STAGGER` strategy is a sophisticated **Time Division Multiplexing (TDM)** approach, but its safety depends entirely on **Phase Synchronization**, not just duty cycle limiting.
+
+**The Problem (Current Implementation):**
+
+- Current code limits combined duty (e.g., max 150%) but does NOT synchronize the PWM start times
+- Two independent PIDs can both turn ON at `t=0`, causing simultaneous peak current
+- **Example:** Brew 40% + Steam 40% = 80% combined duty, but if both start at `t=0`, you get 100% overlap for 400ms → **~12A peak current** (on 120V)
+- **Result:** Fast-acting breakers trip immediately, despite "safe" duty limits
+
+**The Solution (Required for Safety):**
+To make `HEAT_SMART_STAGGER` truly safe, you must implement **Phase-Shifted PWM**:
+
+```
+Strict Interleaving (Sum ≤ 100%):
+┌─────────────────────────────────────────────────────────┐
+│ Period: 1000ms                                          │
+│                                                         │
+│ Brew:  [████████████] (0-400ms)                        │
+│ Steam:              [████████████] (400-800ms)         │
+│ Idle:                              [░░░░] (800-1000ms) │
+│                                                         │
+│ Result: Peak current = single heater only ✓            │
+└─────────────────────────────────────────────────────────┘
+
+Overlap Mode (Sum > 100%, relies on breaker trip curve):
+┌─────────────────────────────────────────────────────────┐
+│ Period: 1000ms                                          │
+│                                                         │
+│ Brew:  [████████████████████] (0-600ms)               │
+│ Steam:        [████████████████████] (300-900ms)      │
+│                                                         │
+│ Overlap: 300ms at ~12A → relies on thermal trip delay  │
+│ ⚠️  RISKY: May trip if other loads on same circuit      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Implementation Status:**
+
+- ✅ **Duty limiting:** Implemented (limits combined duty to `max_combined_duty`)
+- ❌ **Phase synchronization:** NOT YET IMPLEMENTED
+- ⚠️ **Current behavior:** Both heaters can start simultaneously → unsafe for 15A circuits
+
+**Recommendations:**
+
+1. **For 15A circuits:** Use `HEAT_SEQUENTIAL` until phase synchronization is implemented
+2. **For 20A+ circuits:** `HEAT_SMART_STAGGER` with overlap may work, but relies on breaker trip curve tolerance
+3. **Future enhancement:** Implement phase-shifted PWM scheduling (see implementation notes below)
+
+**Safe Usage Guidelines:**
+
+- `max_combined_duty ≤ 100`: Strict interleaving (safe when phase sync implemented)
+- `max_combined_duty > 100`: Overlap mode (risky, requires phase sync + breaker tolerance)
+- **Never use overlap mode on 15A circuits without phase synchronization**
 
 **Future Enhancement - Flow Control Interaction:**
 
@@ -366,13 +422,62 @@ typedef struct {
 
     // For HEAT_SMART_STAGGER:
     // Maximum combined duty cycle (0-200, where 200 = both at 100%)
+    // ⚠️  WARNING: This limits duty but does NOT prevent simultaneous ON states
+    //     without phase synchronization (see implementation notes)
     uint8_t max_combined_duty;         // e.g., 150 = max 75% each if both active
+                                       // Safe values: ≤100 (strict interleaving)
+                                       // Risky values: >100 (overlap, requires phase sync)
 
     // Which boiler has priority in stagger mode
     uint8_t stagger_priority;          // 0=brew, 1=steam
 
 } heating_config_t;
 ```
+
+**⚠️ Critical Implementation Requirement for `HEAT_SMART_STAGGER`:**
+
+The current implementation limits duty cycles but **does not implement phase synchronization**. To make this strategy safe, you must implement **Time Division Multiplexing (TDM)** with phase-shifted PWM:
+
+```c
+// Required: Phase-synchronized PWM scheduling
+void apply_smart_stagger_phase_sync(float brew_duty_pct, float steam_duty_pct) {
+    // 1. Clamp total based on max_combined_duty
+    float max_total = machine->defaults.heating.max_combined_duty;
+    float total_req = brew_duty_pct + steam_duty_pct;
+
+    if (total_req > max_total) {
+        // Scale down maintaining ratio or prioritize
+        if (machine->defaults.heating.stagger_priority == 0) {
+            // Brew priority: give brew what it wants, steam gets remainder
+            if (brew_duty_pct > max_total) brew_duty_pct = max_total;
+            steam_duty_pct = max_total - brew_duty_pct;
+        } else {
+            // Proportional reduction
+            float scale = max_total / total_req;
+            brew_duty_pct *= scale;
+            steam_duty_pct *= scale;
+        }
+    }
+
+    // 2. Convert to time (ms) within 1000ms period
+    uint32_t brew_time_ms = (uint32_t)(brew_duty_pct * 10.0f);  // 0-1000ms
+    uint32_t steam_time_ms = (uint32_t)(steam_duty_pct * 10.0f);
+
+    // 3. PHASE SHIFT: Brew starts at t=0, Steam starts AFTER brew finishes
+    // This ensures NO overlap (strict interleaving)
+    set_ssr_schedule(SSR_BREW, 0, brew_time_ms);
+    set_ssr_schedule(SSR_STEAM, brew_time_ms, steam_time_ms);
+
+    // If (brew_time + steam_time) > 1000ms, steam wraps around
+    // This creates overlap only when necessary, but still controlled
+}
+```
+
+**Implementation Status:**
+
+- ✅ Duty cycle limiting: Implemented
+- ❌ Phase synchronization: **NOT YET IMPLEMENTED** (future enhancement)
+- ⚠️ **Current risk:** Both heaters can turn ON simultaneously → breaker trip risk
 
 ---
 
@@ -1592,3 +1697,101 @@ bool check_interlocks(const machine_config_t* cfg) {
 ---
 
 **Note:** See the "Runtime Configuration" section above (line 901) for the complete runtime configuration structure and implementation details.
+
+---
+
+## Implementation Notes: HEAT_SMART_STAGGER Phase Synchronization
+
+### Current Implementation Status
+
+The `HEAT_SMART_STAGGER` strategy currently implements **duty cycle limiting** but **does not implement phase synchronization**. This creates a safety gap:
+
+**Current Behavior:**
+
+- ✅ Limits combined duty cycle (e.g., max 150%)
+- ✅ Prioritizes one boiler over the other when limit exceeded
+- ❌ **Does NOT synchronize PWM start times**
+- ❌ **Both heaters can turn ON simultaneously** → peak current spike
+
+**Example Failure Scenario:**
+
+```
+Time:    0ms    400ms   800ms   1000ms
+Brew:    [████████████] (40% duty, starts at t=0)
+Steam:   [████████████] (40% duty, ALSO starts at t=0)
+         ↑
+         Both ON simultaneously for 400ms!
+         Result: ~12A peak (on 120V) → 15A breaker trips
+```
+
+### Required Enhancement: Phase-Shifted PWM
+
+To make `HEAT_SMART_STAGGER` safe, implement **Time Division Multiplexing (TDM)**:
+
+**Strict Interleaving (Recommended):**
+
+```
+Time:    0ms    400ms   800ms   1000ms
+Brew:    [████████████]
+Steam:                [████████████]
+         ↑
+         No overlap → Peak current = single heater only (~6A)
+```
+
+**Implementation Approach:**
+
+1. **Modify PWM scheduling** to accept start time offset:
+
+   ```c
+   void set_ssr_schedule(uint8_t ssr_id, uint32_t start_ms, uint32_t duration_ms);
+   ```
+
+2. **In control loop**, calculate phase offsets:
+
+   ```c
+   // Brew always starts at t=0
+   uint32_t brew_start = 0;
+   uint32_t brew_duration = (brew_duty_pct * 10);  // Convert % to ms
+
+   // Steam starts AFTER brew finishes (strict interleaving)
+   uint32_t steam_start = brew_duration;
+   uint32_t steam_duration = (steam_duty_pct * 10);
+
+   // If total > 1000ms, steam wraps (creates controlled overlap)
+   if (steam_start + steam_duration > 1000) {
+       steam_start = 0;  // Wrap to beginning
+       // Overlap is intentional and controlled
+   }
+   ```
+
+3. **Use hardware timer** to schedule SSR ON/OFF transitions within the 1-second PWM period
+
+### Safety Recommendations
+
+**Until phase synchronization is implemented:**
+
+1. **15A circuits:** Use `HEAT_SEQUENTIAL` only (guaranteed safe)
+2. **20A+ circuits:** `HEAT_SMART_STAGGER` may work, but:
+   - Set `max_combined_duty ≤ 100` (strict interleaving intent)
+   - Monitor for breaker trips
+   - Add warning in UI: "High Performance Mode - May trip sensitive breakers"
+
+**After phase synchronization is implemented:**
+
+- `max_combined_duty ≤ 100`: Strict interleaving (safe for 15A)
+- `max_combined_duty > 100`: Controlled overlap (safe for 20A+, risky for 15A)
+
+### Breaker Trip Curve Consideration
+
+Residential thermal-magnetic breakers have a trip curve:
+
+- **Magnetic trip (instant):** 5-10x rated current (75-150A for 15A breaker) - safe zone
+- **Thermal trip (delayed):** 1.5x rated current (22.5A) can hold for 30s-2min
+
+**Overlap mode** relies on thermal trip delay. Short overlaps (200ms every 1s) may not trip, but:
+
+- ⚠️ Other loads on same circuit reduce margin
+- ⚠️ Ambient temperature affects trip time
+- ⚠️ Not guaranteed safe
+
+**Best Practice:** Implement strict interleaving (sum ≤ 100%) for guaranteed safety.
