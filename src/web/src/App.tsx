@@ -17,7 +17,7 @@ import { initConnection, getConnection } from '@/lib/connection';
 import { initializeStore } from '@/lib/store';
 import { useAppStore } from '@/lib/mode';
 import { useThemeStore } from '@/lib/themeStore';
-import { Loader2 } from 'lucide-react';
+import { Loading } from '@/components/Loading';
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -96,14 +96,7 @@ function App() {
 
   // Show loading state
   if (loading || !initialized) {
-    return (
-      <div className="min-h-screen bg-theme flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto mb-4" />
-          <p className="text-theme-muted">Loading...</p>
-        </div>
-      </div>
-    );
+    return <Loading />;
   }
 
   // ===== LOCAL MODE (ESP32) =====
