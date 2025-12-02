@@ -6,12 +6,15 @@ import { Logo } from '@/components/Logo';
 import { useAuth } from '@/lib/auth';
 import { isGoogleAuthConfigured } from '@/lib/auth';
 import { enableDemoMode } from '@/lib/demo-mode';
+import { useThemeStore } from '@/lib/themeStore';
 import { AlertCircle, Play } from 'lucide-react';
 
 export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, handleGoogleLogin } = useAuth();
+  const { theme } = useThemeStore();
+  const isDark = theme.isDark;
   
   // Get error from navigation state (e.g., from failed auth)
   const error = (location.state as { error?: string })?.error;
@@ -35,24 +38,24 @@ export function Login() {
               brewos.local
             </a>
           </p>
-          <div className="border-t border-cream-300 pt-6 mt-6">
+          <div className={`border-t pt-6 mt-6 ${isDark ? 'border-coffee-700' : 'border-cream-300'}`}>
             <button
               onClick={() => {
                 enableDemoMode();
                 navigate('/');
                 window.location.reload(); // Reload to initialize demo mode
               }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 
-                         bg-gradient-to-r from-violet-500/10 to-purple-500/10 
-                         hover:from-violet-500/20 hover:to-purple-500/20
-                         border border-violet-500/30 hover:border-violet-500/50
-                         text-violet-700 font-medium rounded-lg transition-all
-                         group"
+              className={`w-full flex items-center justify-center gap-2 px-4 py-3 
+                         font-medium rounded-lg transition-all group
+                         ${isDark 
+                           ? 'bg-gradient-to-r from-violet-500/20 to-purple-500/20 hover:from-violet-500/30 hover:to-purple-500/30 border border-violet-400/30 hover:border-violet-400/50 text-violet-300' 
+                           : 'bg-gradient-to-r from-violet-500/10 to-purple-500/10 hover:from-violet-500/20 hover:to-purple-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-700'
+                         }`}
             >
               <Play className="w-4 h-4 group-hover:scale-110 transition-transform" />
               Try Demo
             </button>
-            <p className="text-center text-xs text-coffee-400 mt-2">
+            <p className="text-center text-xs text-theme-muted mt-2">
               Explore the app with simulated machine data
             </p>
           </div>
@@ -75,7 +78,11 @@ export function Login() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+          <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 ${
+            isDark 
+              ? 'bg-red-900/30 border border-red-400/30 text-red-300' 
+              : 'bg-red-50 border border-red-200 text-red-700'
+          }`}>
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span className="text-sm">{error}</span>
           </div>
@@ -101,14 +108,14 @@ export function Login() {
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-cream-300"></div>
+              <div className={`w-full border-t ${isDark ? 'border-coffee-700' : 'border-cream-300'}`}></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-white text-coffee-400">or</span>
+              <span className={`px-4 ${isDark ? 'bg-[var(--card-bg)] text-coffee-500' : 'bg-white text-coffee-400'}`}>or</span>
             </div>
           </div>
 
-          <p className="text-center text-sm text-coffee-500">
+          <p className="text-center text-sm text-theme-muted">
             Connect locally at{' '}
             <a href="http://brewos.local" className="text-accent hover:underline">
               brewos.local
@@ -117,10 +124,10 @@ export function Login() {
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-cream-300"></div>
+              <div className={`w-full border-t ${isDark ? 'border-coffee-700' : 'border-cream-300'}`}></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-white text-coffee-400">or</span>
+              <span className={`px-4 ${isDark ? 'bg-[var(--card-bg)] text-coffee-500' : 'bg-white text-coffee-400'}`}>or</span>
             </div>
           </div>
 
@@ -130,17 +137,17 @@ export function Login() {
               navigate('/');
               window.location.reload(); // Reload to initialize demo mode
             }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 
-                       bg-gradient-to-r from-violet-500/10 to-purple-500/10 
-                       hover:from-violet-500/20 hover:to-purple-500/20
-                       border border-violet-500/30 hover:border-violet-500/50
-                       text-violet-700 font-medium rounded-lg transition-all
-                       group"
+            className={`w-full flex items-center justify-center gap-2 px-4 py-3 
+                       font-medium rounded-lg transition-all group
+                       ${isDark 
+                         ? 'bg-gradient-to-r from-violet-500/20 to-purple-500/20 hover:from-violet-500/30 hover:to-purple-500/30 border border-violet-400/30 hover:border-violet-400/50 text-violet-300' 
+                         : 'bg-gradient-to-r from-violet-500/10 to-purple-500/10 hover:from-violet-500/20 hover:to-purple-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-700'
+                       }`}
           >
             <Play className="w-4 h-4 group-hover:scale-110 transition-transform" />
             Try Demo
           </button>
-          <p className="text-center text-xs text-coffee-400">
+          <p className="text-center text-xs text-theme-muted">
             Explore the app with simulated machine data
           </p>
         </div>
