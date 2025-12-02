@@ -20,7 +20,7 @@ import { useThemeStore } from '@/lib/themeStore';
 import { Loading } from '@/components/Loading';
 import { DemoBanner } from '@/components/DemoBanner';
 import { getDemoConnection, clearDemoConnection } from '@/lib/demo-connection';
-import { isDemoMode, disableDemoMode } from '@/lib/demo-mode';
+import { isDemoMode } from '@/lib/demo-mode';
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -129,15 +129,9 @@ function App() {
 
   // Handle demo exit
   const handleExitDemo = () => {
-    // Clear demo mode from localStorage
-    disableDemoMode();
-    // Clear connection
-    setActiveConnection(null);
-    clearDemoConnection();
-    // Navigate to home without demo param
-    const url = new URL(window.location.href);
-    url.searchParams.delete('demo');
-    window.location.href = url.pathname;
+    // Navigate to login page - the login page will clear demo mode
+    // Don't clear here to avoid connection errors during navigation
+    window.location.href = '/login?exitDemo=true';
   };
 
   // Show loading state

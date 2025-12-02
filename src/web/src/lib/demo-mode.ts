@@ -9,19 +9,32 @@ const DEMO_MODE_KEY = "brewos-demo-mode";
  * Check if demo mode is enabled (from localStorage or URL param)
  */
 export function isDemoMode(): boolean {
-  // Check localStorage first
-  if (localStorage.getItem(DEMO_MODE_KEY) === "true") {
-    return true;
-  }
-
-  // Check URL parameter
   if (typeof window !== "undefined") {
     const params = new URLSearchParams(window.location.search);
+
+    // Check if we're exiting demo mode - clear it immediately before any other checks
+    if (params.get("exitDemo") === "true") {
+      disableDemoMode();
+      // Clean up the URL
+      params.delete("exitDemo");
+      const newUrl = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname;
+      window.history.replaceState({}, "", newUrl);
+      return false;
+    }
+
+    // Check URL parameter to enter demo mode
     if (params.get("demo") === "true") {
       // Persist to localStorage so it survives navigation
       enableDemoMode();
       return true;
     }
+  }
+
+  // Check localStorage
+  if (localStorage.getItem(DEMO_MODE_KEY) === "true") {
+    return true;
   }
 
   return false;
