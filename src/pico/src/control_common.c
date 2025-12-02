@@ -105,12 +105,14 @@ void pid_init(pid_state_t* pid, float setpoint) {
     pid->kd = PID_DEFAULT_KD;
     pid->setpoint = setpoint;
     pid->setpoint_target = setpoint;
-    pid->integral = 0;
-    pid->last_error = 0;
-    pid->last_derivative = 0;
-    pid->output = 0;
+    pid->integral = 0.0f;
+    pid->last_error = 0.0f;
+    pid->last_measurement = 0.0f;
+    pid->last_derivative = 0.0f;
+    pid->output = 0.0f;
     pid->setpoint_ramping = false;
     pid->ramp_rate = 1.0f;
+    pid->first_run = true;  // Skip derivative on first call to avoid spike
 }
 
 // =============================================================================
@@ -118,10 +120,12 @@ void pid_init(pid_state_t* pid, float setpoint) {
 // =============================================================================
 
 float pid_compute(pid_state_t* pid, float process_value, float dt) {
-    // Lock to ensure consistent read of PID parameters
+    // Lock for entire PID computation to prevent race with control_set_pid on Core 1
+    // This protects all state fields: setpoint, integral, last_error, last_measurement,
+    // last_derivative, first_run, output - which could be modified by control_set_pid
     control_lock();
     
-    // Copy parameters to local variables to minimize lock time
+    // Read parameters (protected by lock)
     float kp = pid->kp;
     float ki = pid->ki;
     float kd = pid->kd;
@@ -129,8 +133,6 @@ float pid_compute(pid_state_t* pid, float process_value, float dt) {
     bool ramping = pid->setpoint_ramping;
     float ramp_rate = pid->ramp_rate;
     float setpoint = pid->setpoint;
-    
-    control_unlock();
     
     // Update setpoint with ramping if enabled
     if (ramping) {
@@ -148,14 +150,13 @@ float pid_compute(pid_state_t* pid, float process_value, float dt) {
             }
         }
         
-        // Update state (these are written by control loop, safe without lock)
         pid->setpoint = setpoint;
         pid->setpoint_ramping = ramping;
     }
     
     float error = setpoint - process_value;
     
-    // Proportional (using local copy of kp)
+    // Proportional
     float p_term = kp * error;
     
     // Integral with anti-windup
@@ -173,13 +174,34 @@ float pid_compute(pid_state_t* pid, float process_value, float dt) {
     }
     
     // Derivative with filtering (first-order low-pass filter)
-    // alpha = dt / (tau + dt), where tau is filter time constant
-    // This makes the filter behavior independent of loop frequency
-    float derivative = (error - pid->last_error) / dt;
-    float tau = PID_DERIVATIVE_FILTER_TAU;  // Filter time constant (seconds)
-    float alpha = dt / (tau + dt);           // Calculate alpha based on dt
-    pid->last_derivative = alpha * derivative + (1.0f - alpha) * pid->last_derivative;
-    float d_term = kd * pid->last_derivative;  // Using local copy of kd
+    // IMPORTANT: Use derivative-on-measurement, NOT derivative-on-error
+    // This prevents "derivative kick" when setpoint changes
+    // 
+    // When measurement increases (approaching setpoint from below),
+    // d(measurement)/dt is positive, so we use negative sign to reduce output
+    // 
+    // On first call, skip derivative calculation to avoid spike
+    float d_term = 0.0f;
+    if (pid->first_run) {
+        // First call: initialize last_measurement, skip derivative
+        pid->last_measurement = process_value;
+        pid->last_derivative = 0.0f;
+        pid->first_run = false;
+    } else {
+        // Normal operation: derivative on measurement (negative sign for correct action)
+        float measurement_derivative = (process_value - pid->last_measurement) / dt;
+        
+        // Low-pass filter on derivative
+        // alpha = dt / (tau + dt), where tau is filter time constant
+        float tau = PID_DERIVATIVE_FILTER_TAU;
+        float alpha = dt / (tau + dt);
+        pid->last_derivative = alpha * measurement_derivative + (1.0f - alpha) * pid->last_derivative;
+        
+        // Negative sign: increasing measurement should reduce output
+        d_term = -kd * pid->last_derivative;
+        
+        pid->last_measurement = process_value;
+    }
     
     pid->last_error = error;
     
@@ -189,6 +211,9 @@ float pid_compute(pid_state_t* pid, float process_value, float dt) {
     if (output < PID_OUTPUT_MIN) output = PID_OUTPUT_MIN;
     
     pid->output = output;
+    
+    control_unlock();
+    
     return output;
 }
 
@@ -642,9 +667,12 @@ void control_set_pid(uint8_t target, float kp, float ki, float kd) {
     pid->kp = kp;
     pid->ki = ki;
     pid->kd = kd;
-    pid->integral = 0;
-    pid->last_error = 0;
-    pid->last_derivative = 0;
+    pid->integral = 0.0f;
+    pid->last_error = 0.0f;
+    pid->last_measurement = 0.0f;
+    pid->last_derivative = 0.0f;
+    // Set first_run to skip derivative on next compute (prevents spike from stale last_measurement)
+    pid->first_run = true;
     
     control_unlock();
     

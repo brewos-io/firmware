@@ -38,10 +38,12 @@ typedef struct {
     float setpoint_target;      // Target for ramping
     float integral;
     float last_error;
+    float last_measurement;     // For derivative-on-measurement (avoids setpoint kick)
     float last_derivative;      // For derivative filtering
     float output;
     bool setpoint_ramping;      // Enable setpoint ramping
     float ramp_rate;            // Degrees per second
+    bool first_run;             // True on first call (skips derivative to avoid spike)
 } pid_state_t;
 
 // =============================================================================

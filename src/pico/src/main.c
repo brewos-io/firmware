@@ -605,6 +605,10 @@ int main(void) {
     uint32_t last_sensor = 0;
     uint32_t last_water = 0;
     
+    // Initialize Core 1 last-seen timestamp to current time
+    // This prevents false watchdog triggers if boot takes longer than CORE1_TIMEOUT_MS
+    g_core1_last_seen = to_ms_since_boot(get_absolute_time());
+    
     // Main control loop (Core 0)
     while (true) {
         uint32_t now = to_ms_since_boot(get_absolute_time());

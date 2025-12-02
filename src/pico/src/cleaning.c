@@ -14,6 +14,7 @@
 #include "config.h"
 #include "pico/stdlib.h"
 #include <string.h>
+#include <stdint.h>  // For UINT16_MAX
 
 // =============================================================================
 // Private State
@@ -71,7 +72,10 @@ void cleaning_record_brew_cycle(uint32_t brew_duration_ms) {
     // Only count brews that last at least 15 seconds
     // This matches ECM Synchronika behavior
     if (brew_duration_ms >= CLEANING_CYCLE_MIN_TIME_MS) {
-        g_brew_count++;
+        // Saturate at UINT16_MAX to prevent overflow (losing brew count)
+        if (g_brew_count < UINT16_MAX) {
+            g_brew_count++;
+        }
         g_dirty = true;
         
         DEBUG_PRINT("Cleaning: Brew cycle recorded (count=%d, duration=%lu ms)\n", 

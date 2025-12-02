@@ -20,9 +20,46 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ==========================================================================
+  # Pico Unit Tests (runs first, blocks build on failure)
+  # ==========================================================================
+  test-pico:
+    name: Pico Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Build Tests
+        run: |
+          cd src/pico/test
+          mkdir -p build && cd build
+          cmake ..
+          make -j$(nproc)
+
+      - name: Run Tests
+        run: |
+          cd src/pico/test/build
+          ./brewos_tests
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "=== Pico Unit Tests Complete ==="
+
+  # ==========================================================================
+  # Pico Firmware Build
+  # ==========================================================================
   build-pico:
     name: Build Pico Firmware
     runs-on: ubuntu-latest
+    needs: test-pico  # Run tests before building
     
     steps:
       - name: Checkout
