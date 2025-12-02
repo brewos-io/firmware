@@ -12,7 +12,7 @@ import {
   type AuthSession,
 } from "./auth";
 import { useBackendInfo } from "./backend-info";
-import type { BackendInfo } from "./api-version";
+import { checkCompatibility, type BackendInfo } from "./api-version";
 
 /**
  * Fetch mode from server - the server knows if it's ESP32 (local) or cloud
@@ -164,9 +164,7 @@ export const useAppStore = create<AppState>()(
         // Update backend info store (for feature detection)
         if (backendInfo) {
           // Directly set info instead of fetching again
-          const { compatible, warnings, errors } = await import("./api-version").then(
-            (m) => m.checkCompatibility(backendInfo)
-          );
+          const { compatible, warnings, errors } = checkCompatibility(backendInfo);
           useBackendInfo.setState({
             info: backendInfo,
             loading: false,
