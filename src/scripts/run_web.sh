@@ -1,19 +1,19 @@
 #!/bin/bash
-# Run BrewOS Web UI in development mode
-# Usage: ./run_web.sh [--cloud]
+# Run BrewOS Marketing Site in development mode
+# Usage: ./run_site.sh [--build]
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WEB_DIR="$SCRIPT_DIR/../web"
+SITE_DIR="$SCRIPT_DIR/../../pages"
 
-# Check if web directory exists
-if [ ! -d "$WEB_DIR" ]; then
-    echo "❌ Web directory not found: $WEB_DIR"
+# Check if pages directory exists
+if [ ! -d "$SITE_DIR" ]; then
+    echo "❌ Pages directory not found: $SITE_DIR"
     exit 1
 fi
 
-cd "$WEB_DIR"
+cd "$SITE_DIR"
 
 # Install dependencies if needed
 if [ ! -d "node_modules" ]; then
@@ -21,14 +21,20 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Check for --cloud flag
-if [ "$1" == "--cloud" ]; then
-    echo "☁️  Starting web app in cloud mode..."
-    echo "   Make sure to set VITE_GOOGLE_CLIENT_ID in .env"
-    npm run dev -- --mode cloud
+# Check for --build flag
+if [ "$1" == "--build" ]; then
+    echo "🔨 Building site for production..."
+    npm run build
+    echo ""
+    echo "✅ Build complete! Output in: $SITE_DIR/dist"
+    echo "   Run 'npm run preview' from pages/ to preview"
+elif [ "$1" == "--preview" ]; then
+    echo "🔨 Building and previewing..."
+    npm run serve
 else
-    echo "🌐 Starting web app in local/ESP32 mode..."
-    echo "   Connect to your ESP32 at http://brewos.local or its IP address"
+    echo "🌐 Starting Astro dev server..."
+    echo "   Site will be available at http://localhost:4321"
+    echo ""
     npm run dev
 fi
 

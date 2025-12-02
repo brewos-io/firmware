@@ -1,0 +1,345 @@
+---
+interface Props {
+  currentPath?: string;
+}
+
+const { currentPath = '/' } = Astro.props;
+
+const navLinks = [
+  { href: '/', label: 'Home', internal: true },
+  { href: '/#features', label: 'Features', internal: true },
+  { href: '/#compatibility', label: 'Compatibility', internal: true },
+  { href: '/partnerships', label: 'Partners', internal: true },
+  { href: 'https://github.com/mizrachiran/brewos', label: 'GitHub', internal: false },
+];
+---
+
+<header>
+  <nav class="container">
+    <a href="/" class="logo">
+      <img src="/assets/1080/horizontal/full-color/Brewos-1080.png" alt="BrewOS" />
+    </a>
+    <ul class="nav-links">
+      {navLinks.map(link => (
+        <li>
+          <a 
+            href={link.href} 
+            target={link.internal ? undefined : '_blank'}
+            class={currentPath === link.href ? 'active' : ''}
+          >
+            {link.label}
+          </a>
+        </li>
+      ))}
+      <li>
+        <a href="#" class="nav-install" id="installBtn" onclick="handleInstallClick(event)">
+          Install App
+        </a>
+      </li>
+      <li>
+        <a href="/getting-started" class="nav-cta">Get Started</a>
+      </li>
+      <li>
+        <a href="https://cloud.brewos.io?demo=true" class="nav-signin nav-demo">Try Demo</a>
+      </li>
+      <li>
+        <a href="https://cloud.brewos.io" class="nav-signin">Sign In</a>
+      </li>
+    </ul>
+    <button class="mobile-menu-btn" aria-label="Menu" id="mobileMenuBtn">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </nav>
+</header>
+
+<!-- Mobile Menu -->
+<div class="mobile-menu" id="mobileMenu">
+  <button class="mobile-menu-close" aria-label="Close Menu" id="mobileMenuClose">×</button>
+  <ul>
+    {navLinks.map(link => (
+      <li>
+        <a href={link.href} target={link.internal ? undefined : '_blank'}>
+          {link.label}
+        </a>
+      </li>
+    ))}
+    <li>
+      <a href="/getting-started" class="nav-cta">Get Started</a>
+    </li>
+    <li>
+      <a href="https://cloud.brewos.io?demo=true" class="nav-signin nav-demo">Try Demo</a>
+    </li>
+    <li>
+      <a href="https://cloud.brewos.io" class="nav-signin">Sign In</a>
+    </li>
+    <li>
+      <a href="#" class="nav-install" id="installBtnMobile" onclick="handleInstallClick(event)">
+        Install App
+      </a>
+    </li>
+  </ul>
+</div>
+
+<style>
+  header {
+    position: fixed;
+    width: 100%;
+    top: 0;
+    z-index: 1000;
+    background: rgba(250, 248, 245, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(212, 200, 184, 0.5);
+    transition: all 0.3s ease;
+    padding: 10px 0;
+  }
+
+  header.scrolled {
+    box-shadow: var(--shadow-md);
+  }
+
+  nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+  }
+
+  .logo img {
+    height: 44px;
+    width: auto;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 10px 16px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+  }
+
+  .nav-links a:hover,
+  .nav-links a.active {
+    color: var(--coffee-800);
+    background: var(--cream-200);
+  }
+
+  .nav-cta {
+    background: var(--coffee-800) !important;
+    color: var(--white) !important;
+    margin-left: 8px;
+  }
+
+  .nav-cta:hover {
+    background: var(--coffee-700) !important;
+    transform: translateY(-1px);
+  }
+
+  .nav-signin {
+    background: transparent !important;
+    color: var(--accent) !important;
+    border: 1.5px solid var(--accent);
+  }
+
+  .nav-signin:hover {
+    background: var(--accent) !important;
+    color: var(--white) !important;
+    transform: translateY(-1px);
+  }
+
+  .nav-demo {
+    border-color: var(--accent-light) !important;
+    color: var(--accent-light) !important;
+  }
+
+  .nav-demo:hover {
+    background: var(--accent-light) !important;
+    color: var(--white) !important;
+  }
+
+  .nav-install {
+    display: none;
+    color: var(--accent) !important;
+    border: 1.5px solid var(--accent);
+  }
+
+  .nav-install:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  :global(.nav-install.visible) {
+    display: inline-flex;
+  }
+
+  .mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+  }
+
+  .mobile-menu-btn span {
+    display: block;
+    width: 24px;
+    height: 2px;
+    background: var(--coffee-800);
+    margin: 5px 0;
+    transition: 0.3s;
+  }
+
+  .mobile-menu {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    background: var(--cream-100);
+    z-index: 1001;
+    padding: 80px 24px 24px;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  :global(.mobile-menu.active) {
+    display: block;
+    transform: translateX(0);
+  }
+
+  .mobile-menu ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .mobile-menu li {
+    width: 100%;
+  }
+
+  .mobile-menu a {
+    display: block;
+    padding: 16px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+  }
+
+  .mobile-menu a:hover {
+    background: var(--cream-200);
+    color: var(--coffee-800);
+  }
+
+  .mobile-menu .nav-cta {
+    background: var(--coffee-800);
+    color: var(--white);
+    margin-top: 8px;
+  }
+
+  .mobile-menu .nav-signin {
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    margin-top: 8px;
+  }
+
+  .mobile-menu .nav-install {
+    display: none;
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    margin-top: 8px;
+    text-align: center;
+  }
+
+  :global(.mobile-menu .nav-install.visible) {
+    display: block;
+  }
+
+  .mobile-menu-close {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    background: none;
+    border: none;
+    font-size: 28px;
+    color: var(--coffee-800);
+    cursor: pointer;
+    padding: 8px;
+    line-height: 1;
+  }
+
+  @media (max-width: 1024px) {
+    .nav-links {
+      display: none;
+    }
+
+    .mobile-menu-btn {
+      display: block;
+    }
+
+    .mobile-menu {
+      display: block;
+    }
+  }
+</style>
+
+<script>
+  // Mobile menu toggle
+  const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  const mobileMenu = document.getElementById('mobileMenu');
+
+  function openMobileMenu() {
+    mobileMenu?.classList.add('active');
+    mobileMenuBtn?.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeMobileMenu() {
+    mobileMenu?.classList.remove('active');
+    mobileMenuBtn?.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  mobileMenuBtn?.addEventListener('click', openMobileMenu);
+
+  document.getElementById('mobileMenuClose')?.addEventListener('click', closeMobileMenu);
+
+  // Close menu when clicking on a link
+  mobileMenu?.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', closeMobileMenu);
+  });
+
+  // Header scroll effect
+  const header = document.querySelector('header');
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > 50) {
+      header?.classList.add('scrolled');
+    } else {
+      header?.classList.remove('scrolled');
+    }
+  });
+</script>
+

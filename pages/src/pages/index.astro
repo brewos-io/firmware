@@ -1,0 +1,886 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const features = [
+  {
+    title: 'Precision PID Control',
+    description: 'Dual independent PID loops maintain sub-degree temperature stability for both brew and steam boilers. Achieve café-quality consistency at home.',
+    icon: 'target'
+  },
+  {
+    title: 'Cloud Connected',
+    description: 'Monitor and control your machine from anywhere in the world. Real-time temperatures, pressure, and shot data at your fingertips via MQTT.',
+    icon: 'cloud'
+  },
+  {
+    title: 'OTA Updates',
+    description: 'Keep your machine running the latest features with wireless firmware updates. No cables, no hassle, just better coffee.',
+    icon: 'refresh'
+  },
+  {
+    title: 'Brew-by-Weight',
+    description: 'Connect your Bluetooth scale for automatic shot stopping. Achieve consistent ratios every time with Acaia, Felicita, and more.',
+    icon: 'scale'
+  },
+  {
+    title: 'Safety First',
+    description: 'Hardware watchdog, temperature limits, water interlocks, and fail-safe design. Your machine is protected at every level.',
+    icon: 'shield'
+  },
+  {
+    title: 'Shot Analytics',
+    description: 'Track your shots, temperatures, and power consumption. Get cleaning reminders and maintenance insights automatically.',
+    icon: 'chart'
+  },
+  {
+    title: 'Smart Schedules',
+    description: 'Wake up to a pre-heated machine. Set daily schedules, auto-sleep timers, and energy-saving modes tailored to your routine.',
+    icon: 'clock'
+  },
+  {
+    title: 'Shot Profiling',
+    description: 'Create and save custom pressure and flow profiles. Experiment with pre-infusion, ramps, and blooming for the perfect extraction.',
+    icon: 'pulse'
+  },
+  {
+    title: 'Faster Heat-Up',
+    description: 'Intelligent heating algorithms get your machine ready quicker. Smart power management reduces wait time without compromising stability.',
+    icon: 'bolt'
+  }
+];
+
+const steps = [
+  { title: 'Get the Hardware', description: 'Order the custom PCB and components from our BOM list' },
+  { title: 'Flash Firmware', description: 'Download and flash BrewOS to your Pico & ESP32' },
+  { title: 'Install & Wire', description: 'Replace the stock controller and connect sensors' },
+  { title: 'Configure & Brew', description: 'Set your preferences and start pulling perfect shots' }
+];
+
+const machines = [
+  { icon: '☕', title: 'Dual Boiler', description: 'ECM Synchronika, Profitec Pro 700', status: 'supported' },
+  { icon: '🔥', title: 'Single Boiler', description: 'Rancilio Silvia, Gaggia Classic Pro', status: 'supported' },
+  { icon: '💨', title: 'Heat Exchanger', description: 'E61 HX machines with steam priority', status: 'supported' },
+  { icon: '⚡', title: 'Thermoblock', description: 'Breville, DeLonghi style machines', status: 'planned' }
+];
+
+const integrations = [
+  { name: 'Home Assistant', logo: 'ha', featured: true, badge: 'Native', description: 'Full native integration via MQTT auto-discovery. Control your machine, monitor temperatures, and automate your coffee routine from your smart home dashboard.', features: ['Auto-discovery', 'Real-time sensors', 'Automations', 'Lovelace cards'] },
+  { name: 'MQTT', logo: 'mqtt', description: 'Lightweight pub/sub messaging for any IoT platform.' },
+  { name: 'REST API', logo: 'api', description: 'Full HTTP API for custom integrations and apps.' },
+  { name: 'Webhooks', logo: 'webhook', description: 'Trigger external services on brew events.' },
+  { name: 'BT Scales', logo: 'api', description: 'Acaia, Felicita, Decent for brew-by-weight.' }
+];
+
+const partners = [
+  { title: 'White-Label Firmware', description: 'Custom branding, UI themes, and feature sets tailored to your product line.', icon: 'layers' },
+  { title: 'Hardware Design', description: 'PCB customization, component selection, and integration support for your machines.', icon: 'cpu' },
+  { title: 'Cloud Integration', description: 'Connect to your existing platform with our flexible API, or use our cloud infrastructure.', icon: 'cloud' },
+  { title: 'Dedicated Support', description: 'Priority engineering assistance, custom development, and ongoing maintenance.', icon: 'users' }
+];
+---
+
+<BaseLayout title="BrewOS - Open Source Espresso Machine Firmware" currentPath="/">
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-content">
+        <div class="hero-text">
+          <div class="hero-badge">
+            <span class="dot"></span>
+            Open Source & Community Driven
+          </div>
+          <h1>Unlock Your Espresso Machine's <span>Full Potential</span></h1>
+          <p class="hero-description">
+            Professional-grade firmware that transforms your espresso machine with precise PID control, 
+            real-time monitoring, and smart features. Built by coffee enthusiasts, for coffee enthusiasts.
+          </p>
+          <div class="hero-cta">
+            <a href="https://github.com/mizrachiran/brewos" class="btn btn-primary" target="_blank">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+              </svg>
+              View on GitHub
+            </a>
+            <a href="https://github.com/mizrachiran/brewos/blob/main/README.md" class="btn btn-secondary">
+              Read the Docs
+            </a>
+          </div>
+          <div class="hero-stats">
+            <div class="stat">
+              <div class="stat-value">±0.5°C</div>
+              <div class="stat-label">Temperature Stability</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value">100+</div>
+              <div class="stat-label">Supported Machines</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value">100%</div>
+              <div class="stat-label">Open Source</div>
+            </div>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <img src="/assets/compositions/icon/full-color/Brewos-1080x1080.png" alt="BrewOS Logo" class="hero-image" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Features</span>
+        <h2 class="section-title">Everything You Need for Perfect Espresso</h2>
+        <p class="section-description">
+          From precise temperature control to remote monitoring, BrewOS gives you complete command over your espresso machine.
+        </p>
+      </div>
+      <div class="feature-grid">
+        {features.map(feature => (
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                {feature.icon === 'target' && <><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></>}
+                {feature.icon === 'cloud' && <><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" /><polyline points="8 16 10 14 12 16 16 12" /></>}
+                {feature.icon === 'refresh' && <><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /></>}
+                {feature.icon === 'scale' && <><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /><line x1="12" y1="2" x2="12" y2="6" /></>}
+                {feature.icon === 'shield' && <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></>}
+                {feature.icon === 'chart' && <><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /><line x1="2" y1="20" x2="22" y2="20" /></>}
+                {feature.icon === 'clock' && <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>}
+                {feature.icon === 'pulse' && <><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></>}
+                {feature.icon === 'bolt' && <><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></>}
+              </svg>
+            </div>
+            <h3>{feature.title}</h3>
+            <p>{feature.description}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works Section -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">How It Works</span>
+        <h2 class="section-title">Get Started in 4 Simple Steps</h2>
+        <p class="section-description">
+          Transform your espresso machine in an afternoon with our easy installation process.
+        </p>
+      </div>
+      <div class="steps">
+        {steps.map((step, index) => (
+          <div class="step">
+            <div class="step-number">{index + 1}</div>
+            <h3>{step.title}</h3>
+            <p>{step.description}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Compatibility Section -->
+  <section class="compatibility" id="compatibility">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Compatibility</span>
+        <h2 class="section-title">Works With Everything You Love</h2>
+        <p class="section-description">
+          From machine types to smart home platforms, BrewOS integrates seamlessly with your setup.
+        </p>
+      </div>
+      <div class="compat-wrapper">
+        <!-- Machine Types -->
+        <div class="compat-section">
+          <div class="compat-section-header">
+            <div class="compat-section-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
+                <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
+                <line x1="6" y1="1" x2="6" y2="4" />
+                <line x1="10" y1="1" x2="10" y2="4" />
+                <line x1="14" y1="1" x2="14" y2="4" />
+              </svg>
+            </div>
+            <div class="compat-section-title">
+              <h3>Machine Types</h3>
+              <p>Automatic configuration for any architecture</p>
+            </div>
+          </div>
+          <div class="machine-list">
+            {machines.map(machine => (
+              <div class="machine-item">
+                <div class="machine-item-icon">{machine.icon}</div>
+                <div class="machine-item-content">
+                  <h4>{machine.title}</h4>
+                  <p>{machine.description}</p>
+                </div>
+                <span class={`machine-item-status ${machine.status}`}>
+                  {machine.status === 'supported' ? 'Supported' : 'Coming Soon'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <!-- Integrations -->
+        <div class="compat-section">
+          <div class="compat-section-header">
+            <div class="compat-section-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </div>
+            <div class="compat-section-title">
+              <h3>Smart Home & APIs</h3>
+              <p>Connect to your favorite platforms</p>
+            </div>
+          </div>
+          <div class="integration-grid">
+            {integrations.map(int => (
+              <div class={`integration-card ${int.featured ? 'featured' : ''}`}>
+                <div class="integration-header">
+                  <div class={`integration-logo ${int.logo}`}>
+                    {int.logo === 'ha' && (
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0L1.5 6v12L12 24l10.5-6V6L12 0zm0 2.25l8.25 4.695v9.39L12 21l-8.25-4.695v-9.39L12 2.25zm0 3a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5zm0 2.25a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 1.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+                      </svg>
+                    )}
+                    {int.logo === 'mqtt' && (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    )}
+                    {int.logo === 'api' && (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    )}
+                    {int.logo === 'webhook' && (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    )}
+                  </div>
+                  <span class="integration-name">{int.name}</span>
+                  {int.badge && <span class="integration-badge">{int.badge}</span>}
+                </div>
+                <p class="integration-desc">{int.description}</p>
+                {int.features && (
+                  <div class="integration-features">
+                    {int.features.map(f => <span class="integration-feature">{f}</span>)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Partners Section -->
+  <section class="partners" id="partners">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">For Business</span>
+        <h2 class="section-title">Partner with BrewOS</h2>
+        <p class="section-description">
+          Bring professional-grade firmware to your espresso machines. White-label solutions for manufacturers and integrators.
+        </p>
+      </div>
+      <div class="partner-grid">
+        {partners.map(partner => (
+          <div class="partner-card">
+            <div class="partner-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                {partner.icon === 'layers' && <><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></>}
+                {partner.icon === 'cpu' && <><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></>}
+                {partner.icon === 'cloud' && <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>}
+                {partner.icon === 'users' && <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}
+              </svg>
+            </div>
+            <h3>{partner.title}</h3>
+            <p>{partner.description}</p>
+          </div>
+        ))}
+      </div>
+      <div class="partner-cta">
+        <a href="/partnerships" class="btn btn-primary">
+          Learn More About Partnerships
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-content">
+        <h2>Ready to Transform Your Machine?</h2>
+        <p>Join the community of coffee enthusiasts building the future of home espresso.</p>
+        <div class="cta-buttons">
+          <a href="https://github.com/mizrachiran/brewos" class="btn btn-cta-primary" target="_blank">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            Star on GitHub
+          </a>
+          <a href="https://github.com/mizrachiran/brewos/blob/main/README.md" class="btn btn-cta-secondary" target="_blank">
+            Read the Docs
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* Hero styles */
+  .hero {
+    padding: 140px 0 100px;
+    background: linear-gradient(180deg, var(--cream-100) 0%, var(--cream-200) 100%);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 80%;
+    height: 150%;
+    background: radial-gradient(ellipse, rgba(196, 112, 60, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: center;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--white);
+    border: 1px solid var(--cream-300);
+    padding: 8px 16px;
+    border-radius: 100px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .hero-badge .dot {
+    width: 8px;
+    height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  .hero h1 {
+    font-size: 3.5rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--coffee-800);
+    margin-bottom: 24px;
+    letter-spacing: -0.02em;
+  }
+
+  .hero h1 span {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-description {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    margin-bottom: 40px;
+    max-width: 480px;
+  }
+
+  .hero-cta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 40px;
+    margin-top: 48px;
+    padding-top: 32px;
+    border-top: 1px solid var(--cream-300);
+  }
+
+  .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--coffee-800);
+  }
+
+  .stat-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
+  .hero-visual {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .hero-image {
+    max-width: 100%;
+    height: auto;
+    filter: drop-shadow(0 40px 80px rgba(26, 15, 10, 0.2));
+    animation: float 6s ease-in-out infinite;
+  }
+
+  /* Features styles */
+  .features {
+    padding: 120px 0;
+    background: var(--white);
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px;
+  }
+
+  .feature-card {
+    background: var(--cream-100);
+    border: 1px solid var(--cream-300);
+    border-radius: 20px;
+    padding: 40px 32px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+  }
+
+  .feature-card:hover {
+    transform: translateY(-8px);
+    box-shadow: var(--shadow-xl);
+    border-color: transparent;
+  }
+
+  .feature-card:hover::before {
+    transform: scaleX(1);
+  }
+
+  .feature-icon {
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, var(--coffee-800) 0%, var(--coffee-700) 100%);
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 28px;
+    box-shadow: 0 8px 24px rgba(57, 31, 18, 0.2);
+  }
+
+  .feature-icon svg {
+    width: 36px;
+    height: 36px;
+    color: var(--cream-100);
+  }
+
+  .feature-card h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--coffee-800);
+    margin-bottom: 12px;
+  }
+
+  .feature-card p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  /* How it works styles */
+  .how-it-works {
+    padding: 120px 0;
+    background: linear-gradient(180deg, var(--cream-200) 0%, var(--cream-100) 100%);
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 32px;
+    margin-top: 64px;
+  }
+
+  .step {
+    text-align: center;
+    position: relative;
+  }
+
+  .step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 40px;
+    right: -16px;
+    width: calc(100% - 80px);
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--cream-300) 100%);
+  }
+
+  .step-number {
+    width: 80px;
+    height: 80px;
+    background: var(--white);
+    border: 3px solid var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--accent);
+    position: relative;
+    z-index: 1;
+  }
+
+  .step h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--coffee-800);
+    margin-bottom: 8px;
+  }
+
+  .step p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+  }
+
+  /* Compatibility styles */
+  .compatibility {
+    padding: 120px 0;
+    background: var(--coffee-800);
+    color: var(--white);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .compatibility::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 50%;
+    height: 100%;
+    background: radial-gradient(ellipse at right, rgba(196, 112, 60, 0.1) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .compatibility .section-label { color: var(--accent-light); }
+  .compatibility .section-title { color: var(--white); }
+  .compatibility .section-description { color: var(--cream-400); }
+
+  .compat-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    margin-top: 64px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .compat-section {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    padding: 40px;
+  }
+
+  .compat-section-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .compat-section-icon {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .compat-section-icon svg {
+    width: 28px;
+    height: 28px;
+    color: var(--white);
+  }
+
+  .compat-section-title h3 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .compat-section-title p {
+    font-size: 0.9rem;
+    color: var(--cream-400);
+  }
+
+  .machine-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .machine-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .machine-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(4px);
+  }
+
+  .machine-item-icon {
+    font-size: 1.8rem;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .machine-item-content { flex: 1; }
+  .machine-item-content h4 { font-size: 1rem; font-weight: 600; margin-bottom: 2px; }
+  .machine-item-content p { font-size: 0.85rem; color: var(--cream-400); }
+
+  .machine-item-status {
+    padding: 5px 12px;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .machine-item-status.supported { background: rgba(45, 122, 79, 0.25); color: #6ee7a0; }
+  .machine-item-status.planned { background: rgba(255, 255, 255, 0.1); color: var(--cream-400); }
+
+  .integration-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .integration-card {
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    transition: all 0.3s ease;
+  }
+
+  .integration-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .integration-card.featured {
+    grid-column: span 2;
+    background: linear-gradient(135deg, rgba(24, 188, 233, 0.15) 0%, rgba(24, 188, 233, 0.05) 100%);
+    border-color: rgba(24, 188, 233, 0.3);
+  }
+
+  .integration-card.featured:hover { border-color: #18bce9; }
+
+  .integration-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .integration-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .integration-logo.ha { background: linear-gradient(135deg, #18bce9 0%, #0da5d1 100%); }
+  .integration-logo.mqtt { background: linear-gradient(135deg, #660066 0%, #8b008b 100%); }
+  .integration-logo.api { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%); }
+  .integration-logo.webhook { background: linear-gradient(135deg, #4a5568 0%, #718096 100%); }
+
+  .integration-logo svg { width: 22px; height: 22px; color: white; }
+  .integration-name { font-size: 1rem; font-weight: 600; }
+
+  .integration-badge {
+    margin-left: auto;
+    padding: 4px 10px;
+    background: rgba(45, 122, 79, 0.25);
+    color: #6ee7a0;
+    border-radius: 100px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
+  .integration-desc { font-size: 0.85rem; color: var(--cream-400); line-height: 1.5; }
+
+  .integration-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .integration-feature {
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: var(--cream-300);
+  }
+
+  /* Partners styles */
+  .partners {
+    padding: 120px 0;
+    background: linear-gradient(180deg, var(--cream-100) 0%, var(--cream-200) 100%);
+  }
+
+  .partner-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-bottom: 48px;
+  }
+
+  .partner-card {
+    background: var(--white);
+    border: 1px solid var(--cream-300);
+    border-radius: 16px;
+    padding: 32px 24px;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+
+  .partner-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--accent);
+  }
+
+  .partner-icon {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+  }
+
+  .partner-icon svg { width: 28px; height: 28px; color: var(--white); }
+  .partner-card h3 { font-size: 1.1rem; font-weight: 700; color: var(--coffee-800); margin-bottom: 8px; }
+  .partner-card p { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; }
+  .partner-cta { text-align: center; }
+
+  /* CTA Section */
+  .cta-section {
+    padding: 120px 0;
+    background: linear-gradient(135deg, var(--coffee-800) 0%, var(--coffee-900) 100%);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta-section::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -20%;
+    width: 140%;
+    height: 200%;
+    background: radial-gradient(ellipse, rgba(196, 112, 60, 0.15) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .cta-content { position: relative; z-index: 1; }
+  .cta-section h2 { font-size: 3rem; font-weight: 800; color: var(--white); margin-bottom: 16px; letter-spacing: -0.02em; }
+  .cta-section p { font-size: 1.2rem; color: var(--cream-400); margin-bottom: 40px; max-width: 500px; margin-left: auto; margin-right: auto; }
+  .cta-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+
+  /* Responsive */
+  @media (max-width: 1024px) {
+    .hero-content { grid-template-columns: 1fr; text-align: center; }
+    .hero-description { margin: 0 auto 40px; }
+    .hero-cta { justify-content: center; }
+    .hero-stats { justify-content: center; }
+    .hero-visual { order: -1; }
+    .hero-image { max-width: 300px; }
+    .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    .steps { grid-template-columns: repeat(2, 1fr); }
+    .step:not(:last-child)::after { display: none; }
+    .compat-wrapper { grid-template-columns: 1fr; gap: 32px; }
+    .partner-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 768px) {
+    .hero { padding: 120px 0 80px; }
+    .hero h1 { font-size: 2.5rem; }
+    .hero-stats { flex-direction: column; gap: 24px; align-items: center; }
+    .stat { text-align: center; }
+    .feature-grid, .steps, .partner-grid { grid-template-columns: 1fr; }
+    .integration-grid { grid-template-columns: 1fr; }
+    .integration-card.featured { grid-column: span 1; }
+    .compat-section { padding: 24px; }
+    .cta-section h2 { font-size: 2rem; }
+  }
+</style>
+

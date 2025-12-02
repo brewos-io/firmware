@@ -1,13 +1,7 @@
-import { useStore } from '@/lib/store';
-import { Card, CardHeader, CardTitle } from '@/components/Card';
-import { Logo } from '@/components/Logo';
-import {
-  Cpu,
-  Code,
-  Heart,
-  Github,
-  ExternalLink,
-} from 'lucide-react';
+import { useStore } from "@/lib/store";
+import { Card, CardHeader, CardTitle } from "@/components/Card";
+import { Logo } from "@/components/Logo";
+import { Cpu, Code, Heart, Github, ExternalLink } from "lucide-react";
 
 export function AboutSection() {
   const esp32 = useStore((s) => s.esp32);
@@ -21,11 +15,13 @@ export function AboutSection() {
           <div className="flex justify-center mb-6">
             <Logo size="xl" forceLight />
           </div>
-          <p className="text-cream-300 mb-4">Open-source espresso machine controller</p>
+          <p className="text-cream-300 mb-4">
+            Open-source espresso machine controller
+          </p>
           <div className="flex items-center justify-center gap-4 text-sm text-cream-300">
-            <span>ESP32: {esp32.version || 'Unknown'}</span>
+            <span>ESP32: {esp32.version || "Unknown"}</span>
             <span>•</span>
-            <span>Pico: {pico.version || 'Unknown'}</span>
+            <span>Pico: {pico.version || "Unknown"}</span>
           </div>
         </div>
       </Card>
@@ -66,7 +62,7 @@ export function AboutSection() {
             icon={<ExternalLink className="w-5 h-5" />}
             title="Documentation"
             description="Setup guides and API reference"
-            href="https://brewos.coffee"
+            href="https://brewos.io"
           />
         </div>
       </Card>
@@ -80,11 +76,15 @@ export function AboutSection() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
             <span className="text-theme-muted">ESP32 Version</span>
-            <p className="font-mono font-medium text-theme">{esp32.version || '—'}</p>
+            <p className="font-mono font-medium text-theme">
+              {esp32.version || "—"}
+            </p>
           </div>
           <div>
             <span className="text-theme-muted">Pico Version</span>
-            <p className="font-mono font-medium text-theme">{pico.version || '—'}</p>
+            <p className="font-mono font-medium text-theme">
+              {pico.version || "—"}
+            </p>
           </div>
           <div>
             <span className="text-theme-muted">UI Version</span>
@@ -93,7 +93,9 @@ export function AboutSection() {
           <div>
             <span className="text-theme-muted">Build</span>
             <p className="font-mono font-medium text-theme">
-              {import.meta.env.MODE === 'production' ? 'Production' : 'Development'}
+              {import.meta.env.MODE === "production"
+                ? "Production"
+                : "Development"}
             </p>
           </div>
         </div>
@@ -102,9 +104,12 @@ export function AboutSection() {
       {/* Credits */}
       <Card className="text-center">
         <p className="text-theme-muted mb-2">
-          Made with <Heart className="w-4 h-4 inline text-red-500" /> for espresso lovers
+          Made with <Heart className="w-4 h-4 inline text-red-500" /> for
+          espresso lovers
         </p>
-        <p className="text-sm text-theme-muted">© {new Date().getFullYear()} BrewOS Contributors</p>
+        <p className="text-sm text-theme-muted">
+          © {new Date().getFullYear()} BrewOS Contributors
+        </p>
       </Card>
     </div>
   );
@@ -147,10 +152,11 @@ function AboutLinkCard({ icon, title, description, href }: AboutLinkCardProps) {
         {icon}
       </div>
       <div>
-        <h4 className="font-semibold text-theme group-hover:text-accent transition-colors">{title}</h4>
+        <h4 className="font-semibold text-theme group-hover:text-accent transition-colors">
+          {title}
+        </h4>
         <p className="text-sm text-theme-muted">{description}</p>
       </div>
     </a>
   );
 }
-

@@ -1,0 +1,204 @@
+:root {
+  --coffee-900: #1a0f0a;
+  --coffee-800: #391f12;
+  --coffee-700: #5c3d2e;
+  --coffee-600: #7c5a47;
+  --coffee-500: #9b7a68;
+  --cream-100: #faf8f5;
+  --cream-200: #f5f0e8;
+  --cream-300: #e8e0d5;
+  --cream-400: #d4c8b8;
+  --accent: #c4703c;
+  --accent-light: #e8a066;
+  --accent-glow: rgba(196, 112, 60, 0.25);
+  --success: #2d7a4f;
+  --warning: #d97706;
+  --text-primary: #1a0f0a;
+  --text-secondary: #5c3d2e;
+  --text-muted: #9b7a68;
+  --white: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(26, 15, 10, 0.05);
+  --shadow-md: 0 4px 12px rgba(26, 15, 10, 0.08);
+  --shadow-lg: 0 12px 40px rgba(26, 15, 10, 0.12);
+  --shadow-xl: 0 24px 60px rgba(26, 15, 10, 0.16);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  background: var(--cream-100);
+  color: var(--text-primary);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ===== BUTTONS ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 32px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-primary {
+  background: var(--coffee-800);
+  color: var(--white);
+  box-shadow: var(--shadow-md), 0 4px 20px rgba(57, 31, 18, 0.25);
+}
+
+.btn-primary:hover {
+  background: var(--coffee-700);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), 0 8px 30px rgba(57, 31, 18, 0.3);
+}
+
+.btn-secondary {
+  background: var(--white);
+  color: var(--coffee-800);
+  border: 2px solid var(--cream-300);
+}
+
+.btn-secondary:hover {
+  border-color: var(--coffee-800);
+  background: var(--cream-100);
+}
+
+.btn-accent {
+  background: var(--accent);
+  color: var(--white);
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+
+.btn-accent:hover {
+  background: var(--accent-light);
+  transform: translateY(-2px);
+}
+
+.btn-cta-primary {
+  background: var(--accent);
+  color: var(--white);
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+
+.btn-cta-primary:hover {
+  background: var(--accent-light);
+  transform: translateY(-2px);
+}
+
+.btn-cta-secondary {
+  background: transparent;
+  color: var(--white);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-cta-secondary:hover {
+  border-color: var(--white);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ===== SECTION STYLES ===== */
+section {
+  padding: 100px 0;
+}
+
+.section-header {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto 64px;
+}
+
+.section-label {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--coffee-800);
+  margin-bottom: 16px;
+  letter-spacing: -0.02em;
+}
+
+.section-description {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .section-title {
+    font-size: 2rem;
+  }
+}
