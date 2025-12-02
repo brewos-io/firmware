@@ -53,7 +53,7 @@ export class DemoConnection implements IConnection {
     this.setState("connected");
     this.startSimulation();
 
-    // Send initial device info
+    // Send initial device info (sent once on connect)
     this.emit({
       type: "device_info",
       deviceId: "demo-device-001",
@@ -64,14 +64,8 @@ export class DemoConnection implements IConnection {
       firmwareVersion: "1.0.0-demo",
     });
 
-    // Send initial ESP32 status
-    this.emitEspStatus();
-
-    // Send initial machine/pico status immediately
-    this.emitPicoStatus();
-
-    // Send initial scale status
-    this.emitScaleStatus();
+    // Send initial unified status (machine, temps, scale, connections, etc.)
+    this.emitFullStatus();
 
     // Send initial stats
     this.emitStats();
@@ -120,15 +114,15 @@ export class DemoConnection implements IConnection {
       case "scale_tare":
         this.scaleWeight = 0;
         this.shotWeight = 0;
-        this.emitScaleStatus();
+        this.emitFullStatus();
         break;
       case "scale_disconnect":
         this.scaleConnected = false;
-        this.emitScaleStatus();
+        this.emitFullStatus();
         break;
       case "scale_connect":
         this.scaleConnected = true;
-        this.emitScaleStatus();
+        this.emitFullStatus();
         break;
       case "scale_scan":
         // Simulate BLE scan finding scales
@@ -141,7 +135,7 @@ export class DemoConnection implements IConnection {
         this.scaleWeight = 0;
         this.shotWeight = 0;
         this.flowRate = 0;
-        this.emitScaleStatus();
+        this.emitFullStatus();
         break;
       case "set_bbw":
         // Brew-by-weight settings - just acknowledge
@@ -282,8 +276,7 @@ export class DemoConnection implements IConnection {
     }
 
     // Emit status immediately on mode change to prevent UI flicker
-    this.emitPicoStatus();
-    this.emitEspStatus();
+    this.emitFullStatus();
   }
 
   private startBrewing(): void {
@@ -322,15 +315,15 @@ export class DemoConnection implements IConnection {
 
   private startSimulation(): void {
     // Main simulation loop - runs every 500ms for smooth updates
+    // Emits unified status with all machine data
     this.simulationInterval = setInterval(() => {
       this.simulateStep();
     }, 500);
 
-    // Stats and ESP status update - runs every 5 seconds
-    // Note: Uptime is now calculated in UI from machineOnTimestamp, so no need for frequent updates
+    // Stats update - runs every 5 seconds
+    // Note: ESP32 info and connection status are included in unified status
     this.statsInterval = setInterval(() => {
       this.emitStats();
-      this.emitEspStatus();
     }, 5000);
   }
 
@@ -343,13 +336,8 @@ export class DemoConnection implements IConnection {
       this.simulateBrewing();
     }
 
-    // Emit status update
-    this.emitPicoStatus();
-
-    // Emit scale status if brewing
-    if (this.isBrewing || this.scaleWeight > 0) {
-      this.emitScaleStatus();
-    }
+    // Emit unified status (includes machine, temps, scale, etc.)
+    this.emitFullStatus();
   }
 
   private simulateTemperatures(): void {
@@ -470,66 +458,73 @@ export class DemoConnection implements IConnection {
     }
   }
 
-  private emitPicoStatus(): void {
+  /**
+   * Unified status broadcast - matches ESP32 broadcastFullStatus() format
+   * Single comprehensive message containing all machine state
+   */
+  private emitFullStatus(): void {
     const state = this.getMachineState();
 
-    // Emit pico_status with temperature and sensor data
     this.emit({
-      type: "pico_status",
-      version: "1.0.0-demo",
-      machineOnTimestamp: this.machineOnTimestamp,
-      heatingStrategy: this.heatingStrategy,
-      lastShotTimestamp: this.lastShotTimestamp,
-      state,
-      isHeating: this.isHeating,
-      isBrewing: this.isBrewing,
-      brewTemp: Number(this.brewTemp.toFixed(1)),
-      steamTemp: Number(this.steamTemp.toFixed(1)),
-      brewSetpoint: this.targetBrewTemp,
-      steamSetpoint: this.targetSteamTemp,
-      groupTemp: Number(this.groupTemp.toFixed(1)),
-      pressure: Number(this.pressure.toFixed(1)),
-      power: Math.round(
-        this.isHeating ? 1400 + Math.random() * 200 : this.isBrewing ? 50 : 5
-      ),
-      voltage: 220,
-      waterLevel: "ok",
-      dripTrayFull: false,
-      // Include mode in pico_status to avoid separate status message
-      mode: this.machineMode,
-    });
-  }
-
-  private emitScaleStatus(): void {
-    this.emit({
-      type: "scale_status",
-      connected: this.scaleConnected,
-      name: this.scaleConnected ? "Acaia Lunar" : "",
-      scaleType: this.scaleConnected ? "acaia" : "",
-      weight: Number(this.scaleWeight.toFixed(1)),
-      flowRate: Number(this.flowRate.toFixed(1)),
-      stable: !this.isBrewing || this.flowRate < 0.5,
-      battery: 85,
-    });
-  }
-
-  private emitEspStatus(): void {
-    this.emit({
-      type: "esp_status",
-      version: "1.0.0-demo",
-      freeHeap: 175000 + Math.floor(Math.random() * 10000), // Slight variation
-      wifi: {
-        connected: true,
-        ssid: "Demo Network",
-        ip: "192.168.1.100",
-        rssi: -45 + Math.floor(Math.random() * 5), // Slight RSSI variation
-        apMode: false,
+      type: "status",
+      // Machine section
+      machine: {
+        state,
+        mode: this.machineMode,
+        isHeating: this.isHeating,
+        isBrewing: this.isBrewing,
+        heatingStrategy: this.heatingStrategy,
+        machineOnTimestamp: this.machineOnTimestamp,
+        lastShotTimestamp: this.lastShotTimestamp,
       },
-      mqtt: {
-        enabled: true,
-        connected: true,
-        broker: "demo.brewos.local",
-        topic: "brewos",
+      // Temperatures section
+      temps: {
+        brew: {
+          current: Number(this.brewTemp.toFixed(1)),
+          setpoint: this.targetBrewTemp,
+        },
+        steam: {
+          current: Number(this.steamTemp.toFixed(1)),
+          setpoint: this.targetSteamTemp,
+        },
+        group: Number(this.groupTemp.toFixed(1)),
+      },
+      // Pressure
+      pressure: Number(this.pressure.toFixed(1)),
+      // Power section
+      power: {
+        current: Math.round(
+          this.isHeating ? 1400 + Math.random() * 200 : this.isBrewing ? 50 : 5
+        ),
+        voltage: 220,
+      },
+      // Water section
+      water: {
+        tankLevel: "ok",
+        dripTrayFull: false,
+      },
+      // Scale section
+      scale: {
+        connected: this.scaleConnected,
+        name: this.scaleConnected ? "Acaia Lunar" : "",
+        scaleType: this.scaleConnected ? "acaia" : "",
+        weight: Number(this.scaleWeight.toFixed(1)),
+        flowRate: Number(this.flowRate.toFixed(1)),
+        stable: !this.isBrewing || this.flowRate < 0.5,
+        battery: 85,
+      },
+      // Connections section
+      connections: {
+        pico: true,
+        wifi: true,
+        mqtt: true,
+        scale: this.scaleConnected,
+      },
+      // ESP32 info
+      esp32: {
+        version: "1.0.0-demo",
+        freeHeap: 175000 + Math.floor(Math.random() * 10000),
+        uptime: Date.now(),
       },
     });
   }

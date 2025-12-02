@@ -1452,10 +1452,6 @@ void WebServer::handleWsMessage(AsyncWebSocketClient* client, uint8_t* data, siz
     }
 }
 
-void WebServer::broadcastStatus(const String& json) {
-    _ws.textAll(json);
-}
-
 void WebServer::broadcastLog(const String& message, const String& level) {
     JsonDocument doc;
     doc["type"] = "log";
@@ -1489,12 +1485,12 @@ void WebServer::broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_
     _ws.textAll(json);
 }
 
-void WebServer::broadcastPicoStatus(const ui_state_t& state) {
+// =============================================================================
+// Unified Status Broadcast - Single comprehensive message
+// =============================================================================
+void WebServer::broadcastFullStatus(const ui_state_t& state) {
     JsonDocument doc;
-    doc["type"] = "pico_status";
-    
-    // Version info
-    doc["version"] = ESP32_VERSION;
+    doc["type"] = "status";
     
     // Timestamps - track machine on time and last shot
     static uint32_t machineOnTimestamp = 0;
@@ -1518,29 +1514,10 @@ void WebServer::broadcastPicoStatus(const ui_state_t& state) {
     }
     wasBrewing = state.is_brewing;
     
-    // Send timestamps (convert to Unix-like ms for web client compatibility)
-    // Note: These are relative to boot, web client may need to handle this
-    if (machineOnTimestamp > 0) {
-        doc["machineOnTimestamp"] = machineOnTimestamp;
-    } else {
-        doc["machineOnTimestamp"] = (char*)nullptr;  // null
-    }
-    
-    if (lastShotTimestamp > 0) {
-        doc["lastShotTimestamp"] = lastShotTimestamp;
-    } else {
-        doc["lastShotTimestamp"] = (char*)nullptr;  // null
-    }
-    
-    // Temperature data
-    doc["brewTemp"] = state.brew_temp;
-    doc["steamTemp"] = state.steam_temp;
-    doc["groupTemp"] = state.group_temp;
-    doc["brewSetpoint"] = state.brew_setpoint;
-    doc["steamSetpoint"] = state.steam_setpoint;
-    
-    // Pressure
-    doc["pressure"] = state.pressure;
+    // =========================================================================
+    // Machine Section
+    // =========================================================================
+    JsonObject machine = doc["machine"].to<JsonObject>();
     
     // Machine state - convert to string for web client
     const char* stateStr = "unknown";
@@ -1555,7 +1532,7 @@ void WebServer::broadcastPicoStatus(const ui_state_t& state) {
         case UI_STATE_ECO: stateStr = "eco"; break;
         case UI_STATE_FAULT: stateStr = "fault"; break;
     }
-    doc["state"] = stateStr;
+    machine["state"] = stateStr;
     
     // Machine mode - derive from state
     const char* modeStr = "standby";
@@ -1564,34 +1541,81 @@ void WebServer::broadcastPicoStatus(const ui_state_t& state) {
     } else if (state.machine_state == UI_STATE_ECO) {
         modeStr = "eco";
     }
-    doc["mode"] = modeStr;
+    machine["mode"] = modeStr;
+    machine["isHeating"] = state.is_heating;
+    machine["isBrewing"] = state.is_brewing;
+    machine["heatingStrategy"] = state.heating_strategy;
     
-    // Flags
-    doc["isHeating"] = state.is_heating;
-    doc["isBrewing"] = state.is_brewing;
-    
-    // Heating strategy (0-3)
-    doc["heatingStrategy"] = state.heating_strategy;
-    
-    // Machine type
-    doc["machineType"] = state.machine_type;
-    
-    // Power
-    doc["power"] = state.power_watts;
-    doc["voltage"] = 220;  // TODO: Get from config
-    
-    // Water level - convert to string status
-    const char* waterLevel = "ok";
-    if (state.water_low) {
-        waterLevel = "low";
+    // Timestamps
+    if (machineOnTimestamp > 0) {
+        machine["machineOnTimestamp"] = machineOnTimestamp;
+    } else {
+        machine["machineOnTimestamp"] = (char*)nullptr;
     }
-    doc["waterLevel"] = waterLevel;
+    if (lastShotTimestamp > 0) {
+        machine["lastShotTimestamp"] = lastShotTimestamp;
+    } else {
+        machine["lastShotTimestamp"] = (char*)nullptr;
+    }
     
-    // Drip tray status
-    doc["dripTrayFull"] = false;  // TODO: Get from state when available
+    // =========================================================================
+    // Temperatures Section
+    // =========================================================================
+    JsonObject temps = doc["temps"].to<JsonObject>();
+    JsonObject brew = temps["brew"].to<JsonObject>();
+    brew["current"] = state.brew_temp;
+    brew["setpoint"] = state.brew_setpoint;
     
-    // Pico connection status
-    doc["picoConnected"] = state.pico_connected;
+    JsonObject steam = temps["steam"].to<JsonObject>();
+    steam["current"] = state.steam_temp;
+    steam["setpoint"] = state.steam_setpoint;
+    
+    temps["group"] = state.group_temp;
+    
+    // =========================================================================
+    // Pressure
+    // =========================================================================
+    doc["pressure"] = state.pressure;
+    
+    // =========================================================================
+    // Power Section
+    // =========================================================================
+    JsonObject power = doc["power"].to<JsonObject>();
+    power["current"] = state.power_watts;
+    power["voltage"] = 220;  // TODO: Get from config
+    
+    // =========================================================================
+    // Water Section
+    // =========================================================================
+    JsonObject water = doc["water"].to<JsonObject>();
+    water["tankLevel"] = state.water_low ? "low" : "ok";
+    water["dripTrayFull"] = false;  // TODO: Get from state
+    
+    // =========================================================================
+    // Scale Section
+    // =========================================================================
+    JsonObject scale = doc["scale"].to<JsonObject>();
+    scale["connected"] = state.scale_connected;
+    scale["weight"] = state.brew_weight;
+    scale["flowRate"] = state.flow_rate;
+    // Scale name and type come from scaleManager (accessed in main.cpp)
+    
+    // =========================================================================
+    // Connections Section
+    // =========================================================================
+    JsonObject connections = doc["connections"].to<JsonObject>();
+    connections["pico"] = state.pico_connected;
+    connections["wifi"] = state.wifi_connected;
+    connections["mqtt"] = state.mqtt_connected;
+    connections["scale"] = state.scale_connected;
+    
+    // =========================================================================
+    // ESP32 Info
+    // =========================================================================
+    JsonObject esp32 = doc["esp32"].to<JsonObject>();
+    esp32["version"] = ESP32_VERSION;
+    esp32["freeHeap"] = ESP.getFreeHeap();
+    esp32["uptime"] = millis();
     
     String json;
     serializeJson(doc, json);
@@ -1610,7 +1634,6 @@ void WebServer::broadcastDeviceInfo() {
     doc["machineModel"] = "";  // TODO: Add to settings when available
     
     // Machine type from Pico boot message or settings
-    // Default to "dual_boiler" for now, should be populated from Pico
     doc["machineType"] = "dual_boiler";  // TODO: Get from state
     doc["firmwareVersion"] = ESP32_VERSION;
     
@@ -1619,34 +1642,15 @@ void WebServer::broadcastDeviceInfo() {
     _ws.textAll(json);
 }
 
-void WebServer::broadcastScaleStatus(bool connected, const char* name, float weight, float flowRate, bool stable, int battery) {
+void WebServer::broadcastEvent(const String& event, const JsonDocument* data) {
     JsonDocument doc;
-    doc["type"] = "scale_status";
-    doc["connected"] = connected;
-    doc["name"] = name ? name : "";
+    doc["type"] = "event";
+    doc["event"] = event;
+    doc["timestamp"] = millis();
     
-    // Scale type detection based on name
-    String scaleType = "";
-    if (name && strlen(name) > 0) {
-        String nameStr = String(name);
-        nameStr.toLowerCase();
-        if (nameStr.indexOf("acaia") >= 0 || nameStr.indexOf("lunar") >= 0 || nameStr.indexOf("pearl") >= 0) {
-            scaleType = "acaia";
-        } else if (nameStr.indexOf("felicita") >= 0 || nameStr.indexOf("arc") >= 0) {
-            scaleType = "felicita";
-        } else if (nameStr.indexOf("decent") >= 0) {
-            scaleType = "decent";
-        } else if (nameStr.indexOf("skale") >= 0) {
-            scaleType = "skale";
-        } else {
-            scaleType = "generic";
-        }
+    if (data) {
+        doc["data"] = *data;
     }
-    doc["scaleType"] = scaleType;
-    doc["weight"] = weight;
-    doc["flowRate"] = flowRate;
-    doc["stable"] = stable;
-    doc["battery"] = battery >= 0 ? battery : 0;
     
     String json;
     serializeJson(doc, json);

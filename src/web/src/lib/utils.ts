@@ -79,16 +79,16 @@ export function getMachineStateLabel(state: string): string {
 
 export function getMachineStateColor(state: string): string {
   const colors: Record<string, string> = {
-    unknown: 'bg-gray-100 text-gray-700',
-    init: 'bg-blue-100 text-blue-700',
-    idle: 'bg-cream-200 text-coffee-700',
-    heating: 'bg-amber-100 text-amber-700',
-    ready: 'bg-emerald-100 text-emerald-700',
+    unknown: 'badge-info',
+    init: 'badge-info',
+    idle: 'bg-theme-secondary text-theme-secondary',
+    heating: 'badge-warning',
+    ready: 'badge-success',
     brewing: 'bg-accent/20 text-accent',
-    steaming: 'bg-blue-100 text-blue-700',
-    cooldown: 'bg-sky-100 text-sky-700',
-    fault: 'bg-red-100 text-red-700',
+    steaming: 'badge-info',
+    cooldown: 'badge-info',
+    fault: 'badge-error',
   };
-  return colors[state] || 'bg-gray-100 text-gray-700';
+  return colors[state] || 'badge-info';
 }
 

@@ -22,13 +22,14 @@ public:
     // Update - call in loop
     void loop();
     
-    // Send data to all WebSocket clients
-    void broadcastStatus(const String& json);
-    void broadcastLog(const String& message, const String& level = "info");
+    // Send data to all WebSocket clients - Unified Status Broadcast
+    void broadcastFullStatus(const struct ui_state_t& machineState);  // Comprehensive status (periodic)
+    void broadcastDeviceInfo();   // Device info (on connect only)
+    void broadcastLog(const String& message, const String& level = "info");  // Log messages
+    void broadcastEvent(const String& event, const JsonDocument* data = nullptr);  // Events (shot_start, shot_end, etc.)
+    
+    // Legacy/debug - raw pico message forwarding
     void broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_t len);
-    void broadcastPicoStatus(const struct ui_state_t& state);
-    void broadcastScaleStatus(bool connected, const char* name, float weight, float flowRate, bool stable, int battery);
-    void broadcastDeviceInfo();
     
     // Get client count
     size_t getClientCount();

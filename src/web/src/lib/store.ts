@@ -256,25 +256,149 @@ export const useStore = create<BrewOSState>()(
       const { type, ...data } = message;
 
       switch (type) {
-        case "status":
+        // =======================================================================
+        // Unified Status - Primary message type (comprehensive machine state)
+        // =======================================================================
+        case "status": {
+          const machineData = data.machine as
+            | Record<string, unknown>
+            | undefined;
+          const tempsData = data.temps as Record<string, unknown> | undefined;
+          const powerData = data.power as Record<string, unknown> | undefined;
+          const waterData = data.water as Record<string, unknown> | undefined;
+          const scaleData = data.scale as Record<string, unknown> | undefined;
+          const connectionsData = data.connections as
+            | Record<string, unknown>
+            | undefined;
+          const esp32Data = data.esp32 as Record<string, unknown> | undefined;
+
           set((state) => ({
-            machine: {
-              ...state.machine,
-              ...(data.machine as Partial<MachineStatus>),
-            },
-            temps: data.temps
-              ? { ...state.temps, ...(data.temps as Partial<Temperatures>) }
+            // Machine state
+            machine: machineData
+              ? {
+                  ...state.machine,
+                  state:
+                    (machineData.state as MachineStatus["state"]) ||
+                    state.machine.state,
+                  mode:
+                    (machineData.mode as MachineStatus["mode"]) ||
+                    state.machine.mode,
+                  isHeating:
+                    (machineData.isHeating as boolean) ??
+                    state.machine.isHeating,
+                  isBrewing:
+                    (machineData.isBrewing as boolean) ??
+                    state.machine.isBrewing,
+                  heatingStrategy:
+                    machineData.heatingStrategy !== undefined
+                      ? (machineData.heatingStrategy as MachineStatus["heatingStrategy"])
+                      : state.machine.heatingStrategy,
+                  machineOnTimestamp:
+                    machineData.machineOnTimestamp !== undefined
+                      ? (machineData.machineOnTimestamp as number | null)
+                      : state.machine.machineOnTimestamp,
+                  lastShotTimestamp:
+                    machineData.lastShotTimestamp !== undefined
+                      ? (machineData.lastShotTimestamp as number | null)
+                      : state.machine.lastShotTimestamp,
+                }
+              : state.machine,
+            // Temperatures
+            temps: tempsData
+              ? {
+                  brew: {
+                    current:
+                      ((tempsData.brew as Record<string, unknown>)
+                        ?.current as number) ?? state.temps.brew.current,
+                    setpoint:
+                      ((tempsData.brew as Record<string, unknown>)
+                        ?.setpoint as number) ?? state.temps.brew.setpoint,
+                    max: state.temps.brew.max,
+                  },
+                  steam: {
+                    current:
+                      ((tempsData.steam as Record<string, unknown>)
+                        ?.current as number) ?? state.temps.steam.current,
+                    setpoint:
+                      ((tempsData.steam as Record<string, unknown>)
+                        ?.setpoint as number) ?? state.temps.steam.setpoint,
+                    max: state.temps.steam.max,
+                  },
+                  group: (tempsData.group as number) ?? state.temps.group,
+                }
               : state.temps,
+            // Pressure
             pressure: (data.pressure as number) ?? state.pressure,
-            power: data.power
-              ? { ...state.power, ...(data.power as Partial<PowerStatus>) }
+            // Power
+            power: powerData
+              ? {
+                  ...state.power,
+                  current: (powerData.current as number) ?? state.power.current,
+                  voltage: (powerData.voltage as number) ?? state.power.voltage,
+                }
               : state.power,
-            scale: data.scale
-              ? { ...state.scale, ...(data.scale as Partial<ScaleStatus>) }
+            // Water
+            water: waterData
+              ? {
+                  tankLevel:
+                    (waterData.tankLevel as WaterStatus["tankLevel"]) ||
+                    state.water.tankLevel,
+                  dripTrayFull:
+                    (waterData.dripTrayFull as boolean) ??
+                    state.water.dripTrayFull,
+                }
+              : state.water,
+            // Scale
+            scale: scaleData
+              ? {
+                  connected:
+                    (scaleData.connected as boolean) ?? state.scale.connected,
+                  name: (scaleData.name as string) || state.scale.name,
+                  type: (scaleData.scaleType as string) || state.scale.type,
+                  weight: (scaleData.weight as number) ?? state.scale.weight,
+                  flowRate:
+                    (scaleData.flowRate as number) ?? state.scale.flowRate,
+                  stable: (scaleData.stable as boolean) ?? state.scale.stable,
+                  battery: (scaleData.battery as number) ?? state.scale.battery,
+                }
               : state.scale,
+            // Connection status
+            wifi: connectionsData
+              ? {
+                  ...state.wifi,
+                  connected:
+                    (connectionsData.wifi as boolean) ?? state.wifi.connected,
+                }
+              : state.wifi,
+            mqtt: connectionsData
+              ? {
+                  ...state.mqtt,
+                  connected:
+                    (connectionsData.mqtt as boolean) ?? state.mqtt.connected,
+                }
+              : state.mqtt,
+            pico: connectionsData
+              ? {
+                  ...state.pico,
+                  connected:
+                    (connectionsData.pico as boolean) ?? state.pico.connected,
+                }
+              : state.pico,
+            // ESP32 info
+            esp32: esp32Data
+              ? {
+                  version: (esp32Data.version as string) || state.esp32.version,
+                  freeHeap:
+                    (esp32Data.freeHeap as number) ?? state.esp32.freeHeap,
+                }
+              : state.esp32,
           }));
           break;
+        }
 
+        // =======================================================================
+        // Legacy message types - kept for backwards compatibility
+        // =======================================================================
         case "esp_status":
           set((state) => ({
             esp32: {

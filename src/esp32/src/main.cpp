@@ -230,8 +230,7 @@ void setup() {
                 // Parse status and update UI
                 parsePicoStatus(packet.payload, packet.length);
                 machineState.pico_connected = true;
-                // Broadcast parsed status to web clients
-                webServer.broadcastPicoStatus(machineState);
+                // Note: Full status broadcast is done periodically in loop()
                 break;
             
             case MSG_ALARM: {
@@ -394,21 +393,11 @@ void setup() {
     if (scaleEnabled) {
         LOG_I("Initializing BLE Scale Manager...");
         if (scaleManager.begin()) {
-            // Set up scale callbacks
+            // Set up scale callbacks - just update state, unified broadcast handles web clients
             scaleManager.onWeight([](const scale_state_t& state) {
                 machineState.scale_connected = state.connected;
                 machineState.brew_weight = state.weight;
                 machineState.flow_rate = state.flow_rate;
-                
-                // Broadcast scale status to web clients
-                webServer.broadcastScaleStatus(
-                    state.connected,
-                    scaleManager.getScaleName(),
-                    state.weight,
-                    state.flow_rate,
-                    state.stable,
-                    state.battery_percent
-                );
             });
             
             scaleManager.onConnection([](bool connected) {
@@ -417,16 +406,6 @@ void setup() {
                 if (connected) {
                     ui.showNotification("Scale Connected", 2000);
                 }
-                
-                // Broadcast connection status change
-                webServer.broadcastScaleStatus(
-                    connected,
-                    connected ? scaleManager.getScaleName() : "",
-                    0.0f,
-                    0.0f,
-                    false,
-                    -1
-                );
             });
             
             LOG_I("Scale Manager ready");
@@ -622,22 +601,19 @@ void loop() {
         }
     }
     
-    // Periodic status broadcast to WebSocket clients
-    if (millis() - lastStatusBroadcast > 1000) {
+    // Periodic unified status broadcast to WebSocket clients (500ms for responsive UI)
+    if (millis() - lastStatusBroadcast > 500) {
         lastStatusBroadcast = millis();
         
         // Only if we have connected clients
         if (webServer.getClientCount() > 0) {
-            // Build status JSON
-            String status = "{\"type\":\"esp_status\",";
-            status += "\"uptime\":" + String(millis()) + ",";
-            status += "\"heap\":" + String(ESP.getFreeHeap()) + ",";
-            status += "\"wifi\":\"" + wifiManager.getIP() + "\",";
-            status += "\"picoConnected\":" + String(picoUart.isConnected() ? "true" : "false") + ",";
-            status += "\"picoPackets\":" + String(picoUart.getPacketsReceived()) + ",";
-            status += "\"picoErrors\":" + String(picoUart.getPacketErrors()) + "}";
+            // Update connection status in machineState
+            machineState.pico_connected = picoUart.isConnected();
+            machineState.wifi_connected = wifiManager.isConnected();
+            machineState.mqtt_connected = mqttClient.isConnected();
             
-            webServer.broadcastStatus(status);
+            // Broadcast unified status
+            webServer.broadcastFullStatus(machineState);
         }
     }
 }
