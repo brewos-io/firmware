@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { getConnection } from "@/lib/connection";
+import { useCommand } from "@/lib/useCommand";
 import { Card, CardHeader, CardTitle } from "@/components/Card";
 import { Gauge } from "@/components/Gauge";
 import { Badge } from "@/components/Badge";
@@ -34,6 +34,7 @@ export function Dashboard() {
   const stats = useStore((s) => s.stats);
   const esp32 = useStore((s) => s.esp32);
   const device = useStore((s) => s.device);
+  const { sendCommand } = useCommand();
 
   const [showStrategyModal, setShowStrategyModal] = useState(false);
 
@@ -41,12 +42,10 @@ export function Dashboard() {
   const isDualBoiler = device.machineType === "dual_boiler";
 
   const setMode = (mode: string, strategy?: number) => {
-    if (mode === "on" && strategy !== undefined) {
-      // Send mode and strategy together
-      getConnection()?.sendCommand("set_mode", { mode, strategy });
-    } else {
-      getConnection()?.sendCommand("set_mode", { mode });
-    }
+    const payload = mode === "on" && strategy !== undefined 
+      ? { mode, strategy } 
+      : { mode };
+    sendCommand("set_mode", payload);
   };
 
   const handleOnClick = () => {

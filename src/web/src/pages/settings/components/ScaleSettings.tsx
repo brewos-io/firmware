@@ -1,5 +1,5 @@
 import { useStore } from '@/lib/store';
-import { getConnection } from '@/lib/connection';
+import { useCommand } from '@/lib/useCommand';
 import { Card, CardHeader, CardTitle } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
@@ -19,29 +19,31 @@ export function ScaleSettings() {
   const scanResults = useStore((s) => s.scanResults);
   const setScanning = useStore((s) => s.setScaleScanning);
   const clearResults = useStore((s) => s.clearScanResults);
+  const { sendCommand } = useCommand();
 
   const startScan = () => {
     clearResults();
     setScanning(true);
-    getConnection()?.sendCommand('scale_scan');
+    sendCommand('scale_scan');
   };
 
   const stopScan = () => {
     setScanning(false);
-    getConnection()?.sendCommand('scale_scan_stop');
+    sendCommand('scale_scan_stop');
   };
 
   const connectScale = (address: string) => {
-    getConnection()?.sendCommand('scale_connect', { address });
-    setScanning(false);
+    if (sendCommand('scale_connect', { address }, { successMessage: 'Connecting to scale...' })) {
+      setScanning(false);
+    }
   };
 
   const disconnectScale = () => {
-    getConnection()?.sendCommand('scale_disconnect');
+    sendCommand('scale_disconnect', undefined, { successMessage: 'Scale disconnected' });
   };
 
   const tareScale = () => {
-    getConnection()?.sendCommand('tare');
+    sendCommand('tare');
   };
 
   return (

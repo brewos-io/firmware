@@ -3,8 +3,8 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
 import { Logo } from "@/components/Logo";
-import { getConnection } from "@/lib/connection";
 import { useStore } from "@/lib/store";
+import { useCommand } from "@/lib/useCommand";
 import { useToast } from "@/components/Toast";
 import {
   Coffee,
@@ -56,8 +56,8 @@ interface FirstRunWizardProps {
 
 export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
   const temperatureUnit = useStore((s) => s.preferences.temperatureUnit);
-  const connectionState = useStore((s) => s.connectionState);
-  const { success, error } = useToast();
+  const { sendCommand } = useCommand();
+  const { error } = useToast();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -128,16 +128,11 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
 
   const saveMachineInfo = async () => {
     if (!selectedMachine) return;
-    
-    if (connectionState !== 'connected') {
-      error('Not connected to machine. Please wait for connection.');
-      return;
-    }
 
     setSaving(true);
     try {
       // Send to ESP32 via WebSocket with machine type
-      getConnection()?.sendCommand("set_device_info", {
+      const sent = sendCommand("set_device_info", {
         name: machineName,
         machineBrand: selectedMachine.brand,
         machineModel: selectedMachine.model,
@@ -145,23 +140,22 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
         machineId: selectedMachine.id,
         defaultBrewTemp: selectedMachine.defaults.brewTemp,
         defaultSteamTemp: selectedMachine.defaults.steamTemp,
-      });
+      }, { successMessage: 'Machine info saved' });
 
-      // Also save via REST API for immediate persistence
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          machineName,
-          machineBrand: selectedMachine.brand,
-          machineModel: selectedMachine.model,
-          machineType: selectedMachine.type,
-          machineId: selectedMachine.id,
-        }),
-      });
-      
-      if (!res.ok) throw new Error('Failed to save');
-      success('Machine info saved');
+      if (sent) {
+        // Also save via REST API for immediate persistence
+        await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            machineName,
+            machineBrand: selectedMachine.brand,
+            machineModel: selectedMachine.model,
+            machineType: selectedMachine.type,
+            machineId: selectedMachine.id,
+          }),
+        });
+      }
     } catch (err) {
       console.error("Failed to save machine info:", err);
       error('Failed to save machine info. Please try again.');

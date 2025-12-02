@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
-import { getConnection } from "@/lib/connection";
+import { useCommand } from "@/lib/useCommand";
 import { Card, CardHeader, CardTitle } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { Badge } from "@/components/Badge";
@@ -35,6 +35,7 @@ export function SystemSettings() {
   const esp32 = useStore((s) => s.esp32);
   const pico = useStore((s) => s.pico);
   const clearLogs = useStore((s) => s.clearLogs);
+  const { sendCommand, sendCommandWithConfirm } = useCommand();
 
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(
@@ -87,24 +88,21 @@ export function SystemSettings() {
       ? `Install BETA version ${version}? This is a pre-release version for testing. The device will restart after update.`
       : `Install version ${version}? The device will restart after update.`;
 
-    if (confirm(warningText)) {
-      getConnection()?.sendCommand("ota_start", { version });
-    }
+    sendCommandWithConfirm("ota_start", warningText, { version }, 
+      { successMessage: `Installing version ${version}...` });
   };
 
   const currentVersionDisplay = getVersionDisplay(esp32.version || "0.0.0");
 
   const restartDevice = () => {
-    if (confirm("Restart the device?")) {
-      getConnection()?.sendCommand("restart");
-    }
+    sendCommandWithConfirm("restart", "Restart the device?", undefined, 
+      { successMessage: "Restarting device..." });
   };
 
   const factoryReset = () => {
     if (confirm("This will erase all settings. Are you sure?")) {
-      if (confirm("Really? This cannot be undone!")) {
-        getConnection()?.sendCommand("factory_reset");
-      }
+      sendCommandWithConfirm("factory_reset", "Really? This cannot be undone!", undefined,
+        { successMessage: "Factory reset initiated..." });
     }
   };
 

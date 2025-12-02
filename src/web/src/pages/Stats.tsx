@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { getConnection } from '@/lib/connection';
+import { useCommand } from '@/lib/useCommand';
 import { Card, CardHeader, CardTitle } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
@@ -28,6 +28,7 @@ interface WeeklyData {
 
 export function Stats() {
   const stats = useStore((s) => s.stats);
+  const { sendCommand } = useCommand();
   const [weeklyData, setWeeklyData] = useState<WeeklyData[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -77,7 +78,13 @@ export function Stats() {
   }, [stats.weeklyCount, stats.shotsToday]);
 
   const markCleaning = (type: 'backflush' | 'groupClean' | 'descale') => {
-    getConnection()?.sendCommand('record_maintenance', { type });
+    const typeLabels = {
+      backflush: 'Backflush',
+      groupClean: 'Group clean',
+      descale: 'Descale',
+    };
+    sendCommand('record_maintenance', { type }, 
+      { successMessage: `${typeLabels[type]} recorded` });
   };
 
   // Calculate average shots per day

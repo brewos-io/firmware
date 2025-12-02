@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { getConnection } from '@/lib/connection';
+import { useCommand } from '@/lib/useCommand';
 import { Card, CardHeader, CardTitle } from '@/components/Card';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Toggle } from '@/components/Toggle';
 import { Badge } from '@/components/Badge';
 import { PageHeader } from '@/components/PageHeader';
-import { useToast } from '@/components/Toast';
 import { Coffee, Scale, Timer, Droplet } from 'lucide-react';
 import { formatDuration } from '@/lib/utils';
 
@@ -15,8 +14,7 @@ export function Brewing() {
   const bbw = useStore((s) => s.bbw);
   const shot = useStore((s) => s.shot);
   const scale = useStore((s) => s.scale);
-  const connectionState = useStore((s) => s.connectionState);
-  const { success, error } = useToast();
+  const { sendCommand } = useCommand();
 
   // Local form state
   const [formState, setFormState] = useState(bbw);
@@ -43,32 +41,18 @@ export function Brewing() {
     ? (formState.targetWeight / formState.doseWeight).toFixed(1) 
     : '0.0';
 
-  const saveSettings = async () => {
-    if (connectionState !== 'connected') {
-      error('Not connected to machine. Please wait for connection.');
-      return;
-    }
-    
+  const saveSettings = () => {
     setSaving(true);
-    try {
-      const connection = getConnection();
-      if (!connection) {
-        throw new Error('No connection available');
-      }
-      
-      connection.sendCommand('set_bbw', { ...formState });
-      await new Promise(resolve => setTimeout(resolve, 300));
-      success('Brewing settings saved');
-    } catch (err) {
-      console.error('Failed to save brewing settings:', err);
-      error('Failed to save settings. Please try again.');
-    } finally {
-      setSaving(false);
-    }
+    sendCommand('set_bbw', { ...formState }, { successMessage: 'Brewing settings saved' });
+    setSaving(false);
   };
 
   const tareScale = () => {
-    getConnection()?.sendCommand('tare');
+    sendCommand('tare');
+  };
+
+  const resetScale = () => {
+    sendCommand('scale_reset');
   };
 
   return (
@@ -231,7 +215,7 @@ export function Brewing() {
               <Button variant="secondary" onClick={tareScale}>
                 Tare
               </Button>
-              <Button variant="ghost" onClick={() => getConnection()?.sendCommand('scale_reset')}>
+              <Button variant="ghost" onClick={resetScale}>
                 Reset
               </Button>
             </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { getConnection } from '@/lib/connection';
+import { useCommand } from '@/lib/useCommand';
 import { Card, CardHeader, CardTitle } from '@/components/Card';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
@@ -17,6 +17,8 @@ export function TemperatureSettings() {
   const temps = useStore((s) => s.temps);
   const device = useStore((s) => s.device);
   const temperatureUnit = useStore((s) => s.preferences.temperatureUnit);
+  const { sendCommand } = useCommand();
+  const [saving, setSaving] = useState(false);
 
   // Store values in display unit for the UI
   const [brewTempDisplay, setBrewTempDisplay] = useState(() => 
@@ -42,16 +44,22 @@ export function TemperatureSettings() {
   const isHeatExchanger = device.machineType === 'heat_exchanger';
 
   const saveTemps = () => {
+    setSaving(true);
+    
     // Convert back to Celsius before sending to backend
     const brewTempCelsius = convertToCelsius(brewTempDisplay, temperatureUnit);
     const steamTempCelsius = convertToCelsius(steamTempDisplay, temperatureUnit);
 
+    let success = true;
     if (isDualBoiler || isSingleBoiler || !device.machineType) {
-      getConnection()?.sendCommand('set_temp', { boiler: 'brew', temp: brewTempCelsius });
+      success = sendCommand('set_temp', { boiler: 'brew', temp: brewTempCelsius });
     }
-    if (isDualBoiler || isHeatExchanger || !device.machineType) {
-      getConnection()?.sendCommand('set_temp', { boiler: 'steam', temp: steamTempCelsius });
+    if (success && (isDualBoiler || isHeatExchanger || !device.machineType)) {
+      success = sendCommand('set_temp', { boiler: 'steam', temp: steamTempCelsius }, 
+        { successMessage: 'Temperatures saved' });
     }
+    
+    setSaving(false);
   };
 
   // Determine what controls to show based on machine type
@@ -112,7 +120,7 @@ export function TemperatureSettings() {
       </div>
 
       <div className="flex justify-end">
-        <Button onClick={saveTemps}>Save Temperatures</Button>
+        <Button onClick={saveTemps} loading={saving}>Save Temperatures</Button>
       </div>
     </Card>
   );

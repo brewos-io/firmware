@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '@/lib/store';
-import { getConnection } from '@/lib/connection';
+import { useCommand } from '@/lib/useCommand';
 import { Card, CardHeader, CardTitle } from '@/components/Card';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
@@ -12,6 +12,7 @@ import { StatusRow } from './StatusRow';
 export function NetworkSettings() {
   const wifi = useStore((s) => s.wifi);
   const mqtt = useStore((s) => s.mqtt);
+  const { sendCommand, sendCommandWithConfirm } = useCommand();
 
   const [mqttConfig, setMqttConfig] = useState({
     enabled: mqtt.enabled,
@@ -23,21 +24,27 @@ export function NetworkSettings() {
     discovery: true,
   });
   const [testingMqtt, setTestingMqtt] = useState(false);
+  const [savingMqtt, setSavingMqtt] = useState(false);
 
-  const testMqtt = async () => {
+  const testMqtt = () => {
     setTestingMqtt(true);
-    getConnection()?.sendCommand('mqtt_test', mqttConfig);
+    sendCommand('mqtt_test', mqttConfig);
     setTimeout(() => setTestingMqtt(false), 3000);
   };
 
   const saveMqtt = () => {
-    getConnection()?.sendCommand('mqtt_config', mqttConfig);
+    setSavingMqtt(true);
+    sendCommand('mqtt_config', mqttConfig, { successMessage: 'MQTT settings saved' });
+    setSavingMqtt(false);
   };
 
   const forgetWifi = () => {
-    if (confirm('Are you sure? The device will restart in AP mode.')) {
-      getConnection()?.sendCommand('wifi_forget');
-    }
+    sendCommandWithConfirm(
+      'wifi_forget',
+      'Are you sure? The device will restart in AP mode.',
+      undefined,
+      { successMessage: 'WiFi forgotten. Device will restart...' }
+    );
   };
 
   return (
@@ -153,7 +160,7 @@ export function NetworkSettings() {
           <Button variant="secondary" onClick={testMqtt} loading={testingMqtt}>
             {testingMqtt ? 'Testing...' : 'Test Connection'}
           </Button>
-          <Button onClick={saveMqtt}>Save MQTT Settings</Button>
+          <Button onClick={saveMqtt} loading={savingMqtt}>Save MQTT Settings</Button>
         </div>
       </Card>
     </>

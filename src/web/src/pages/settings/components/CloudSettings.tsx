@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getConnection } from '@/lib/connection';
+import { useCommand } from '@/lib/useCommand';
 import { Card } from '@/components/Card';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
@@ -34,6 +34,7 @@ interface CloudStatus {
 }
 
 export function CloudSettings() {
+  const { sendCommand } = useCommand();
   const [cloudConfig, setCloudConfig] = useState<CloudStatus | null>(null);
   const [pairing, setPairing] = useState<PairingData | null>(null);
   const [loadingQR, setLoadingQR] = useState(false);
@@ -92,21 +93,21 @@ export function CloudSettings() {
     }
   };
 
-  const saveSettings = async () => {
+  const saveSettings = () => {
     setSaving(true);
-    try {
-      getConnection()?.sendCommand('set_cloud_config', {
-        enabled: cloudEnabled,
-        serverUrl: cloudUrl,
-      });
+    const success = sendCommand('set_cloud_config', {
+      enabled: cloudEnabled,
+      serverUrl: cloudUrl,
+    }, { successMessage: 'Cloud settings saved' });
+    
+    if (success) {
       setCloudConfig({
         enabled: cloudEnabled,
         connected: cloudConfig?.connected || false,
         serverUrl: cloudUrl,
       });
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   const fetchCloudStatus = async () => {
