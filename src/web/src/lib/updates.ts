@@ -1,12 +1,12 @@
 /**
  * Firmware Update Management
- * 
+ *
  * Handles version checking, comparison, and update channel management.
  */
 
-import { formatDate as formatDateUtil } from './date';
+import { formatDate as formatDateUtil } from "./date";
 
-export type UpdateChannel = 'stable' | 'beta';
+export type UpdateChannel = "stable" | "beta";
 
 export interface VersionInfo {
   version: string;
@@ -25,8 +25,8 @@ export interface UpdateCheckResult {
   hasBetaUpdate: boolean;
 }
 
-// GitHub repository for fetching releases (configure this)
-const GITHUB_REPO = 'brewos/brewos'; // Change to your repo
+// GitHub repository for fetching releases
+const GITHUB_REPO = "mizrachiran/brewos";
 
 /**
  * Parse semantic version string
@@ -71,12 +71,12 @@ export function compareVersions(a: string, b: string): number {
 
   // Both have prerelease, compare alphabetically then numerically
   // beta.1 < beta.2, alpha < beta < rc
-  const partsA = va.prerelease!.split('.');
-  const partsB = vb.prerelease!.split('.');
+  const partsA = va.prerelease!.split(".");
+  const partsB = vb.prerelease!.split(".");
 
   for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
-    const partA = partsA[i] || '';
-    const partB = partsB[i] || '';
+    const partA = partsA[i] || "";
+    const partB = partsB[i] || "";
 
     const numA = parseInt(partA, 10);
     const numB = parseInt(partB, 10);
@@ -102,23 +102,26 @@ export function isPrerelease(version: string): boolean {
 /**
  * Get version display string with badge
  */
-export function getVersionDisplay(version: string): { text: string; badge: 'stable' | 'beta' | 'rc' | 'alpha' | null } {
+export function getVersionDisplay(version: string): {
+  text: string;
+  badge: "stable" | "beta" | "rc" | "alpha" | null;
+} {
   const parsed = parseVersion(version);
-  
+
   if (!parsed.prerelease) {
-    return { text: version, badge: 'stable' };
+    return { text: version, badge: "stable" };
   }
 
-  if (parsed.prerelease.startsWith('beta')) {
-    return { text: version, badge: 'beta' };
+  if (parsed.prerelease.startsWith("beta")) {
+    return { text: version, badge: "beta" };
   }
 
-  if (parsed.prerelease.startsWith('rc')) {
-    return { text: version, badge: 'rc' };
+  if (parsed.prerelease.startsWith("rc")) {
+    return { text: version, badge: "rc" };
   }
 
-  if (parsed.prerelease.startsWith('alpha')) {
-    return { text: version, badge: 'alpha' };
+  if (parsed.prerelease.startsWith("alpha")) {
+    return { text: version, badge: "alpha" };
   }
 
   return { text: version, badge: null };
@@ -129,28 +132,31 @@ export function getVersionDisplay(version: string): { text: string; badge: 'stab
  */
 async function fetchGitHubReleases(): Promise<VersionInfo[]> {
   try {
-    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases`, {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-      },
-    });
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases`,
+      {
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    );
 
     if (!response.ok) {
       throw new Error(`GitHub API error: ${response.status}`);
     }
 
     const releases = await response.json();
-    
+
     return releases.map((release: any) => ({
-      version: release.tag_name.replace(/^v/, ''),
-      channel: release.prerelease ? 'beta' : 'stable',
+      version: release.tag_name.replace(/^v/, ""),
+      channel: release.prerelease ? "beta" : "stable",
       releaseDate: release.published_at,
       releaseNotes: release.body,
       downloadUrl: release.html_url,
       isPrerelease: release.prerelease,
     }));
   } catch (error) {
-    console.error('Failed to fetch GitHub releases:', error);
+    console.error("Failed to fetch GitHub releases:", error);
     return [];
   }
 }
@@ -162,27 +168,29 @@ async function fetchGitHubReleases(): Promise<VersionInfo[]> {
 function getMockVersions(): VersionInfo[] {
   return [
     {
-      version: '1.0.0',
-      channel: 'stable',
-      releaseDate: '2024-11-15',
-      releaseNotes: '## Stable Release\n- First stable release\n- All features tested and verified',
-      downloadUrl: '#',
+      version: "1.0.0",
+      channel: "stable",
+      releaseDate: "2024-11-15",
+      releaseNotes:
+        "## Stable Release\n- First stable release\n- All features tested and verified",
+      downloadUrl: "#",
       isPrerelease: false,
     },
     {
-      version: '1.1.0-beta.2',
-      channel: 'beta',
-      releaseDate: '2024-12-01',
-      releaseNotes: '## Beta Release\n- New cloud integration\n- Push notifications\n- UI improvements\n\n⚠️ This is a beta version for testing.',
-      downloadUrl: '#',
+      version: "1.1.0-beta.2",
+      channel: "beta",
+      releaseDate: "2024-12-01",
+      releaseNotes:
+        "## Beta Release\n- New cloud integration\n- Push notifications\n- UI improvements\n\n⚠️ This is a beta version for testing.",
+      downloadUrl: "#",
       isPrerelease: true,
     },
     {
-      version: '1.1.0-beta.1',
-      channel: 'beta',
-      releaseDate: '2024-11-25',
-      releaseNotes: '## Beta Release\n- Initial beta with new features',
-      downloadUrl: '#',
+      version: "1.1.0-beta.1",
+      channel: "beta",
+      releaseDate: "2024-11-25",
+      releaseNotes: "## Beta Release\n- Initial beta with new features",
+      downloadUrl: "#",
       isPrerelease: true,
     },
   ];
@@ -191,34 +199,39 @@ function getMockVersions(): VersionInfo[] {
 /**
  * Check for available updates
  */
-export async function checkForUpdates(currentVersion: string, useMockData = true): Promise<UpdateCheckResult> {
+export async function checkForUpdates(
+  currentVersion: string,
+  useMockData = true
+): Promise<UpdateCheckResult> {
   // Use mock data in development, real GitHub API in production
-  const releases = useMockData ? getMockVersions() : await fetchGitHubReleases();
-  
+  const releases = useMockData
+    ? getMockVersions()
+    : await fetchGitHubReleases();
+
   // Find latest stable version
   const stableReleases = releases
-    .filter(r => !r.isPrerelease)
+    .filter((r) => !r.isPrerelease)
     .sort((a, b) => compareVersions(b.version, a.version));
-  
+
   const latestStable = stableReleases[0] || null;
-  
+
   // Find latest beta version (including RCs)
   const betaReleases = releases
-    .filter(r => r.isPrerelease)
+    .filter((r) => r.isPrerelease)
     .sort((a, b) => compareVersions(b.version, a.version));
-  
+
   const latestBeta = betaReleases[0] || null;
-  
+
   // Check if updates are available
-  const hasStableUpdate = latestStable 
-    ? compareVersions(latestStable.version, currentVersion) > 0 
+  const hasStableUpdate = latestStable
+    ? compareVersions(latestStable.version, currentVersion) > 0
     : false;
-  
+
   // Beta update available if beta is newer than current (even if current is stable)
-  const hasBetaUpdate = latestBeta 
-    ? compareVersions(latestBeta.version, currentVersion) > 0 
+  const hasBetaUpdate = latestBeta
+    ? compareVersions(latestBeta.version, currentVersion) > 0
     : false;
-  
+
   return {
     stable: latestStable,
     beta: latestBeta,
@@ -232,24 +245,23 @@ export async function checkForUpdates(currentVersion: string, useMockData = true
  * Get user's preferred update channel from localStorage
  */
 export function getUpdateChannel(): UpdateChannel {
-  const stored = localStorage.getItem('brewos-update-channel');
-  if (stored === 'beta' || stored === 'stable') {
+  const stored = localStorage.getItem("brewos-update-channel");
+  if (stored === "beta" || stored === "stable") {
     return stored;
   }
-  return 'stable'; // Default to stable
+  return "stable"; // Default to stable
 }
 
 /**
  * Set user's preferred update channel
  */
 export function setUpdateChannel(channel: UpdateChannel): void {
-  localStorage.setItem('brewos-update-channel', channel);
+  localStorage.setItem("brewos-update-channel", channel);
 }
 
 /**
  * Format release date
  */
 export function formatReleaseDate(dateString: string): string {
-  return formatDateUtil(dateString, { dateStyle: 'medium' });
+  return formatDateUtil(dateString, { dateStyle: "medium" });
 }
-
