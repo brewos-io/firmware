@@ -29,7 +29,11 @@ import type {
   DiagnosticResult,
   DiagnosticHeader,
 } from "./types";
-import { diagStatusFromCode, getDiagnosticTestName, type DiagnosticTestId } from "./types";
+import {
+  diagStatusFromCode,
+  getDiagnosticTestName,
+  type DiagnosticTestId,
+} from "./types";
 
 interface BrewOSState {
   // Connection
@@ -86,7 +90,7 @@ interface BrewOSState {
     key: K,
     value: UserPreferences[K]
   ) => void;
-  
+
   // Diagnostics actions
   setDiagnosticsRunning: (running: boolean) => void;
   resetDiagnostics: () => void;
@@ -112,7 +116,7 @@ const defaultTemps: Temperatures = {
 const defaultPower: PowerStatus = {
   current: 0,
   voltage: 220,
-  maxCurrent: 13,  // Default to 13A (UK standard)
+  maxCurrent: 13, // Default to 13A (UK standard)
   todayKwh: 0,
   totalKwh: 0,
 };
@@ -346,7 +350,9 @@ export const useStore = create<BrewOSState>()(
             | undefined;
           const tempsData = data.temps as Record<string, unknown> | undefined;
           const powerData = data.power as Record<string, unknown> | undefined;
-          const cleaningData = data.cleaning as Record<string, unknown> | undefined;
+          const cleaningData = data.cleaning as
+            | Record<string, unknown>
+            | undefined;
           const waterData = data.water as Record<string, unknown> | undefined;
           const scaleData = data.scale as Record<string, unknown> | undefined;
           const connectionsData = data.connections as
@@ -419,16 +425,19 @@ export const useStore = create<BrewOSState>()(
                   ...state.power,
                   current: (powerData.current as number) ?? state.power.current,
                   voltage: (powerData.voltage as number) ?? state.power.voltage,
-                  maxCurrent: (powerData.maxCurrent as number) ?? state.power.maxCurrent,
+                  maxCurrent:
+                    (powerData.maxCurrent as number) ?? state.power.maxCurrent,
                 }
               : state.power,
             // Cleaning
             cleaning: cleaningData
               ? {
                   brewCount:
-                    (cleaningData.brewCount as number) ?? state.cleaning.brewCount,
+                    (cleaningData.brewCount as number) ??
+                    state.cleaning.brewCount,
                   reminderDue:
-                    (cleaningData.reminderDue as boolean) ?? state.cleaning.reminderDue,
+                    (cleaningData.reminderDue as boolean) ??
+                    state.cleaning.reminderDue,
                 }
               : state.cleaning,
             // Water
@@ -597,64 +606,139 @@ export const useStore = create<BrewOSState>()(
           break;
 
         case "stats": {
-          const lifetimeData = data.lifetime as Partial<LifetimeStats> | undefined;
+          const lifetimeData = data.lifetime as
+            | Partial<LifetimeStats>
+            | undefined;
           const dailyData = data.daily as Partial<PeriodStats> | undefined;
           const weeklyData = data.weekly as Partial<PeriodStats> | undefined;
           const monthlyData = data.monthly as Partial<PeriodStats> | undefined;
-          const maintData = data.maintenance as Partial<MaintenanceStats> | undefined;
-          
+          const maintData = data.maintenance as
+            | Partial<MaintenanceStats>
+            | undefined;
+
           set((state) => {
             // Build new stats object
             const newStats: Statistics = {
               ...state.stats,
               // Enhanced structure
-              lifetime: lifetimeData ? {
-                totalShots: lifetimeData.totalShots ?? state.stats.lifetime.totalShots,
-                totalSteamCycles: lifetimeData.totalSteamCycles ?? state.stats.lifetime.totalSteamCycles,
-                totalKwh: lifetimeData.totalKwh ?? state.stats.lifetime.totalKwh,
-                totalOnTimeMinutes: lifetimeData.totalOnTimeMinutes ?? state.stats.lifetime.totalOnTimeMinutes,
-                totalBrewTimeMs: lifetimeData.totalBrewTimeMs ?? state.stats.lifetime.totalBrewTimeMs,
-                avgBrewTimeMs: lifetimeData.avgBrewTimeMs ?? state.stats.lifetime.avgBrewTimeMs,
-                minBrewTimeMs: lifetimeData.minBrewTimeMs ?? state.stats.lifetime.minBrewTimeMs,
-                maxBrewTimeMs: lifetimeData.maxBrewTimeMs ?? state.stats.lifetime.maxBrewTimeMs,
-                firstShotTimestamp: lifetimeData.firstShotTimestamp ?? state.stats.lifetime.firstShotTimestamp,
-              } : state.stats.lifetime,
-              daily: dailyData ? {
-                shotCount: dailyData.shotCount ?? state.stats.daily.shotCount,
-                totalBrewTimeMs: dailyData.totalBrewTimeMs ?? state.stats.daily.totalBrewTimeMs,
-                avgBrewTimeMs: dailyData.avgBrewTimeMs ?? state.stats.daily.avgBrewTimeMs,
-                minBrewTimeMs: dailyData.minBrewTimeMs ?? state.stats.daily.minBrewTimeMs,
-                maxBrewTimeMs: dailyData.maxBrewTimeMs ?? state.stats.daily.maxBrewTimeMs,
-                totalKwh: dailyData.totalKwh ?? state.stats.daily.totalKwh,
-              } : state.stats.daily,
-              weekly: weeklyData ? {
-                shotCount: weeklyData.shotCount ?? state.stats.weekly.shotCount,
-                totalBrewTimeMs: weeklyData.totalBrewTimeMs ?? state.stats.weekly.totalBrewTimeMs,
-                avgBrewTimeMs: weeklyData.avgBrewTimeMs ?? state.stats.weekly.avgBrewTimeMs,
-                minBrewTimeMs: weeklyData.minBrewTimeMs ?? state.stats.weekly.minBrewTimeMs,
-                maxBrewTimeMs: weeklyData.maxBrewTimeMs ?? state.stats.weekly.maxBrewTimeMs,
-                totalKwh: weeklyData.totalKwh ?? state.stats.weekly.totalKwh,
-              } : state.stats.weekly,
-              monthly: monthlyData ? {
-                shotCount: monthlyData.shotCount ?? state.stats.monthly.shotCount,
-                totalBrewTimeMs: monthlyData.totalBrewTimeMs ?? state.stats.monthly.totalBrewTimeMs,
-                avgBrewTimeMs: monthlyData.avgBrewTimeMs ?? state.stats.monthly.avgBrewTimeMs,
-                minBrewTimeMs: monthlyData.minBrewTimeMs ?? state.stats.monthly.minBrewTimeMs,
-                maxBrewTimeMs: monthlyData.maxBrewTimeMs ?? state.stats.monthly.maxBrewTimeMs,
-                totalKwh: monthlyData.totalKwh ?? state.stats.monthly.totalKwh,
-              } : state.stats.monthly,
-              maintenance: maintData ? {
-                shotsSinceBackflush: maintData.shotsSinceBackflush ?? state.stats.maintenance.shotsSinceBackflush,
-                shotsSinceGroupClean: maintData.shotsSinceGroupClean ?? state.stats.maintenance.shotsSinceGroupClean,
-                shotsSinceDescale: maintData.shotsSinceDescale ?? state.stats.maintenance.shotsSinceDescale,
-                lastBackflushTimestamp: maintData.lastBackflushTimestamp ?? state.stats.maintenance.lastBackflushTimestamp,
-                lastGroupCleanTimestamp: maintData.lastGroupCleanTimestamp ?? state.stats.maintenance.lastGroupCleanTimestamp,
-                lastDescaleTimestamp: maintData.lastDescaleTimestamp ?? state.stats.maintenance.lastDescaleTimestamp,
-              } : state.stats.maintenance,
-              sessionShots: (data.sessionShots as number) ?? state.stats.sessionShots,
-              sessionStartTimestamp: (data.sessionStartTimestamp as number) ?? state.stats.sessionStartTimestamp,
+              lifetime: lifetimeData
+                ? {
+                    totalShots:
+                      lifetimeData.totalShots ??
+                      state.stats.lifetime.totalShots,
+                    totalSteamCycles:
+                      lifetimeData.totalSteamCycles ??
+                      state.stats.lifetime.totalSteamCycles,
+                    totalKwh:
+                      lifetimeData.totalKwh ?? state.stats.lifetime.totalKwh,
+                    totalOnTimeMinutes:
+                      lifetimeData.totalOnTimeMinutes ??
+                      state.stats.lifetime.totalOnTimeMinutes,
+                    totalBrewTimeMs:
+                      lifetimeData.totalBrewTimeMs ??
+                      state.stats.lifetime.totalBrewTimeMs,
+                    avgBrewTimeMs:
+                      lifetimeData.avgBrewTimeMs ??
+                      state.stats.lifetime.avgBrewTimeMs,
+                    minBrewTimeMs:
+                      lifetimeData.minBrewTimeMs ??
+                      state.stats.lifetime.minBrewTimeMs,
+                    maxBrewTimeMs:
+                      lifetimeData.maxBrewTimeMs ??
+                      state.stats.lifetime.maxBrewTimeMs,
+                    firstShotTimestamp:
+                      lifetimeData.firstShotTimestamp ??
+                      state.stats.lifetime.firstShotTimestamp,
+                  }
+                : state.stats.lifetime,
+              daily: dailyData
+                ? {
+                    shotCount:
+                      dailyData.shotCount ?? state.stats.daily.shotCount,
+                    totalBrewTimeMs:
+                      dailyData.totalBrewTimeMs ??
+                      state.stats.daily.totalBrewTimeMs,
+                    avgBrewTimeMs:
+                      dailyData.avgBrewTimeMs ??
+                      state.stats.daily.avgBrewTimeMs,
+                    minBrewTimeMs:
+                      dailyData.minBrewTimeMs ??
+                      state.stats.daily.minBrewTimeMs,
+                    maxBrewTimeMs:
+                      dailyData.maxBrewTimeMs ??
+                      state.stats.daily.maxBrewTimeMs,
+                    totalKwh: dailyData.totalKwh ?? state.stats.daily.totalKwh,
+                  }
+                : state.stats.daily,
+              weekly: weeklyData
+                ? {
+                    shotCount:
+                      weeklyData.shotCount ?? state.stats.weekly.shotCount,
+                    totalBrewTimeMs:
+                      weeklyData.totalBrewTimeMs ??
+                      state.stats.weekly.totalBrewTimeMs,
+                    avgBrewTimeMs:
+                      weeklyData.avgBrewTimeMs ??
+                      state.stats.weekly.avgBrewTimeMs,
+                    minBrewTimeMs:
+                      weeklyData.minBrewTimeMs ??
+                      state.stats.weekly.minBrewTimeMs,
+                    maxBrewTimeMs:
+                      weeklyData.maxBrewTimeMs ??
+                      state.stats.weekly.maxBrewTimeMs,
+                    totalKwh:
+                      weeklyData.totalKwh ?? state.stats.weekly.totalKwh,
+                  }
+                : state.stats.weekly,
+              monthly: monthlyData
+                ? {
+                    shotCount:
+                      monthlyData.shotCount ?? state.stats.monthly.shotCount,
+                    totalBrewTimeMs:
+                      monthlyData.totalBrewTimeMs ??
+                      state.stats.monthly.totalBrewTimeMs,
+                    avgBrewTimeMs:
+                      monthlyData.avgBrewTimeMs ??
+                      state.stats.monthly.avgBrewTimeMs,
+                    minBrewTimeMs:
+                      monthlyData.minBrewTimeMs ??
+                      state.stats.monthly.minBrewTimeMs,
+                    maxBrewTimeMs:
+                      monthlyData.maxBrewTimeMs ??
+                      state.stats.monthly.maxBrewTimeMs,
+                    totalKwh:
+                      monthlyData.totalKwh ?? state.stats.monthly.totalKwh,
+                  }
+                : state.stats.monthly,
+              maintenance: maintData
+                ? {
+                    shotsSinceBackflush:
+                      maintData.shotsSinceBackflush ??
+                      state.stats.maintenance.shotsSinceBackflush,
+                    shotsSinceGroupClean:
+                      maintData.shotsSinceGroupClean ??
+                      state.stats.maintenance.shotsSinceGroupClean,
+                    shotsSinceDescale:
+                      maintData.shotsSinceDescale ??
+                      state.stats.maintenance.shotsSinceDescale,
+                    lastBackflushTimestamp:
+                      maintData.lastBackflushTimestamp ??
+                      state.stats.maintenance.lastBackflushTimestamp,
+                    lastGroupCleanTimestamp:
+                      maintData.lastGroupCleanTimestamp ??
+                      state.stats.maintenance.lastGroupCleanTimestamp,
+                    lastDescaleTimestamp:
+                      maintData.lastDescaleTimestamp ??
+                      state.stats.maintenance.lastDescaleTimestamp,
+                  }
+                : state.stats.maintenance,
+              sessionShots:
+                (data.sessionShots as number) ?? state.stats.sessionShots,
+              sessionStartTimestamp:
+                (data.sessionStartTimestamp as number) ??
+                state.stats.sessionStartTimestamp,
             };
-            
+
             // Update legacy compatibility fields
             newStats.totalShots = newStats.lifetime.totalShots;
             newStats.totalSteamCycles = newStats.lifetime.totalSteamCycles;
@@ -668,13 +752,18 @@ export const useStore = create<BrewOSState>()(
             newStats.dailyCount = newStats.daily.shotCount;
             newStats.weeklyCount = newStats.weekly.shotCount;
             newStats.monthlyCount = newStats.monthly.shotCount;
-            newStats.shotsSinceBackflush = newStats.maintenance.shotsSinceBackflush;
-            newStats.shotsSinceGroupClean = newStats.maintenance.shotsSinceGroupClean;
+            newStats.shotsSinceBackflush =
+              newStats.maintenance.shotsSinceBackflush;
+            newStats.shotsSinceGroupClean =
+              newStats.maintenance.shotsSinceGroupClean;
             newStats.shotsSinceDescale = newStats.maintenance.shotsSinceDescale;
-            newStats.lastBackflushTimestamp = newStats.maintenance.lastBackflushTimestamp;
-            newStats.lastGroupCleanTimestamp = newStats.maintenance.lastGroupCleanTimestamp;
-            newStats.lastDescaleTimestamp = newStats.maintenance.lastDescaleTimestamp;
-            
+            newStats.lastBackflushTimestamp =
+              newStats.maintenance.lastBackflushTimestamp;
+            newStats.lastGroupCleanTimestamp =
+              newStats.maintenance.lastGroupCleanTimestamp;
+            newStats.lastDescaleTimestamp =
+              newStats.maintenance.lastDescaleTimestamp;
+
             return { stats: newStats };
           });
           break;
@@ -735,9 +824,13 @@ export const useStore = create<BrewOSState>()(
               ...state.diagnostics,
               header,
               isRunning: !header.isComplete,
-              timestamp: header.isComplete ? Date.now() : state.diagnostics.timestamp,
+              timestamp: header.isComplete
+                ? Date.now()
+                : state.diagnostics.timestamp,
               // Clear results on new test run (when first header arrives)
-              results: state.diagnostics.isRunning ? state.diagnostics.results : [],
+              results: state.diagnostics.isRunning
+                ? state.diagnostics.results
+                : [],
             },
           }));
           break;
