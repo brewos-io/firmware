@@ -227,27 +227,7 @@ function App() {
   // For cloud mode with existing user, also wait for initial device fetch
   const isWaitingForDevices = mode === "cloud" && user && !initialDevicesFetched;
   
-  // Debug routing decisions
-  console.log('[App] Routing check:', {
-    loading,
-    initialized,
-    inDemoMode,
-    isWaitingForDevices,
-    mode,
-    hasUser: !!user,
-    userEmail: user?.email,
-    devicesCount: devices.length,
-    initialDevicesFetched,
-    devicesLoading,
-    path: window.location.pathname,
-  });
-  
   if (loading || (!inDemoMode && !initialized) || isWaitingForDevices) {
-    console.log('[App] Showing Loading because:', {
-      loading,
-      notInitialized: !inDemoMode && !initialized,
-      isWaitingForDevices,
-    });
     return <Loading message={initError || undefined} />;
   }
 
@@ -319,7 +299,6 @@ function App() {
 
   // Not logged in -> Login
   if (!user) {
-    console.log('[App] Cloud mode: No user, showing login routes');
     return (
       <>
         <Routes>
@@ -335,7 +314,6 @@ function App() {
 
   // Logged in but no devices -> Onboarding
   if (devices.length === 0) {
-    console.log('[App] Cloud mode: User logged in, no devices, showing onboarding routes');
     return (
       <>
         <Routes>

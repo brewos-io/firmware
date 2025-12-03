@@ -25,11 +25,6 @@ function getInitialAuthState(): {
   session: AuthSession | null;
 } {
   const session = getStoredSession();
-  console.log("[Auth] getInitialAuthState called:", {
-    hasSession: !!session,
-    hasUser: !!session?.user,
-    isExpired: session ? isTokenExpired(session) : null,
-  });
   if (session && !isTokenExpired(session)) {
     return { user: session.user, session };
   }
@@ -206,10 +201,6 @@ interface AppState {
 
 // Get initial auth state synchronously before store creation
 const initialAuth = getInitialAuthState();
-console.log("[Auth] Store initializing with:", {
-  hasUser: !!initialAuth.user,
-  userEmail: initialAuth.user?.email,
-});
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -229,10 +220,6 @@ export const useAppStore = create<AppState>()(
       devicesLoading: false,
 
       initialize: async () => {
-        console.log(
-          "[Auth] initialize() called, current user:",
-          get().user?.email
-        );
         const isPWA = isRunningAsPWA();
 
         // Check if we're on actual ESP32 hardware
@@ -277,17 +264,8 @@ export const useAppStore = create<AppState>()(
 
         // Cloud mode: check for stored session
         const session = getStoredSession();
-        console.log("[Auth] initialize() checking session:", {
-          hasSession: !!session,
-          hasUser: !!session?.user,
-          userEmail: session?.user?.email,
-          isExpired: session ? isTokenExpired(session) : null,
-          expiresAt: session?.expiresAt ? new Date(session.expiresAt).toISOString() : null,
-          now: new Date().toISOString(),
-        });
 
         if (session && !isTokenExpired(session)) {
-          console.log("[Auth] Valid session found, setting user");
           // Token still valid - use it
           // Set devicesLoading: true here to prevent race condition with App.tsx
           // waiting for initial device fetch
@@ -306,7 +284,6 @@ export const useAppStore = create<AppState>()(
           startTokenRefreshMonitor(get());
         } else if (session) {
           // Session exists but token expired, try to refresh
-          console.log("[Auth] Session expired, attempting refresh");
           const newSession = await refreshSession(session);
 
           if (newSession) {
@@ -351,7 +328,6 @@ export const useAppStore = create<AppState>()(
           }
         } else {
           // No session exists
-          console.log("[Auth] No session found, clearing user");
           set({
             user: null,
             session: null,
@@ -388,7 +364,6 @@ export const useAppStore = create<AppState>()(
       },
 
       signOut: () => {
-        console.log("[Auth] signOut() called, stack trace:", new Error().stack);
         authLogout();
         stopTokenRefreshMonitor();
         set({
@@ -404,11 +379,9 @@ export const useAppStore = create<AppState>()(
       },
 
       fetchDevices: async () => {
-        console.log('[Devices] fetchDevices called');
         const token = await get().getAccessToken();
         if (!token) {
           // No token available - ensure devicesLoading is reset
-          console.log('[Devices] No token available, skipping fetch');
           set({ devicesLoading: false });
           return;
         }
@@ -416,7 +389,6 @@ export const useAppStore = create<AppState>()(
         set({ devicesLoading: true });
 
         try {
-          console.log('[Devices] Fetching devices from /api/devices');
           const response = await fetch("/api/devices", {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -426,10 +398,6 @@ export const useAppStore = create<AppState>()(
           if (response.ok) {
             const data = await response.json();
             const devices = data.devices as CloudDevice[];
-            console.log('[Devices] Fetched successfully:', {
-              count: devices.length,
-              deviceIds: devices.map(d => d.id),
-            });
 
             set({ devices });
 
@@ -438,7 +406,6 @@ export const useAppStore = create<AppState>()(
               set({ selectedDeviceId: devices[0].id });
             }
           } else if (response.status === 401) {
-            console.warn('[Devices] 401 response, attempting token refresh');
             // Token rejected - try refreshing once before signing out
             const session = getStoredSession();
 
@@ -472,17 +439,13 @@ export const useAppStore = create<AppState>()(
 
             // Refresh failed or retry still 401 - check if session was cleared
             if (!getStoredSession()) {
-              console.warn('[Devices] Session cleared after 401, signing out');
               get().signOut();
-            } else {
-              console.warn('[Devices] Session preserved after 401, will retry later');
             }
           }
-        } catch (error) {
-          console.error("[Devices] Failed to fetch devices:", error);
+        } catch {
+          // Failed to fetch devices
         }
 
-        console.log('[Devices] fetchDevices complete, devicesLoading: false');
         set({ devicesLoading: false });
       },
 
