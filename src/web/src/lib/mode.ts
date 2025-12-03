@@ -110,7 +110,6 @@ function startTokenRefreshMonitor(store: AppState) {
 
     // If token is expiring soon, refresh it
     if (isTokenExpired(session)) {
-      console.log("[Auth] Token expiring, refreshing...");
       const newSession = await refreshSession(session);
 
       if (newSession) {
@@ -120,15 +119,8 @@ function startTokenRefreshMonitor(store: AppState) {
         // Refresh failed - check if session was cleared or just network issue
         const currentSession = getStoredSession();
 
-        if (currentSession) {
-          // Session preserved (network error) - don't sign out
-          // The session may still be valid, just couldn't refresh right now
-          console.log(
-            "[Auth] Refresh failed but session preserved, will retry later"
-          );
-        } else {
+        if (!currentSession) {
           // Session was cleared (invalid token) - user needs to re-login
-          console.log("[Auth] Refresh failed and session cleared, signing out");
           store.signOut();
 
           // Redirect to login if not already there
@@ -190,7 +182,9 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       // Initial state
-      mode: "local",
+      // Use build-time constant to set correct default mode
+      // ESP32 builds default to "local", cloud builds default to "cloud"
+      mode: __ESP32__ ? "local" : "cloud",
       apMode: false,
       initialized: false,
       user: null,
@@ -202,44 +196,41 @@ export const useAppStore = create<AppState>()(
 
       initialize: async () => {
         const isPWA = isRunningAsPWA();
-        const currentMode = get().mode;
 
-        // For local mode (non-PWA), initialize immediately with cached state
-        // This allows instant UI display on iOS PWA cold start
-        // Skip this optimization for PWA since PWA always uses cloud mode
-        if (!isPWA && currentMode === "local" && !get().initialized) {
-          set({ initialized: true, authLoading: false });
+        // Check if we're on actual ESP32 hardware
+        // Use both build-time constant AND runtime hostname check for safety
+        const isOnESP32Hardware =
+          __ESP32__ && window.location.hostname === "brewos.local";
+
+        // For ESP32 local mode (non-PWA), initialize immediately with cached state
+        // This allows instant UI display. Skip this on cloud builds - always check server.
+        if (!isPWA && isOnESP32Hardware && !get().initialized) {
+          set({ mode: "local", initialized: true, authLoading: false });
+          // Fetch backend info in background (non-blocking) for feature detection
+          useBackendInfo.getState().fetchInfo();
+          return;
         }
 
-        // Fetch fresh mode from server (non-blocking for local mode, blocking for PWA/cloud)
-        const fetchPromise = fetchModeFromServer().then(
-          ({ mode, apMode, backendInfo }) => {
-            set({ mode, apMode: apMode ?? false });
+        // Fetch mode from server - always wait for response on localhost/cloud
+        const { mode, apMode, backendInfo } = await fetchModeFromServer();
 
-            // Update backend info store
-            if (backendInfo) {
-              const { compatible, warnings, errors } =
-                checkCompatibility(backendInfo);
-              useBackendInfo.setState({
-                info: backendInfo,
-                loading: false,
-                error: null,
-                compatible,
-                warnings,
-                errors,
-              });
-            } else {
-              useBackendInfo.getState().fetchInfo();
-            }
+        set({ mode, apMode: apMode ?? false });
 
-            return mode;
-          }
-        );
-
-        // For PWA or cloud mode, always wait for mode detection
-        // For local mode (non-PWA), use cached mode immediately
-        const mode =
-          !isPWA && currentMode === "local" ? currentMode : await fetchPromise;
+        // Update backend info store
+        if (backendInfo) {
+          const { compatible, warnings, errors } =
+            checkCompatibility(backendInfo);
+          useBackendInfo.setState({
+            info: backendInfo,
+            loading: false,
+            error: null,
+            compatible,
+            warnings,
+            errors,
+          });
+        } else {
+          useBackendInfo.getState().fetchInfo();
+        }
 
         if (mode === "local") {
           set({ initialized: true, authLoading: false });
@@ -284,9 +275,6 @@ export const useAppStore = create<AppState>()(
             if (currentSession) {
               // Session preserved (network error) - show user as logged in
               // with expired token. They can retry or features will try refresh.
-              console.log(
-                "[Auth] Refresh failed but session preserved, continuing with cached user"
-              );
               set({
                 user: currentSession.user,
                 session: currentSession,
@@ -370,7 +358,6 @@ export const useAppStore = create<AppState>()(
             }
           } else if (response.status === 401) {
             // Token rejected - try refreshing once before signing out
-            console.log("[Devices] Got 401, attempting token refresh...");
             const session = getStoredSession();
 
             if (session) {
@@ -403,11 +390,9 @@ export const useAppStore = create<AppState>()(
 
             // Refresh failed or retry still 401 - check if session was cleared
             if (!getStoredSession()) {
-              console.log("[Devices] Session cleared, signing out");
               get().signOut();
-            } else {
-              console.log("[Devices] Session preserved, will retry later");
             }
+            // Session preserved - will retry later
           }
         } catch (error) {
           console.error("Failed to fetch devices:", error);
