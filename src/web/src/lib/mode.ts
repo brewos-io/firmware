@@ -13,19 +13,49 @@ import {
 } from "./auth";
 import { useBackendInfo } from "./backend-info";
 import { checkCompatibility, type BackendInfo } from "./api-version";
+import { isRunningAsPWA } from "./pwa";
+
+// Timeout for fetch requests (5 seconds)
+const FETCH_TIMEOUT_MS = 5000;
+
+/**
+ * Fetch with timeout to prevent hanging on slow/unresponsive networks
+ */
+async function fetchWithTimeout(url: string, timeoutMs: number = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
 
 /**
  * Fetch mode from server - the server knows if it's ESP32 (local) or cloud
  * Now uses /api/info as primary endpoint with fallback to /api/mode
+ * 
+ * IMPORTANT: When running as a PWA, always return cloud mode.
+ * PWA installations are from cloud.brewos.io and should only support cloud mode.
  */
 async function fetchModeFromServer(): Promise<{
   mode: ConnectionMode;
   apMode?: boolean;
   backendInfo?: BackendInfo;
 }> {
+  // PWA mode only supports cloud - no local mode allowed
+  if (isRunningAsPWA()) {
+    console.log("[Mode] Running as PWA, forcing cloud mode");
+    return { mode: "cloud", apMode: false };
+  }
+  
   // Try /api/info first (new endpoint with full capabilities)
   try {
-    const infoResponse = await fetch("/api/info");
+    const infoResponse = await fetchWithTimeout("/api/info");
     if (infoResponse.ok) {
       const info = await infoResponse.json() as BackendInfo;
       return {
@@ -40,7 +70,7 @@ async function fetchModeFromServer(): Promise<{
   
   // Fallback to /api/mode (for backward compatibility with older firmware)
   try {
-    const response = await fetch("/api/mode");
+    const response = await fetchWithTimeout("/api/mode");
     if (response.ok) {
       const data = await response.json();
       return {
@@ -157,15 +187,17 @@ export const useAppStore = create<AppState>()(
       devicesLoading: false,
 
       initialize: async () => {
+        const isPWA = isRunningAsPWA();
         const currentMode = get().mode;
         
-        // For local mode, initialize immediately with cached state
+        // For local mode (non-PWA), initialize immediately with cached state
         // This allows instant UI display on iOS PWA cold start
-        if (currentMode === "local" && !get().initialized) {
+        // Skip this optimization for PWA since PWA always uses cloud mode
+        if (!isPWA && currentMode === "local" && !get().initialized) {
           set({ initialized: true, authLoading: false });
         }
         
-        // Fetch fresh mode from server (non-blocking for local mode)
+        // Fetch fresh mode from server (non-blocking for local mode, blocking for PWA/cloud)
         const fetchPromise = fetchModeFromServer().then(({ mode, apMode, backendInfo }) => {
           set({ mode, apMode: apMode ?? false });
           
@@ -187,8 +219,9 @@ export const useAppStore = create<AppState>()(
           return mode;
         });
 
-        // For cloud mode, wait for mode detection
-        const mode = currentMode === "local" ? currentMode : await fetchPromise;
+        // For PWA or cloud mode, always wait for mode detection
+        // For local mode (non-PWA), use cached mode immediately
+        const mode = (!isPWA && currentMode === "local") ? currentMode : await fetchPromise;
 
         if (mode === "local") {
           set({ initialized: true, authLoading: false });

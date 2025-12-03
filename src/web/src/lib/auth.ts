@@ -116,6 +116,9 @@ export async function loginWithGoogle(
   return session;
 }
 
+// Timeout for refresh requests (8 seconds)
+const REFRESH_TIMEOUT_MS = 8000;
+
 /**
  * Refresh the session using refresh token
  * Implements token rotation (new refresh token each time)
@@ -137,11 +140,17 @@ export async function refreshSession(
 
   refreshPromise = (async () => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+      
       const response = await fetch("/api/auth/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken: currentSession.refreshToken }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         // Only clear session on explicit auth rejection (token invalid/revoked)

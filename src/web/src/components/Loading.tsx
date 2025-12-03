@@ -3,16 +3,22 @@ import { cn } from '@/lib/utils';
 interface LoadingProps {
   message?: string;
   className?: string;
+  /** Show a retry button (for error states) */
+  showRetry?: boolean;
+  /** Callback when retry is clicked */
+  onRetry?: () => void;
 }
 
-export function Loading({ message, className }: LoadingProps) {
+export function Loading({ message, className, showRetry, onRetry }: LoadingProps) {
+  const isError = showRetry || (message && message.toLowerCase().includes('error'));
+  
   return (
     <div className={cn("min-h-screen bg-theme flex items-center justify-center", className)}>
-      <div className="text-center">
+      <div className="text-center px-4">
         {/* Animated Logo */}
         <div className="w-48 h-auto mx-auto mb-6">
-          {/* Cup - Animated */}
-          <div className="animate-float">
+          {/* Cup - Animated (pulsing on error, floating normally) */}
+          <div className={isError ? "animate-pulse" : "animate-float"}>
             <CupIcon />
           </div>
           {/* Text - Static */}
@@ -20,7 +26,34 @@ export function Loading({ message, className }: LoadingProps) {
             <TextIcon />
           </div>
         </div>
-        {message && <p className="text-theme-muted text-sm">{message}</p>}
+        
+        {/* Message */}
+        {message && (
+          <p className={cn(
+            "text-sm max-w-xs mx-auto",
+            isError ? "text-red-400" : "text-theme-muted"
+          )}>
+            {message}
+          </p>
+        )}
+        
+        {/* Retry button */}
+        {showRetry && onRetry && (
+          <button
+            onClick={onRetry}
+            className="mt-4 px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg 
+                       font-medium transition-colors duration-200 shadow-lg"
+          >
+            Retry
+          </button>
+        )}
+        
+        {/* Loading indicator (only show when not in error state) */}
+        {!isError && (
+          <div className="mt-4 flex justify-center">
+            <div className="w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
       </div>
     </div>
   );
