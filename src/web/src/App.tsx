@@ -203,6 +203,13 @@ function App() {
       setInitialDevicesFetched(true);
     }
   }, [mode, user, initialized, devicesLoading, initialDevicesFetched]);
+  
+  // Reset initialDevicesFetched when user logs out (so re-login waits for devices)
+  useEffect(() => {
+    if (!user && initialDevicesFetched) {
+      setInitialDevicesFetched(false);
+    }
+  }, [user, initialDevicesFetched]);
 
   // Handle setup completion
   const handleSetupComplete = () => {

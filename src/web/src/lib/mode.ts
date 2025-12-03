@@ -267,11 +267,14 @@ export const useAppStore = create<AppState>()(
 
         if (session && !isTokenExpired(session)) {
           // Token still valid - use it
+          // Set devicesLoading: true here to prevent race condition with App.tsx
+          // waiting for initial device fetch
           set({
             user: session.user,
             session,
             authLoading: false,
             initialized: true,
+            devicesLoading: true,
           });
 
           // Fetch devices
@@ -285,11 +288,13 @@ export const useAppStore = create<AppState>()(
 
           if (newSession) {
             // Refresh succeeded
+            // Set devicesLoading: true here to prevent race condition
             set({
               user: newSession.user,
               session: newSession,
               authLoading: false,
               initialized: true,
+              devicesLoading: true,
             });
             get().fetchDevices();
             startTokenRefreshMonitor(get());
@@ -300,11 +305,13 @@ export const useAppStore = create<AppState>()(
             if (currentSession) {
               // Session preserved (network error) - show user as logged in
               // with expired token. They can retry or features will try refresh.
+              // Set devicesLoading: true here to prevent race condition
               set({
                 user: currentSession.user,
                 session: currentSession,
                 authLoading: false,
                 initialized: true,
+                devicesLoading: true,
               });
               // Try fetching devices anyway - might work if network recovers
               get().fetchDevices();
@@ -336,10 +343,12 @@ export const useAppStore = create<AppState>()(
 
           const session = await loginWithGoogle(credential);
 
+          // Set devicesLoading: true to prevent flash to Onboarding while fetching
           set({
             user: session.user,
             session,
             authLoading: false,
+            devicesLoading: true,
           });
 
           // Fetch devices after login
@@ -371,7 +380,11 @@ export const useAppStore = create<AppState>()(
 
       fetchDevices: async () => {
         const token = await get().getAccessToken();
-        if (!token) return;
+        if (!token) {
+          // No token available - ensure devicesLoading is reset
+          set({ devicesLoading: false });
+          return;
+        }
 
         set({ devicesLoading: true });
 
