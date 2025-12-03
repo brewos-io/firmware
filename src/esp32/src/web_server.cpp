@@ -6,6 +6,7 @@
 #include "scale/scale_manager.h"
 #include "pairing_manager.h"
 #include "state/state_manager.h"
+#include "statistics/statistics_manager.h"
 #include <LittleFS.h>
 
 WebServer::WebServer(WiFiManager& wifiManager, PicoUART& picoUart, MQTTClient& mqttClient, PairingManager* pairingManager)
@@ -134,6 +135,97 @@ void WebServer::setupRoutes() {
     
     _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
         handleGetStatus(request);
+    });
+    
+    // ==========================================================================
+    // Statistics API endpoints
+    // ==========================================================================
+    
+    // Get full statistics
+    _server.on("/api/stats", HTTP_GET, [](AsyncWebServerRequest* request) {
+        JsonDocument doc;
+        BrewOS::FullStatistics stats;
+        Stats.getFullStatistics(stats);
+        
+        JsonObject obj = doc.to<JsonObject>();
+        stats.toJson(obj);
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+    
+    // Get extended statistics with history data
+    _server.on("/api/stats/extended", HTTP_GET, [](AsyncWebServerRequest* request) {
+        JsonDocument doc;
+        
+        // Get full statistics
+        BrewOS::FullStatistics stats;
+        Stats.getFullStatistics(stats);
+        
+        JsonObject statsObj = doc["stats"].to<JsonObject>();
+        stats.toJson(statsObj);
+        
+        // Weekly chart data
+        JsonArray weeklyArr = doc["weekly"].to<JsonArray>();
+        Stats.getWeeklyBrewChart(weeklyArr);
+        
+        // Hourly distribution
+        JsonArray hourlyArr = doc["hourlyDistribution"].to<JsonArray>();
+        Stats.getHourlyDistribution(hourlyArr);
+        
+        // Brew history (last 50)
+        JsonArray brewArr = doc["brewHistory"].to<JsonArray>();
+        Stats.getBrewHistory(brewArr, 50);
+        
+        // Power history (last 24 hours)
+        JsonArray powerArr = doc["powerHistory"].to<JsonArray>();
+        Stats.getPowerHistory(powerArr);
+        
+        // Daily history (last 30 days)
+        JsonArray dailyArr = doc["dailyHistory"].to<JsonArray>();
+        Stats.getDailyHistory(dailyArr);
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+    
+    // Get brew history
+    _server.on("/api/stats/brews", HTTP_GET, [](AsyncWebServerRequest* request) {
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        
+        // Check for limit parameter
+        size_t limit = 50;
+        if (request->hasParam("limit")) {
+            limit = request->getParam("limit")->value().toInt();
+            if (limit > 200) limit = 200;
+        }
+        
+        Stats.getBrewHistory(arr, limit);
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+    
+    // Get power history
+    _server.on("/api/stats/power", HTTP_GET, [](AsyncWebServerRequest* request) {
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        Stats.getPowerHistory(arr);
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+    
+    // Reset statistics (with confirmation)
+    _server.on("/api/stats/reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        Stats.resetAll();
+        broadcastLog("Statistics reset", "warning");
+        request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
     _server.on("/api/wifi/networks", HTTP_GET, [this](AsyncWebServerRequest* request) {

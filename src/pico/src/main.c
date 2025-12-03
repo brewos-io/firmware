@@ -28,7 +28,6 @@
 #include "water_management.h"
 #include "config_persistence.h"
 #include "cleaning.h"
-#include "statistics.h"
 #include "bootloader.h"
 #include "pzem.h"
 #include "flash_safe.h"
@@ -576,9 +575,8 @@ int main(void) {
     cleaning_init();
     DEBUG_PRINT("Cleaning mode initialized\n");
     
-    // Initialize statistics
-    statistics_init();
-    DEBUG_PRINT("Statistics initialized\n");
+    // Note: Statistics are now tracked by ESP32 (has NTP for accurate timestamps)
+    // Pico only sends brew completion events to ESP32 via alarms
     
     // Initialize flash safety system on Core 0 BEFORE launching Core 1
     // This allows Core 1 to pause Core 0 during flash operations (XIP safety)
@@ -627,13 +625,6 @@ int main(void) {
         
         // Update cleaning mode (10Hz)
         cleaning_update();
-        
-        // Update statistics time-based calculations (every hour)
-        static uint32_t last_stats_update = 0;
-        if (now - last_stats_update >= 3600000) {  // 1 hour
-            last_stats_update = now;
-            statistics_update_time_based();
-        }
         
         // Control loop (10Hz)
         if (now - last_control >= CONTROL_LOOP_PERIOD_MS) {

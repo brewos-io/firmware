@@ -17,7 +17,6 @@
 #include "hardware/gpio.h"
 #include "protocol.h"
 #include "cleaning.h"
-#include "statistics.h"
 #include "config_persistence.h"
 
 // =============================================================================
@@ -247,11 +246,11 @@ static void state_exit_action(machine_state_t state) {
                 
                 // Record brew cycle for cleaning counter (if >= 15 seconds)
                 // Note: Cleaning counter is separate and resets after cleaning
+                // This is safety-critical and stays on Pico to work even without ESP32
                 cleaning_record_brew_cycle(brew_duration);
                 
-                // Record brew for statistics (comprehensive tracking)
-                // Statistics tracks all brews >= 5 seconds for comprehensive analytics
-                statistics_record_brew(brew_duration);
+                // Note: Statistics are tracked by ESP32 (has NTP for accurate timestamps)
+                // ESP32 monitors brew alarms (ALARM_BREW_COMPLETED) and records statistics
             }
             control_set_pump(0);
             // Solenoid will be turned off after post-brew delay

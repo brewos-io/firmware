@@ -533,30 +533,91 @@ export class DemoConnection implements IConnection {
     const sessionUptime = this.machineOnTimestamp
       ? Date.now() - this.machineOnTimestamp
       : 0;
+    
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
 
     this.emit({
       type: "stats",
+      // Lifetime totals
       totalShots: this.totalShots,
       totalSteamCycles: 234,
       totalKwh: 89.3,
       totalOnTimeMinutes: 15420,
+      
+      // Today's stats
       shotsToday: this.shotsToday,
       kwhToday: 0.8 + this.shotsToday * 0.05,
-      onTimeToday: Math.floor(sessionUptime / 60000), // Convert ms to minutes
+      onTimeToday: Math.floor(sessionUptime / 60000),
+      
+      // Maintenance tracking (legacy)
       shotsSinceDescale: 145,
       shotsSinceGroupClean: 12,
       shotsSinceBackflush: 45,
-      lastDescaleTimestamp: Date.now() - 30 * 24 * 60 * 60 * 1000,
-      lastGroupCleanTimestamp: Date.now() - 2 * 24 * 60 * 60 * 1000,
-      lastBackflushTimestamp: Date.now() - 7 * 24 * 60 * 60 * 1000,
+      lastDescaleTimestamp: now - 30 * day,
+      lastGroupCleanTimestamp: now - 2 * day,
+      lastBackflushTimestamp: now - 7 * day,
+      
+      // Maintenance (structured)
+      maintenance: {
+        shotsSinceBackflush: 45,
+        shotsSinceGroupClean: 12,
+        shotsSinceDescale: 145,
+        lastBackflushTimestamp: now - 7 * day,
+        lastGroupCleanTimestamp: now - 2 * day,
+        lastDescaleTimestamp: now - 30 * day,
+      },
+      
+      // Brew time stats
       avgBrewTimeMs: 28500,
       minBrewTimeMs: 22000,
       maxBrewTimeMs: 35000,
+      
+      // Period counts
       dailyCount: this.shotsToday,
       weeklyCount: 28,
       monthlyCount: 124,
+      
+      // Session
       sessionShots: this.shotsToday,
-      sessionStartTimestamp: this.machineOnTimestamp || Date.now(),
+      sessionStartTimestamp: this.machineOnTimestamp || now,
+      
+      // Period stats (for power tab)
+      daily: {
+        shotCount: this.shotsToday,
+        totalBrewTimeMs: this.shotsToday * 28500,
+        avgBrewTimeMs: 28500,
+        minBrewTimeMs: 26000,
+        maxBrewTimeMs: 31000,
+        totalKwh: 0.8 + this.shotsToday * 0.05,
+      },
+      weekly: {
+        shotCount: 28,
+        totalBrewTimeMs: 798000,
+        avgBrewTimeMs: 28500,
+        minBrewTimeMs: 22000,
+        maxBrewTimeMs: 35000,
+        totalKwh: 7.2,
+      },
+      monthly: {
+        shotCount: 124,
+        totalBrewTimeMs: 3534000,
+        avgBrewTimeMs: 28500,
+        minBrewTimeMs: 21000,
+        maxBrewTimeMs: 38000,
+        totalKwh: 28.5,
+      },
+      lifetime: {
+        totalShots: this.totalShots,
+        totalSteamCycles: 234,
+        totalKwh: 89.3,
+        totalOnTimeMinutes: 15420,
+        totalBrewTimeMs: this.totalShots * 28500,
+        avgBrewTimeMs: 28500,
+        minBrewTimeMs: 18000,
+        maxBrewTimeMs: 42000,
+        firstShotTimestamp: Math.floor((now - 180 * day) / 1000), // Started 6 months ago
+      },
     });
   }
 

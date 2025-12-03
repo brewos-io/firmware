@@ -110,7 +110,6 @@ set(COMMON_SOURCES
     src/flash_safe.c          # Flash safety utilities (XIP crash prevention)
     src/pzem.c
     src/cleaning.c
-    src/statistics.c
     src/bootloader.c
 )
 

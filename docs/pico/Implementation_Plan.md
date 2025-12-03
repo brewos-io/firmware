@@ -65,8 +65,9 @@ The Pico firmware has completed Phases 1-5 with all core functionality implement
 - ✅ Cleaning Mode - See [Cleaning_Mode.md](features/Cleaning_Mode.md)
 - ✅ PZEM-004T Power Meter Integration - See `pzem.c`
 - ✅ Configuration Persistence - See `config_persistence.c`
-- ✅ Statistics Feature - See [Statistics.md](features/Statistics.md)
 - ✅ OTA Firmware Update (Serial Bootloader) - See `bootloader.c`
+
+> **Note:** Statistics tracking has been moved to ESP32 for accurate NTP timestamps. See [ESP32 Statistics](../esp32/features/Statistics.md).
 
 ---
 
@@ -92,8 +93,8 @@ The Pico firmware has completed Phases 1-5 with all core functionality implement
 ### Feature Implementation Docs
 - [Water Management](features/Water_Management.md)
 - [Cleaning Mode](features/Cleaning_Mode.md)
-- [Statistics](features/Statistics.md)
 - [Error Handling](features/Error_Handling.md)
+- [Statistics (ESP32)](../esp32/features/Statistics.md)
 
 ### External Resources
 - [Pico SDK Documentation](https://datasheets.raspberrypi.com/pico/raspberry-pi-pico-c-sdk.pdf)

@@ -201,38 +201,138 @@ export interface PicoInfo {
   version: string;
 }
 
-// Statistics (matches ESP32 state_types.h)
-export interface Statistics {
-  // Lifetime stats
+// =============================================================================
+// STATISTICS TYPES - Enhanced statistics from ESP32
+// =============================================================================
+
+/**
+ * Individual brew record with detailed metrics
+ */
+export interface BrewRecord {
+  timestamp: number;           // Unix timestamp
+  durationMs: number;          // Brew duration in milliseconds
+  yieldWeight: number;         // Output weight (g)
+  doseWeight: number;          // Input dose (g)
+  peakPressure: number;        // Maximum pressure during brew
+  avgTemperature: number;      // Average brew temperature
+  avgFlowRate: number;         // Average flow rate (g/s)
+  rating: number;              // User rating (0-5, 0=unrated)
+  ratio?: number;              // Brew ratio (yield/dose)
+}
+
+/**
+ * Power consumption sample
+ */
+export interface PowerSample {
+  timestamp: number;           // Unix timestamp
+  avgWatts: number;            // Average power during interval
+  maxWatts: number;            // Peak power during interval
+  kwhConsumed: number;         // Energy consumed during interval
+}
+
+/**
+ * Daily summary for trend analysis
+ */
+export interface DailySummary {
+  date: number;                // Unix timestamp at midnight
+  shotCount: number;           // Shots that day
+  totalBrewTimeMs: number;     // Total brew time
+  totalKwh: number;            // Total energy consumed
+  onTimeMinutes: number;       // Minutes machine was on
+  steamCycles: number;         // Steam cycle count
+  avgBrewTimeMs: number;       // Average brew time
+}
+
+/**
+ * Statistics for a time period
+ */
+export interface PeriodStats {
+  shotCount: number;
+  totalBrewTimeMs: number;
+  avgBrewTimeMs: number;
+  minBrewTimeMs: number;
+  maxBrewTimeMs: number;
+  totalKwh: number;
+}
+
+/**
+ * Lifetime statistics
+ */
+export interface LifetimeStats {
   totalShots: number;
   totalSteamCycles: number;
   totalKwh: number;
   totalOnTimeMinutes: number;
+  totalBrewTimeMs: number;
+  avgBrewTimeMs: number;
+  minBrewTimeMs: number;
+  maxBrewTimeMs: number;
+  firstShotTimestamp: number;
+}
+
+/**
+ * Maintenance tracking
+ */
+export interface MaintenanceStats {
+  shotsSinceBackflush: number;
+  shotsSinceGroupClean: number;
+  shotsSinceDescale: number;
+  lastBackflushTimestamp: number;
+  lastGroupCleanTimestamp: number;
+  lastDescaleTimestamp: number;
+}
+
+/**
+ * Complete statistics package
+ */
+export interface Statistics {
+  // Lifetime stats
+  lifetime: LifetimeStats;
   
-  // Daily stats (reset at midnight)
+  // Period stats (calculated from history)
+  daily: PeriodStats;
+  weekly: PeriodStats;
+  monthly: PeriodStats;
+  
+  // Maintenance
+  maintenance: MaintenanceStats;
+  
+  // Session
+  sessionShots: number;
+  sessionStartTimestamp: number;
+  
+  // Legacy compatibility fields (derived from new structure)
+  totalShots: number;
+  totalSteamCycles: number;
+  totalKwh: number;
+  totalOnTimeMinutes: number;
   shotsToday: number;
   kwhToday: number;
   onTimeToday: number;
-  
-  // Maintenance counters
   shotsSinceDescale: number;
   shotsSinceGroupClean: number;
   shotsSinceBackflush: number;
   lastDescaleTimestamp: number;
   lastGroupCleanTimestamp: number;
   lastBackflushTimestamp: number;
-  
-  // Pico statistics (from protocol)
   avgBrewTimeMs: number;
   minBrewTimeMs: number;
   maxBrewTimeMs: number;
   dailyCount: number;
   weeklyCount: number;
   monthlyCount: number;
-  
-  // Session
-  sessionStartTimestamp: number;
-  sessionShots: number;
+}
+
+/**
+ * Extended statistics response (from /api/stats/extended)
+ */
+export interface ExtendedStatsResponse {
+  stats: Statistics;
+  weekly: { day: string; shots: number }[];
+  hourlyDistribution: { hour: number; count: number }[];
+  brewHistory: BrewRecord[];
+  powerHistory: PowerSample[];
+  dailyHistory: DailySummary[];
 }
 
 // Alerts & Logs

@@ -16,6 +16,9 @@ import type {
   PicoInfo,
   DeviceInfo,
   Statistics,
+  LifetimeStats,
+  PeriodStats,
+  MaintenanceStats,
   Alert,
   LogEntry,
   ScaleScanResult,
@@ -164,36 +167,73 @@ const defaultPico: PicoInfo = {
 };
 
 const defaultStats: Statistics = {
-  // Lifetime stats
+  // New enhanced structure
+  lifetime: {
+    totalShots: 0,
+    totalSteamCycles: 0,
+    totalKwh: 0,
+    totalOnTimeMinutes: 0,
+    totalBrewTimeMs: 0,
+    avgBrewTimeMs: 0,
+    minBrewTimeMs: 0,
+    maxBrewTimeMs: 0,
+    firstShotTimestamp: 0,
+  },
+  daily: {
+    shotCount: 0,
+    totalBrewTimeMs: 0,
+    avgBrewTimeMs: 0,
+    minBrewTimeMs: 0,
+    maxBrewTimeMs: 0,
+    totalKwh: 0,
+  },
+  weekly: {
+    shotCount: 0,
+    totalBrewTimeMs: 0,
+    avgBrewTimeMs: 0,
+    minBrewTimeMs: 0,
+    maxBrewTimeMs: 0,
+    totalKwh: 0,
+  },
+  monthly: {
+    shotCount: 0,
+    totalBrewTimeMs: 0,
+    avgBrewTimeMs: 0,
+    minBrewTimeMs: 0,
+    maxBrewTimeMs: 0,
+    totalKwh: 0,
+  },
+  maintenance: {
+    shotsSinceBackflush: 0,
+    shotsSinceGroupClean: 0,
+    shotsSinceDescale: 0,
+    lastBackflushTimestamp: 0,
+    lastGroupCleanTimestamp: 0,
+    lastDescaleTimestamp: 0,
+  },
+  sessionShots: 0,
+  sessionStartTimestamp: 0,
+
+  // Legacy compatibility (derived from new structure)
   totalShots: 0,
   totalSteamCycles: 0,
   totalKwh: 0,
   totalOnTimeMinutes: 0,
-
-  // Daily stats
   shotsToday: 0,
   kwhToday: 0,
   onTimeToday: 0,
-
-  // Maintenance counters
   shotsSinceDescale: 0,
   shotsSinceGroupClean: 0,
   shotsSinceBackflush: 0,
   lastDescaleTimestamp: 0,
   lastGroupCleanTimestamp: 0,
   lastBackflushTimestamp: 0,
-
-  // Pico statistics
   avgBrewTimeMs: 0,
   minBrewTimeMs: 0,
   maxBrewTimeMs: 0,
   dailyCount: 0,
   weeklyCount: 0,
   monthlyCount: 0,
-
-  // Session
-  sessionStartTimestamp: 0,
-  sessionShots: 0,
 };
 
 const defaultDevice: DeviceInfo = {
@@ -510,59 +550,89 @@ export const useStore = create<BrewOSState>()(
           }));
           break;
 
-        case "stats":
-          set((state) => ({
-            stats: {
+        case "stats": {
+          const lifetimeData = data.lifetime as Partial<LifetimeStats> | undefined;
+          const dailyData = data.daily as Partial<PeriodStats> | undefined;
+          const weeklyData = data.weekly as Partial<PeriodStats> | undefined;
+          const monthlyData = data.monthly as Partial<PeriodStats> | undefined;
+          const maintData = data.maintenance as Partial<MaintenanceStats> | undefined;
+          
+          set((state) => {
+            // Build new stats object
+            const newStats: Statistics = {
               ...state.stats,
-              totalShots: (data.totalShots as number) ?? state.stats.totalShots,
-              totalSteamCycles:
-                (data.totalSteamCycles as number) ??
-                state.stats.totalSteamCycles,
-              totalKwh: (data.totalKwh as number) ?? state.stats.totalKwh,
-              totalOnTimeMinutes:
-                (data.totalOnTimeMinutes as number) ??
-                state.stats.totalOnTimeMinutes,
-              shotsToday: (data.shotsToday as number) ?? state.stats.shotsToday,
-              kwhToday: (data.kwhToday as number) ?? state.stats.kwhToday,
-              onTimeToday:
-                (data.onTimeToday as number) ?? state.stats.onTimeToday,
-              shotsSinceDescale:
-                (data.shotsSinceDescale as number) ??
-                state.stats.shotsSinceDescale,
-              shotsSinceGroupClean:
-                (data.shotsSinceGroupClean as number) ??
-                state.stats.shotsSinceGroupClean,
-              shotsSinceBackflush:
-                (data.shotsSinceBackflush as number) ??
-                state.stats.shotsSinceBackflush,
-              lastDescaleTimestamp:
-                (data.lastDescaleTimestamp as number) ??
-                state.stats.lastDescaleTimestamp,
-              lastGroupCleanTimestamp:
-                (data.lastGroupCleanTimestamp as number) ??
-                state.stats.lastGroupCleanTimestamp,
-              lastBackflushTimestamp:
-                (data.lastBackflushTimestamp as number) ??
-                state.stats.lastBackflushTimestamp,
-              avgBrewTimeMs:
-                (data.avgBrewTimeMs as number) ?? state.stats.avgBrewTimeMs,
-              minBrewTimeMs:
-                (data.minBrewTimeMs as number) ?? state.stats.minBrewTimeMs,
-              maxBrewTimeMs:
-                (data.maxBrewTimeMs as number) ?? state.stats.maxBrewTimeMs,
-              dailyCount: (data.dailyCount as number) ?? state.stats.dailyCount,
-              weeklyCount:
-                (data.weeklyCount as number) ?? state.stats.weeklyCount,
-              monthlyCount:
-                (data.monthlyCount as number) ?? state.stats.monthlyCount,
-              sessionShots:
-                (data.sessionShots as number) ?? state.stats.sessionShots,
-              sessionStartTimestamp:
-                (data.sessionStartTimestamp as number) ??
-                state.stats.sessionStartTimestamp,
-            },
-          }));
+              // Enhanced structure
+              lifetime: lifetimeData ? {
+                totalShots: lifetimeData.totalShots ?? state.stats.lifetime.totalShots,
+                totalSteamCycles: lifetimeData.totalSteamCycles ?? state.stats.lifetime.totalSteamCycles,
+                totalKwh: lifetimeData.totalKwh ?? state.stats.lifetime.totalKwh,
+                totalOnTimeMinutes: lifetimeData.totalOnTimeMinutes ?? state.stats.lifetime.totalOnTimeMinutes,
+                totalBrewTimeMs: lifetimeData.totalBrewTimeMs ?? state.stats.lifetime.totalBrewTimeMs,
+                avgBrewTimeMs: lifetimeData.avgBrewTimeMs ?? state.stats.lifetime.avgBrewTimeMs,
+                minBrewTimeMs: lifetimeData.minBrewTimeMs ?? state.stats.lifetime.minBrewTimeMs,
+                maxBrewTimeMs: lifetimeData.maxBrewTimeMs ?? state.stats.lifetime.maxBrewTimeMs,
+                firstShotTimestamp: lifetimeData.firstShotTimestamp ?? state.stats.lifetime.firstShotTimestamp,
+              } : state.stats.lifetime,
+              daily: dailyData ? {
+                shotCount: dailyData.shotCount ?? state.stats.daily.shotCount,
+                totalBrewTimeMs: dailyData.totalBrewTimeMs ?? state.stats.daily.totalBrewTimeMs,
+                avgBrewTimeMs: dailyData.avgBrewTimeMs ?? state.stats.daily.avgBrewTimeMs,
+                minBrewTimeMs: dailyData.minBrewTimeMs ?? state.stats.daily.minBrewTimeMs,
+                maxBrewTimeMs: dailyData.maxBrewTimeMs ?? state.stats.daily.maxBrewTimeMs,
+                totalKwh: dailyData.totalKwh ?? state.stats.daily.totalKwh,
+              } : state.stats.daily,
+              weekly: weeklyData ? {
+                shotCount: weeklyData.shotCount ?? state.stats.weekly.shotCount,
+                totalBrewTimeMs: weeklyData.totalBrewTimeMs ?? state.stats.weekly.totalBrewTimeMs,
+                avgBrewTimeMs: weeklyData.avgBrewTimeMs ?? state.stats.weekly.avgBrewTimeMs,
+                minBrewTimeMs: weeklyData.minBrewTimeMs ?? state.stats.weekly.minBrewTimeMs,
+                maxBrewTimeMs: weeklyData.maxBrewTimeMs ?? state.stats.weekly.maxBrewTimeMs,
+                totalKwh: weeklyData.totalKwh ?? state.stats.weekly.totalKwh,
+              } : state.stats.weekly,
+              monthly: monthlyData ? {
+                shotCount: monthlyData.shotCount ?? state.stats.monthly.shotCount,
+                totalBrewTimeMs: monthlyData.totalBrewTimeMs ?? state.stats.monthly.totalBrewTimeMs,
+                avgBrewTimeMs: monthlyData.avgBrewTimeMs ?? state.stats.monthly.avgBrewTimeMs,
+                minBrewTimeMs: monthlyData.minBrewTimeMs ?? state.stats.monthly.minBrewTimeMs,
+                maxBrewTimeMs: monthlyData.maxBrewTimeMs ?? state.stats.monthly.maxBrewTimeMs,
+                totalKwh: monthlyData.totalKwh ?? state.stats.monthly.totalKwh,
+              } : state.stats.monthly,
+              maintenance: maintData ? {
+                shotsSinceBackflush: maintData.shotsSinceBackflush ?? state.stats.maintenance.shotsSinceBackflush,
+                shotsSinceGroupClean: maintData.shotsSinceGroupClean ?? state.stats.maintenance.shotsSinceGroupClean,
+                shotsSinceDescale: maintData.shotsSinceDescale ?? state.stats.maintenance.shotsSinceDescale,
+                lastBackflushTimestamp: maintData.lastBackflushTimestamp ?? state.stats.maintenance.lastBackflushTimestamp,
+                lastGroupCleanTimestamp: maintData.lastGroupCleanTimestamp ?? state.stats.maintenance.lastGroupCleanTimestamp,
+                lastDescaleTimestamp: maintData.lastDescaleTimestamp ?? state.stats.maintenance.lastDescaleTimestamp,
+              } : state.stats.maintenance,
+              sessionShots: (data.sessionShots as number) ?? state.stats.sessionShots,
+              sessionStartTimestamp: (data.sessionStartTimestamp as number) ?? state.stats.sessionStartTimestamp,
+            };
+            
+            // Update legacy compatibility fields
+            newStats.totalShots = newStats.lifetime.totalShots;
+            newStats.totalSteamCycles = newStats.lifetime.totalSteamCycles;
+            newStats.totalKwh = newStats.lifetime.totalKwh;
+            newStats.totalOnTimeMinutes = newStats.lifetime.totalOnTimeMinutes;
+            newStats.avgBrewTimeMs = newStats.lifetime.avgBrewTimeMs;
+            newStats.minBrewTimeMs = newStats.lifetime.minBrewTimeMs;
+            newStats.maxBrewTimeMs = newStats.lifetime.maxBrewTimeMs;
+            newStats.shotsToday = newStats.daily.shotCount;
+            newStats.kwhToday = newStats.daily.totalKwh;
+            newStats.dailyCount = newStats.daily.shotCount;
+            newStats.weeklyCount = newStats.weekly.shotCount;
+            newStats.monthlyCount = newStats.monthly.shotCount;
+            newStats.shotsSinceBackflush = newStats.maintenance.shotsSinceBackflush;
+            newStats.shotsSinceGroupClean = newStats.maintenance.shotsSinceGroupClean;
+            newStats.shotsSinceDescale = newStats.maintenance.shotsSinceDescale;
+            newStats.lastBackflushTimestamp = newStats.maintenance.lastBackflushTimestamp;
+            newStats.lastGroupCleanTimestamp = newStats.maintenance.lastGroupCleanTimestamp;
+            newStats.lastDescaleTimestamp = newStats.maintenance.lastDescaleTimestamp;
+            
+            return { stats: newStats };
+          });
           break;
+        }
 
         case "scan_result":
           get().addScanResult(data as unknown as ScaleScanResult);

@@ -132,30 +132,24 @@ typedef struct __attribute__((packed)) {
     float    max_combined_current;   // Calculated: max_current_draw * 0.95
 } env_config_payload_t;  // 18 bytes
 
-// MSG_STATISTICS (0x09) payload - Statistics response
+// MSG_STATISTICS (0x09) payload - DEPRECATED
+// Statistics are now tracked by ESP32 which has NTP for accurate timestamps.
+// This message type is retained for protocol compatibility but is not used.
+// Pico sends brew completion via ALARM_BREW_COMPLETED; ESP32 records statistics.
 typedef struct __attribute__((packed)) {
-    // Overall statistics
-    uint32_t total_brews;             // Total number of brews (all time)
-    uint32_t total_brew_time_ms;      // Total brew time (all time)
-    uint16_t avg_brew_time_ms;        // Average brew time (all time)
-    uint16_t min_brew_time_ms;        // Shortest brew time
-    uint16_t max_brew_time_ms;        // Longest brew time
-    
-    // Daily statistics
+    uint32_t total_brews;              // Total number of brews (all time)
+    uint32_t total_brew_time_ms;       // Total brew time (all time)
+    uint16_t avg_brew_time_ms;         // Average brew time (all time)
+    uint16_t min_brew_time_ms;         // Shortest brew time
+    uint16_t max_brew_time_ms;         // Longest brew time
     uint16_t daily_count;              // Cups in last 24 hours
-    uint16_t daily_avg_time_ms;       // Average brew time (last 24 hours)
-    
-    // Weekly statistics
+    uint16_t daily_avg_time_ms;        // Average brew time (last 24 hours)
     uint16_t weekly_count;             // Cups in last 7 days
-    uint16_t weekly_avg_time_ms;      // Average brew time (last 7 days)
-    
-    // Monthly statistics
+    uint16_t weekly_avg_time_ms;       // Average brew time (last 7 days)
     uint16_t monthly_count;            // Cups in last 30 days
-    uint16_t monthly_avg_time_ms;     // Average brew time (last 30 days)
-    
-    // Metadata
-    uint32_t last_brew_timestamp;     // Timestamp of last brew (milliseconds since boot)
-} statistics_payload_t;  // 28 bytes
+    uint16_t monthly_avg_time_ms;      // Average brew time (last 30 days)
+    uint32_t last_brew_timestamp;      // Timestamp of last brew
+} statistics_payload_t;  // 28 bytes - DEPRECATED
 
 // -----------------------------------------------------------------------------
 // ACK Payload (MSG_ACK = 0x04)
@@ -183,6 +177,7 @@ bool protocol_send_alarm(uint8_t code, uint8_t severity, uint16_t value);
 bool protocol_send_boot(void);
 bool protocol_send_config(const config_payload_t* config);
 bool protocol_send_env_config(const env_config_payload_t* env_config);
+// DEPRECATED: Statistics are now tracked by ESP32. This function is retained for compatibility.
 bool protocol_send_statistics(const statistics_payload_t* stats);
 bool protocol_send_ack(uint8_t for_type, uint8_t seq, uint8_t result);
 bool protocol_send_debug(const char* message);

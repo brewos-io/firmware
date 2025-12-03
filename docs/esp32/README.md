@@ -4,28 +4,29 @@ The ESP32-S3 handles connectivity, user interface, and advanced features for the
 
 ## Quick Links
 
-| Document | Description |
-|----------|-------------|
+| Document                                      | Description                    |
+| --------------------------------------------- | ------------------------------ |
 | [Implementation Plan](Implementation_Plan.md) | Development roadmap and status |
-| [UI Design](UI_Design.md) | Display screens and navigation |
-| [UI Simulator](Simulator.md) | Desktop UI preview tool |
+| [UI Design](UI_Design.md)                     | Display screens and navigation |
+| [UI Simulator](Simulator.md)                  | Desktop UI preview tool        |
 
 ### Features
 
-| Document | Description |
-|----------|-------------|
-| [Schedules & Auto Power-Off](features/Schedules.md) | Time-based automation |
-| [Eco Mode](features/Eco_Mode.md) | Power-saving idle mode |
-| [Brew-by-Weight](integrations/Brew_By_Weight.md) | Auto-stop at target weight |
-| [BLE Scales](integrations/BLE_Scales.md) | Bluetooth scale integration |
+| Document                                            | Description                            |
+| --------------------------------------------------- | -------------------------------------- |
+| [Schedules & Auto Power-Off](features/Schedules.md) | Time-based automation                  |
+| [Eco Mode](features/Eco_Mode.md)                    | Power-saving idle mode                 |
+| [Statistics](features/Statistics.md)                | Usage stats, brew history, power graph |
+| [Brew-by-Weight](integrations/Brew_By_Weight.md)    | Auto-stop at target weight             |
+| [BLE Scales](integrations/BLE_Scales.md)            | Bluetooth scale integration            |
 
 ### Integrations
 
-| Document | Description |
-|----------|-------------|
-| [MQTT Integration](integrations/MQTT.md) | MQTT setup and Home Assistant |
-| [Web API Reference](integrations/Web_API.md) | HTTP endpoints and WebSocket |
-| [Notifications](integrations/Notifications.md) | Push reminders and alerts |
+| Document                                       | Description                   |
+| ---------------------------------------------- | ----------------------------- |
+| [MQTT Integration](integrations/MQTT.md)       | MQTT setup and Home Assistant |
+| [Web API Reference](integrations/Web_API.md)   | HTTP endpoints and WebSocket  |
+| [Notifications](integrations/Notifications.md) | Push reminders and alerts     |
 
 ## Hardware
 
@@ -51,6 +52,7 @@ The ESP32-S3 handles connectivity, user interface, and advanced features for the
 - **Auto Power-Off** - Turn off after idle period
 - **Eco Mode** - Reduce temperature when idle, wake on activity
 - **Time/NTP Settings** - Timezone and NTP server configuration
+- **Statistics** - Comprehensive brew tracking with power graphs and history
 
 ### In Progress 🔲
 
@@ -93,13 +95,13 @@ docs/esp32/
 ├── UI_Design.md           # Display UI specification
 ├── Simulator.md           # Desktop UI simulator
 ├── features/
-│   ├── Schedules.md         # Schedules & auto power-off
-│   └── Eco_Mode.md          # Eco mode (power saving)
+│   ├── Schedules.md       # Schedules & auto power-off
+│   ├── Eco_Mode.md        # Eco mode (power saving)
+│   └── Statistics.md      # Usage stats, brew history, power
 └── integrations/
-    ├── MQTT.md              # MQTT documentation
-    ├── Web_API.md           # API reference
-    ├── BLE_Scales.md        # Bluetooth scales
-    ├── Brew_By_Weight.md    # Auto-stop feature
-    └── Notifications.md     # Push reminders & alerts
+    ├── MQTT.md            # MQTT documentation
+    ├── Web_API.md         # API reference
+    ├── BLE_Scales.md      # Bluetooth scales
+    ├── Brew_By_Weight.md  # Auto-stop feature
+    └── Notifications.md   # Push reminders & alerts
 ```
-

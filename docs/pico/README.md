@@ -25,9 +25,10 @@ The Raspberry Pi Pico handles real-time machine control for the BrewOS coffee ma
 |----------|-------------|
 | [Cleaning Mode](features/Cleaning_Mode.md) | Backflush cleaning |
 | [Water Management](features/Water_Management.md) | Water level/tank |
-| [Statistics](features/Statistics.md) | Usage statistics |
 | [Shot Timer](features/Shot_Timer.md) | Brew timer display |
 | [Error Handling](features/Error_Handling.md) | Alarms and faults |
+
+> **Note:** Statistics tracking is handled by ESP32. See [ESP32 Statistics](../esp32/features/Statistics.md).
 
 ## Hardware
 
@@ -66,7 +67,6 @@ docs/pico/
 └── features/
     ├── Cleaning_Mode.md         # Backflush cleaning
     ├── Water_Management.md      # Water level/tank
-    ├── Statistics.md            # Usage statistics
     ├── Shot_Timer.md            # Brew timer display
     └── Error_Handling.md        # Alarms and faults
 ```

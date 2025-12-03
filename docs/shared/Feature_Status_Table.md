@@ -29,21 +29,21 @@
 
 ## Sensor Implementation
 
-| Feature                                | Status | Module                     | Notes                                                              |
-| -------------------------------------- | ------ | -------------------------- | ------------------------------------------------------------------ |
-| **Brew Boiler NTC**                    | ✅     | `sensors.c`                | Steinhart-Hart conversion, moving average filter                   |
-| **Steam Boiler NTC**                   | ✅     | `sensors.c`                | Steinhart-Hart conversion, moving average filter                   |
-| **Group Head Thermocouple (MAX31855)** | ✅     | `sensors.c`                | SPI interface, fault detection, cold junction compensation         |
-| **Pressure Transducer**                | ✅     | `sensors.c`                | ADC reading, voltage divider calculation, filtering                |
-| **Water Level Sensors**                | ✅     | `sensors.c`                | Reservoir, tank, steam boiler level probes                         |
-| **Brew Switch**                        | ✅     | `state.c`                  | Debounced, GPIO input                                              |
-| **Emergency Stop**                     | ✅     | `safety.c`                 | Hardware interlock                                                 |
-| **Water Mode Switch**                  | ✅     | `water_management.c`       | Physical switch (tank vs plumbed)                                  |
-| **WEIGHT_STOP Signal**                 | ✅     | `state.c`                  | ESP32 signal for brew-by-weight                                    |
-| **Sensor Fault Detection**             | ✅     | `sensors.c`                | NTC open/short, MAX31855 faults                                    |
-| **Sensor Error Tracking**              | ✅     | `sensors.c`                | Consecutive failure counters, error thresholds, recovery detection |
-| **Sensor Filtering**                   | ✅     | `sensor_utils.c`           | Moving average filter for all analog sensors                       |
-| **Statistics Recording**               | ✅     | `state.c` + `statistics.c` | Automatically records brews for statistics                         |
+| Feature                                | Status | Module               | Notes                                                              |
+| -------------------------------------- | ------ | -------------------- | ------------------------------------------------------------------ |
+| **Brew Boiler NTC**                    | ✅     | `sensors.c`          | Steinhart-Hart conversion, moving average filter                   |
+| **Steam Boiler NTC**                   | ✅     | `sensors.c`          | Steinhart-Hart conversion, moving average filter                   |
+| **Group Head Thermocouple (MAX31855)** | ✅     | `sensors.c`          | SPI interface, fault detection, cold junction compensation         |
+| **Pressure Transducer**                | ✅     | `sensors.c`          | ADC reading, voltage divider calculation, filtering                |
+| **Water Level Sensors**                | ✅     | `sensors.c`          | Reservoir, tank, steam boiler level probes                         |
+| **Brew Switch**                        | ✅     | `state.c`            | Debounced, GPIO input                                              |
+| **Emergency Stop**                     | ✅     | `safety.c`           | Hardware interlock                                                 |
+| **Water Mode Switch**                  | ✅     | `water_management.c` | Physical switch (tank vs plumbed)                                  |
+| **WEIGHT_STOP Signal**                 | ✅     | `state.c`            | ESP32 signal for brew-by-weight                                    |
+| **Sensor Fault Detection**             | ✅     | `sensors.c`          | NTC open/short, MAX31855 faults                                    |
+| **Sensor Error Tracking**              | ✅     | `sensors.c`          | Consecutive failure counters, error thresholds, recovery detection |
+| **Sensor Filtering**                   | ✅     | `sensor_utils.c`     | Moving average filter for all analog sensors                       |
+| **Brew Event Reporting**               | ✅     | `state.c`            | Reports brews to ESP32 for statistics tracking                     |
 
 ---
 
@@ -160,21 +160,24 @@
 
 ---
 
-## Statistics & Analytics
+## Statistics & Analytics (ESP32)
 
-| Feature                       | Status | Module                  | Notes                                                                 |
-| ----------------------------- | ------ | ----------------------- | --------------------------------------------------------------------- |
-| **Overall Statistics**        | ✅     | `statistics.c`          | Total brews, average, min, max brew times                             |
-| **Daily Statistics**          | ✅     | `statistics.c`          | Cups per day, average brew time (rolling 24h)                         |
-| **Weekly Statistics**         | ✅     | `statistics.c`          | Cups per week, average brew time (rolling 7 days)                     |
-| **Monthly Statistics**        | ✅     | `statistics.c`          | Cups per month, average brew time (rolling 30 days)                   |
-| **Brew History**              | ✅     | `statistics.c`          | Last 100 brew entries with timestamps (circular buffer)               |
-| **Automatic Recording**       | ✅     | `state.c`               | Records all brews ≥5 seconds automatically                            |
-| **Time-Based Calculations**   | ✅     | `statistics.c`          | Rolling window calculations for daily/weekly/monthly                  |
-| **Statistics Initialization** | ✅     | `main.c`                | Statistics module initialized at boot                                 |
-| **Statistics Persistence**    | ✅     | `statistics.c`          | Flash persistence (saves every 10 brews, loads on boot)               |
-| **Protocol Integration**      | ⚠️     | `protocol.c` + `main.c` | MSG_STATISTICS implemented, command handler pending                   |
-| **RTC Support**               | ⚠️     | `statistics.c`          | Structure in place, uses boot time (RTC hardware integration pending) |
+> **Note:** Statistics are tracked on ESP32 for NTP timestamps and web UI integration. Pico reports brew events via alarms.
+
+| Feature                       | Status | Module (ESP32)           | Notes                                                 |
+| ----------------------------- | ------ | ------------------------ | ----------------------------------------------------- |
+| **Overall Statistics**        | ✅     | `statistics_manager.cpp` | Total brews, average, min, max brew times, parameters |
+| **Daily Statistics**          | ✅     | `statistics_manager.cpp` | Cups per day, average brew time (calendar day)        |
+| **Weekly Statistics**         | ✅     | `statistics_manager.cpp` | Cups per week, average brew time (rolling 7 days)     |
+| **Monthly Statistics**        | ✅     | `statistics_manager.cpp` | Cups per month, average brew time (rolling 30 days)   |
+| **Brew History**              | ✅     | `statistics_manager.cpp` | Last 200 brew entries with timestamps and details     |
+| **Power Consumption History** | ✅     | `statistics_manager.cpp` | Power samples (watts/kWh) over time                   |
+| **Hourly Distribution**       | ✅     | `statistics_manager.cpp` | Usage patterns by hour for brews and power            |
+| **Automatic Recording**       | ✅     | `state_manager.cpp`      | Records brews via ALARM_BREW_COMPLETED from Pico      |
+| **Time-Based Calculations**   | ✅     | `statistics_manager.cpp` | Accurate timestamps via NTP                           |
+| **LittleFS Persistence**      | ✅     | `statistics_manager.cpp` | Persisted to ESP32 flash                              |
+| **REST API**                  | ✅     | `web_server.cpp`         | `/api/stats` and `/api/stats/extended` endpoints      |
+| **WebSocket Updates**         | ✅     | `web_server.cpp`         | Real-time stats broadcast                             |
 
 ---
 
@@ -288,22 +291,22 @@ make
 
 ## Configuration & Persistence
 
-| Feature                          | Status | Module                   | Notes                                                   |
-| -------------------------------- | ------ | ------------------------ | ------------------------------------------------------- |
-| **Environmental Config**         | ✅     | `environmental_config.c` | Voltage, max current draw                               |
-| **Machine Electrical Config**    | ✅     | `machine_electrical.h`   | Heater power, current limits                            |
-| **PCB Configuration**            | ✅     | `pcb_config.c`           | Pin mappings, hardware version                          |
-| **Configuration Persistence**    | ✅     | `config_persistence.c`   | Flash storage for settings                              |
-| **Default Values**               | ✅     | `config_persistence.c`   | Defaults for all config except environmental            |
-| **Setup Mode**                   | ✅     | `config_persistence.c`   | Machine disabled if env config not set                  |
-| **CRC32 Validation**             | ✅     | `config_persistence.c`   | Data integrity checks                                   |
-| **Magic Number**                 | ✅     | `config_persistence.c`   | Flash data validation                                   |
-| **Version Control**              | ✅     | `config_persistence.c`   | Config version tracking                                 |
-| **PID Settings Persistence**     | ✅     | `config_persistence.c`   | Kp, Ki, Kd for brew and steam                           |
-| **Setpoint Persistence**         | ✅     | `config_persistence.c`   | Brew and steam setpoints                                |
-| **Heating Strategy Persistence** | ✅     | `config_persistence.c`   | Selected heating strategy                               |
-| **Pre-Infusion Persistence**     | ✅     | `config_persistence.c`   | Pre-infusion settings                                   |
-| **Statistics Persistence**       | ✅     | `statistics.c`           | Flash persistence (saves every 10 brews, loads on boot) |
+| Feature                          | Status | Module                         | Notes                                        |
+| -------------------------------- | ------ | ------------------------------ | -------------------------------------------- |
+| **Environmental Config**         | ✅     | `environmental_config.c`       | Voltage, max current draw                    |
+| **Machine Electrical Config**    | ✅     | `machine_electrical.h`         | Heater power, current limits                 |
+| **PCB Configuration**            | ✅     | `pcb_config.c`                 | Pin mappings, hardware version               |
+| **Configuration Persistence**    | ✅     | `config_persistence.c`         | Flash storage for settings                   |
+| **Default Values**               | ✅     | `config_persistence.c`         | Defaults for all config except environmental |
+| **Setup Mode**                   | ✅     | `config_persistence.c`         | Machine disabled if env config not set       |
+| **CRC32 Validation**             | ✅     | `config_persistence.c`         | Data integrity checks                        |
+| **Magic Number**                 | ✅     | `config_persistence.c`         | Flash data validation                        |
+| **Version Control**              | ✅     | `config_persistence.c`         | Config version tracking                      |
+| **PID Settings Persistence**     | ✅     | `config_persistence.c`         | Kp, Ki, Kd for brew and steam                |
+| **Setpoint Persistence**         | ✅     | `config_persistence.c`         | Brew and steam setpoints                     |
+| **Heating Strategy Persistence** | ✅     | `config_persistence.c`         | Selected heating strategy                    |
+| **Pre-Infusion Persistence**     | ✅     | `config_persistence.c`         | Pre-infusion settings                        |
+| **Statistics Persistence**       | ✅     | ESP32 `statistics_manager.cpp` | LittleFS persistence on ESP32                |
 
 ---
 
@@ -338,25 +341,25 @@ make
 
 ## Documentation
 
-| Feature                       | Status | Location                                 | Notes                                         |
-| ----------------------------- | ------ | ---------------------------------------- | --------------------------------------------- |
-| **Pico Architecture**         | ✅     | `docs/pico/Architecture.md`              | Complete system architecture                  |
-| **Pico Requirements**         | ✅     | `docs/pico/Requirements.md`              | Full requirements spec                        |
-| **Communication Protocol**    | ✅     | `docs/shared/Communication_Protocol.md`  | Complete protocol spec                        |
-| **Pico Implementation Plan**  | ✅     | `docs/pico/Implementation_Plan.md`       | Pico development status                       |
-| **ESP32 Implementation Plan** | ✅     | `docs/esp32/Implementation_Plan.md`      | ESP32 development status                      |
-| **MQTT Integration**          | ✅     | `docs/esp32/integrations/MQTT.md`        | Home Assistant integration                    |
-| **Web API**                   | ✅     | `docs/esp32/integrations/Web_API.md`     | REST API documentation                        |
-| **Water Management Docs**     | ✅     | `docs/pico/features/Water_Management.md` | Water system documentation                    |
-| **Shot Timer Guide**          | ✅     | `docs/pico/features/Shot_Timer.md`       | Shot timer implementation                     |
-| **Cleaning Mode Docs**        | ✅     | `docs/pico/features/Cleaning_Mode.md`    | Cleaning mode documentation                   |
-| **Statistics Docs**           | ✅     | `docs/pico/features/Statistics.md`       | Statistics and analytics documentation        |
-| **Error Handling Docs**       | ✅     | `docs/pico/features/Error_Handling.md`   | Error handling and recovery documentation     |
-| **Setup Guide**               | ✅     | `SETUP.md`                               | Development environment setup and OTA updates |
-| **Bootloader Implementation** | ✅     | `src/pico/src/bootloader.c`              | Serial bootloader for OTA firmware updates    |
-| **Code Comments**             | ✅     | All source files                         | Inline documentation                          |
-| **API Documentation**         | ✅     | Header files                             | Function documentation                        |
-| **Test Procedures**           | ⚠️     | N/A                                      | Hardware test procedures pending              |
+| Feature                       | Status | Location                                 | Notes                                          |
+| ----------------------------- | ------ | ---------------------------------------- | ---------------------------------------------- |
+| **Pico Architecture**         | ✅     | `docs/pico/Architecture.md`              | Complete system architecture                   |
+| **Pico Requirements**         | ✅     | `docs/pico/Requirements.md`              | Full requirements spec                         |
+| **Communication Protocol**    | ✅     | `docs/shared/Communication_Protocol.md`  | Complete protocol spec                         |
+| **Pico Implementation Plan**  | ✅     | `docs/pico/Implementation_Plan.md`       | Pico development status                        |
+| **ESP32 Implementation Plan** | ✅     | `docs/esp32/Implementation_Plan.md`      | ESP32 development status                       |
+| **MQTT Integration**          | ✅     | `docs/esp32/integrations/MQTT.md`        | Home Assistant integration                     |
+| **Web API**                   | ✅     | `docs/esp32/integrations/Web_API.md`     | REST API documentation                         |
+| **Water Management Docs**     | ✅     | `docs/pico/features/Water_Management.md` | Water system documentation                     |
+| **Shot Timer Guide**          | ✅     | `docs/pico/features/Shot_Timer.md`       | Shot timer implementation                      |
+| **Cleaning Mode Docs**        | ✅     | `docs/pico/features/Cleaning_Mode.md`    | Cleaning mode documentation                    |
+| **Statistics Docs**           | ✅     | `docs/esp32/features/Statistics.md`      | Statistics and analytics documentation (ESP32) |
+| **Error Handling Docs**       | ✅     | `docs/pico/features/Error_Handling.md`   | Error handling and recovery documentation      |
+| **Setup Guide**               | ✅     | `SETUP.md`                               | Development environment setup and OTA updates  |
+| **Bootloader Implementation** | ✅     | `src/pico/src/bootloader.c`              | Serial bootloader for OTA firmware updates     |
+| **Code Comments**             | ✅     | All source files                         | Inline documentation                           |
+| **API Documentation**         | ✅     | Header files                             | Function documentation                         |
+| **Test Procedures**           | ⚠️     | N/A                                      | Hardware test procedures pending               |
 
 ---
 
@@ -393,16 +396,17 @@ make
    - ✅ Integrated into sensor reading cycle (20Hz)
    - ✅ Automatic fallback to theoretical estimation if unavailable
 
-2. ✅ **Statistics Feature** (MOSTLY COMPLETE)
+2. ✅ **Statistics Feature** (COMPLETE - ESP32)
 
-   - ✅ Overall statistics (total, average, min, max)
+   - ✅ Overall statistics (total, average, min, max, brew parameters)
    - ✅ Time-based statistics (daily, weekly, monthly)
-   - ✅ Historical data (last 100 brews in RAM, last 50 persisted to flash)
-   - ✅ Automatic recording on brew completion
-   - ✅ Flash persistence (saves every 10 brews, loads on boot)
-   - ⚠️ Protocol integration: MSG_STATISTICS implemented, command handler pending
-   - ⚠️ RTC support (structure in place, uses boot time - RTC hardware integration pending)
-   - See `statistics.c` and [Statistics.md](../pico/features/Statistics.md) for implementation
+   - ✅ Historical data with brew history and power consumption
+   - ✅ Hourly distribution charts for usage patterns
+   - ✅ Automatic recording on brew completion (ESP32 listens for alarms)
+   - ✅ LittleFS persistence on ESP32
+   - ✅ Real timestamps via NTP (accurate date/time tracking)
+   - ✅ WebSocket and REST API integration
+   - See [Statistics.md](../esp32/features/Statistics.md) for implementation
 
 3. **Enhanced Error Recovery** ✅ (Error tracking and reporting implemented, retry logic still pending)
 

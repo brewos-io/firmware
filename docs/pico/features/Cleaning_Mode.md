@@ -14,8 +14,8 @@ Cleaning mode implements the same functionality as ECM Synchronika's cleaning sy
 - **Cleaning Cycle**: Backflush cycle with blind filter (10 seconds, repeatable)
 
 **Important Note:** The cleaning counter is **separate from the statistics feature**:
-- **Cleaning Counter**: Simple counter that **resets after cleaning** - used only for cleaning reminders
-- **Statistics**: Comprehensive tracking with historical data, averages, and time-based analytics - see [Statistics.md](Statistics.md)
+- **Cleaning Counter**: Simple counter that **resets after cleaning** - used only for cleaning reminders (handled by Pico)
+- **Statistics**: Comprehensive tracking with historical data, averages, and time-based analytics - handled by ESP32. See [Statistics.md](../../esp32/features/Statistics.md)
 
 ---
 
