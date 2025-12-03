@@ -4,6 +4,7 @@ import { GoogleLogin, CredentialResponse } from "@react-oauth/google";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
+import { Loading } from "@/components/Loading";
 import { useAuth, useDevices } from "@/lib/auth";
 import { Coffee, Check, X, Loader2 } from "lucide-react";
 
@@ -63,11 +64,7 @@ export function Pair() {
   }, [user, status, deviceId, token]);
 
   if (authLoading) {
-    return (
-      <div className="full-page bg-cream-100 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
-      </div>
-    );
+    return <Loading />;
   }
 
   return (

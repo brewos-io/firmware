@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
 import { Logo } from "@/components/Logo";
+import { Loading } from "@/components/Loading";
 import { useAppStore } from "@/lib/mode";
 import { isDemoMode, disableDemoMode } from "@/lib/demo-mode";
 import type { CloudDevice } from "@/lib/types";
@@ -210,11 +211,7 @@ export function Machines() {
   };
 
   if (authLoading && !isDemo) {
-    return (
-      <div className="full-page bg-theme flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
-      </div>
-    );
+    return <Loading />;
   }
 
   return (

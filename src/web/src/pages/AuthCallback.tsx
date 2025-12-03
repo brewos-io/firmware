@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loading } from '@/components/Loading';
 
 /**
  * Auth callback page - redirects to appropriate page
@@ -15,12 +15,5 @@ export function AuthCallback() {
     navigate('/machines');
   }, [navigate]);
 
-  return (
-    <div className="full-page bg-cream-100 flex items-center justify-center">
-      <div className="text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto mb-4" />
-        <p className="text-coffee-500">Redirecting...</p>
-      </div>
-    </div>
-  );
+  return <Loading message="Redirecting..." />;
 }
