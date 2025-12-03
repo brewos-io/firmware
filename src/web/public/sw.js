@@ -1,6 +1,10 @@
 // Service Worker for BrewOS PWA
-// Version: v4 - Force cache invalidation for auth fixes
-const CACHE_VERSION = "v4";
+//
+// IMPORTANT: CACHE_VERSION is auto-injected during build by vite.config.ts
+// Format: "{version}-{timestamp}" e.g., "0.2.0-2024-01-15T12-30-45-123Z"
+// This ensures cache is invalidated on every deployment.
+//
+const CACHE_VERSION = "dev";
 const STATIC_CACHE_NAME = `brewos-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE_NAME = `brewos-runtime-${CACHE_VERSION}`;
 
@@ -24,7 +28,7 @@ const NETWORK_FIRST_PATTERNS = [/\/api\//, /\/ws/];
 
 // Install event - cache app shell
 self.addEventListener("install", (event) => {
-  console.log("[SW] Installing v4...");
+  console.log(`[SW] Installing ${CACHE_VERSION}...`);
   event.waitUntil(
     caches
       .open(STATIC_CACHE_NAME)
@@ -38,7 +42,7 @@ self.addEventListener("install", (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener("activate", (event) => {
-  console.log("[SW] Activating v4...");
+  console.log(`[SW] Activating ${CACHE_VERSION}...`);
   event.waitUntil(
     caches
       .keys()
