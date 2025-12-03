@@ -233,7 +233,6 @@ jobs:
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           envs: GOOGLE_CLIENT_ID,RELEASE_VERSION
-          script_stop: true
           command_timeout: 15m
           script: |
             set -e
