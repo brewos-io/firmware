@@ -61,11 +61,11 @@ The Pico firmware has completed Phases 1-5 with all core functionality implement
 - MODE_BREW and MODE_STEAM support
 
 ### Additional Features ✅
-- ✅ Water Management (Steam Boiler Auto-Fill) - See [Water_Management_Implementation.md](Water_Management_Implementation.md)
-- ✅ Cleaning Mode - See [Cleaning_Mode_Implementation.md](Cleaning_Mode_Implementation.md)
+- ✅ Water Management (Steam Boiler Auto-Fill) - See [Water_Management.md](features/Water_Management.md)
+- ✅ Cleaning Mode - See [Cleaning_Mode.md](features/Cleaning_Mode.md)
 - ✅ PZEM-004T Power Meter Integration - See `pzem.c`
 - ✅ Configuration Persistence - See `config_persistence.c`
-- ✅ Statistics Feature - See [Statistics_Feature.md](Statistics_Feature.md)
+- ✅ Statistics Feature - See [Statistics.md](features/Statistics.md)
 - ✅ OTA Firmware Update (Serial Bootloader) - See `bootloader.c`
 
 ---
@@ -85,15 +85,15 @@ The Pico firmware has completed Phases 1-5 with all core functionality implement
 ### Documentation
 - [Requirements.md](Requirements.md) - Complete requirements
 - [Architecture.md](Architecture.md) - System architecture
-- [Communication_Protocol.md](Communication_Protocol.md) - Protocol details
-- [Feature_Status_Table.md](Feature_Status_Table.md) - **Current status of all features**
+- [Communication Protocol](../shared/Communication_Protocol.md) - Protocol details
+- [Feature Status Table](../shared/Feature_Status_Table.md) - **Current status of all features**
 - [Hardware Specification](../hardware/Specification.md) - Hardware details
 
 ### Feature Implementation Docs
-- [Water_Management_Implementation.md](Water_Management_Implementation.md)
-- [Cleaning_Mode_Implementation.md](Cleaning_Mode_Implementation.md)
-- [Statistics_Feature.md](Statistics_Feature.md)
-- [Error_Handling.md](Error_Handling.md)
+- [Water Management](features/Water_Management.md)
+- [Cleaning Mode](features/Cleaning_Mode.md)
+- [Statistics](features/Statistics.md)
+- [Error Handling](features/Error_Handling.md)
 
 ### External Resources
 - [Pico SDK Documentation](https://datasheets.raspberrypi.com/pico/raspberry-pi-pico-c-sdk.pdf)
@@ -102,6 +102,6 @@ The Pico firmware has completed Phases 1-5 with all core functionality implement
 
 ---
 
-**Note:** For current implementation status and remaining work items, see [Feature_Status_Table.md](Feature_Status_Table.md).
+**Note:** For current implementation status and remaining work items, see [Feature Status Table](../shared/Feature_Status_Table.md).
 
 **Last Updated:** December 2024

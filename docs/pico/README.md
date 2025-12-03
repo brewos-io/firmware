@@ -23,10 +23,10 @@ The Raspberry Pi Pico handles real-time machine control for the BrewOS coffee ma
 
 | Document | Description |
 |----------|-------------|
-| [Cleaning Mode](features/Cleaning_Mode_Implementation.md) | Backflush cleaning |
-| [Water Management](features/Water_Management_Implementation.md) | Water level/tank |
-| [Statistics](features/Statistics_Feature.md) | Usage statistics |
-| [Shot Timer](features/Shot_Timer_Display.md) | Brew timer display |
+| [Cleaning Mode](features/Cleaning_Mode.md) | Backflush cleaning |
+| [Water Management](features/Water_Management.md) | Water level/tank |
+| [Statistics](features/Statistics.md) | Usage statistics |
+| [Shot Timer](features/Shot_Timer.md) | Brew timer display |
 | [Error Handling](features/Error_Handling.md) | Alarms and faults |
 
 ## Hardware
@@ -55,19 +55,19 @@ make
 
 ```
 docs/pico/
-├── README.md              # This file
-├── Architecture.md
-├── Implementation_Plan.md
-├── Debugging.md
-├── Requirements.md
-├── Machine_Configurations.md
-├── Environmental_Configuration.md
-├── Versioning.md
+├── README.md                    # This file
+├── Architecture.md              # System architecture
+├── Implementation_Plan.md       # Development roadmap
+├── Debugging.md                 # Debug strategies
+├── Requirements.md              # Functional requirements
+├── Machine_Configurations.md    # Machine type settings
+├── Environmental_Configuration.md # Voltage/current config
+├── Versioning.md                # Version management
 └── features/
-    ├── Cleaning_Mode_Implementation.md
-    ├── Water_Management_Implementation.md
-    ├── Statistics_Feature.md
-    ├── Shot_Timer_Display.md
-    └── Error_Handling.md
+    ├── Cleaning_Mode.md         # Backflush cleaning
+    ├── Water_Management.md      # Water level/tank
+    ├── Statistics.md            # Usage statistics
+    ├── Shot_Timer.md            # Brew timer display
+    └── Error_Handling.md        # Alarms and faults
 ```
 

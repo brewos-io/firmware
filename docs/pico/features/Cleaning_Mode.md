@@ -15,7 +15,7 @@ Cleaning mode implements the same functionality as ECM Synchronika's cleaning sy
 
 **Important Note:** The cleaning counter is **separate from the statistics feature**:
 - **Cleaning Counter**: Simple counter that **resets after cleaning** - used only for cleaning reminders
-- **Statistics**: Comprehensive tracking with historical data, averages, and time-based analytics - see [Statistics_Feature.md](Statistics_Feature.md)
+- **Statistics**: Comprehensive tracking with historical data, averages, and time-based analytics - see [Statistics.md](Statistics.md)
 
 ---
 

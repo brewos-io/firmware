@@ -351,7 +351,7 @@ def adc_to_pressure(adc_value, vref=3.3, range_bar=16):
 | FUNC-031 | Monitor tank level sensor continuously | HIGH |
 | FUNC-032 | Water LED (K1) ON when reservoir present AND tank level OK | MEDIUM |
 | FUNC-033 | Steam boiler level monitoring via comparator (GPIO4) | HIGH |
-| FUNC-034 | Steam boiler auto-fill via fill solenoid and pump (see [Water_Management_Implementation.md](Water_Management_Implementation.md)) | HIGH |
+| FUNC-034 | Steam boiler auto-fill via fill solenoid and pump (see [Water_Management.md](features/Water_Management.md)) | HIGH |
 
 ## 4.5 Power Monitoring
 

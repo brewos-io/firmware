@@ -34,8 +34,9 @@ docs/
 │   └── Feature_Status_Table.md
 └── hardware/              # Hardware documentation
     ├── Specification.md
-    ├── ESP32_Display_Wiring.md
-    └── Test_Procedures.md
+    ├── ESP32_Wiring.md
+    ├── Test_Procedures.md
+    └── schematics/
 ```
 
 ## Quick Links
@@ -67,7 +68,8 @@ docs/
 
 ### Hardware
 - [Hardware Specification](hardware/Specification.md)
-- [ESP32 Display Wiring](hardware/ESP32_Display_Wiring.md)
+- [ESP32 Wiring Guide](hardware/ESP32_Wiring.md)
+- [Test Procedures](hardware/Test_Procedures.md)
 
 ## Feature Status
 
