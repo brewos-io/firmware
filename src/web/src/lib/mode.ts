@@ -21,10 +21,13 @@ const FETCH_TIMEOUT_MS = 5000;
 /**
  * Fetch with timeout to prevent hanging on slow/unresponsive networks
  */
-async function fetchWithTimeout(url: string, timeoutMs: number = FETCH_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number = FETCH_TIMEOUT_MS
+): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
+
   try {
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -38,7 +41,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number = FETCH_TIMEOUT_M
 /**
  * Fetch mode from server - the server knows if it's ESP32 (local) or cloud
  * Now uses /api/info as primary endpoint with fallback to /api/mode
- * 
+ *
  * IMPORTANT: When running as a PWA, always return cloud mode.
  * PWA installations are from cloud.brewos.io and should only support cloud mode.
  */
@@ -52,12 +55,12 @@ async function fetchModeFromServer(): Promise<{
     console.log("[Mode] Running as PWA, forcing cloud mode");
     return { mode: "cloud", apMode: false };
   }
-  
+
   // Try /api/info first (new endpoint with full capabilities)
   try {
     const infoResponse = await fetchWithTimeout("/api/info");
     if (infoResponse.ok) {
-      const info = await infoResponse.json() as BackendInfo;
+      const info = (await infoResponse.json()) as BackendInfo;
       return {
         mode: info.mode === "cloud" ? "cloud" : "local",
         apMode: (info as { apMode?: boolean }).apMode,
@@ -67,7 +70,7 @@ async function fetchModeFromServer(): Promise<{
   } catch {
     // /api/info not available, try fallback
   }
-  
+
   // Fallback to /api/mode (for backward compatibility with older firmware)
   try {
     const response = await fetchWithTimeout("/api/mode");
@@ -114,13 +117,24 @@ function startTokenRefreshMonitor(store: AppState) {
         // Update store with new session
         store.updateSession(newSession);
       } else {
-        // Refresh failed, sign out
-        console.log("[Auth] Refresh failed, signing out");
-        store.signOut();
+        // Refresh failed - check if session was cleared or just network issue
+        const currentSession = getStoredSession();
 
-        // Redirect to login if not already there
-        if (window.location.pathname !== "/login") {
-          window.location.href = "/login?expired=true";
+        if (currentSession) {
+          // Session preserved (network error) - don't sign out
+          // The session may still be valid, just couldn't refresh right now
+          console.log(
+            "[Auth] Refresh failed but session preserved, will retry later"
+          );
+        } else {
+          // Session was cleared (invalid token) - user needs to re-login
+          console.log("[Auth] Refresh failed and session cleared, signing out");
+          store.signOut();
+
+          // Redirect to login if not already there
+          if (window.location.pathname !== "/login") {
+            window.location.href = "/login?expired=true";
+          }
         }
       }
     }
@@ -189,39 +203,43 @@ export const useAppStore = create<AppState>()(
       initialize: async () => {
         const isPWA = isRunningAsPWA();
         const currentMode = get().mode;
-        
+
         // For local mode (non-PWA), initialize immediately with cached state
         // This allows instant UI display on iOS PWA cold start
         // Skip this optimization for PWA since PWA always uses cloud mode
         if (!isPWA && currentMode === "local" && !get().initialized) {
           set({ initialized: true, authLoading: false });
         }
-        
+
         // Fetch fresh mode from server (non-blocking for local mode, blocking for PWA/cloud)
-        const fetchPromise = fetchModeFromServer().then(({ mode, apMode, backendInfo }) => {
-          set({ mode, apMode: apMode ?? false });
-          
-          // Update backend info store
-          if (backendInfo) {
-            const { compatible, warnings, errors } = checkCompatibility(backendInfo);
-            useBackendInfo.setState({
-              info: backendInfo,
-              loading: false,
-              error: null,
-              compatible,
-              warnings,
-              errors,
-            });
-          } else {
-            useBackendInfo.getState().fetchInfo();
+        const fetchPromise = fetchModeFromServer().then(
+          ({ mode, apMode, backendInfo }) => {
+            set({ mode, apMode: apMode ?? false });
+
+            // Update backend info store
+            if (backendInfo) {
+              const { compatible, warnings, errors } =
+                checkCompatibility(backendInfo);
+              useBackendInfo.setState({
+                info: backendInfo,
+                loading: false,
+                error: null,
+                compatible,
+                warnings,
+                errors,
+              });
+            } else {
+              useBackendInfo.getState().fetchInfo();
+            }
+
+            return mode;
           }
-          
-          return mode;
-        });
+        );
 
         // For PWA or cloud mode, always wait for mode detection
         // For local mode (non-PWA), use cached mode immediately
-        const mode = (!isPWA && currentMode === "local") ? currentMode : await fetchPromise;
+        const mode =
+          !isPWA && currentMode === "local" ? currentMode : await fetchPromise;
 
         if (mode === "local") {
           set({ initialized: true, authLoading: false });
@@ -262,11 +280,13 @@ export const useAppStore = create<AppState>()(
           } else {
             // Refresh failed - check if session was cleared or just network issue
             const currentSession = getStoredSession();
-            
+
             if (currentSession) {
               // Session preserved (network error) - show user as logged in
               // with expired token. They can retry or features will try refresh.
-              console.log("[Auth] Refresh failed but session preserved, continuing with cached user");
+              console.log(
+                "[Auth] Refresh failed but session preserved, continuing with cached user"
+              );
               set({
                 user: currentSession.user,
                 session: currentSession,
@@ -349,8 +369,45 @@ export const useAppStore = create<AppState>()(
               set({ selectedDeviceId: devices[0].id });
             }
           } else if (response.status === 401) {
-            // Token expired/invalid, sign out
-            get().signOut();
+            // Token rejected - try refreshing once before signing out
+            console.log("[Devices] Got 401, attempting token refresh...");
+            const session = getStoredSession();
+
+            if (session) {
+              const newSession = await refreshSession(session);
+
+              if (newSession) {
+                // Retry the request with fresh token
+                const retryResponse = await fetch("/api/devices", {
+                  headers: {
+                    Authorization: `Bearer ${newSession.accessToken}`,
+                  },
+                });
+
+                if (retryResponse.ok) {
+                  const data = await retryResponse.json();
+                  const devices = data.devices as CloudDevice[];
+                  set({ devices });
+
+                  if (!get().selectedDeviceId && devices.length > 0) {
+                    set({ selectedDeviceId: devices[0].id });
+                  }
+
+                  // Update session in store
+                  get().updateSession(newSession);
+                  set({ devicesLoading: false });
+                  return;
+                }
+              }
+            }
+
+            // Refresh failed or retry still 401 - check if session was cleared
+            if (!getStoredSession()) {
+              console.log("[Devices] Session cleared, signing out");
+              get().signOut();
+            } else {
+              console.log("[Devices] Session preserved, will retry later");
+            }
           }
         } catch (error) {
           console.error("Failed to fetch devices:", error);
@@ -402,13 +459,15 @@ export const useAppStore = create<AppState>()(
 
           if (response.ok) {
             set((state) => {
-              const remainingDevices = state.devices.filter((d) => d.id !== deviceId);
+              const remainingDevices = state.devices.filter(
+                (d) => d.id !== deviceId
+              );
               // If removing the selected device, select the first remaining one
               const newSelectedId =
                 state.selectedDeviceId === deviceId
                   ? remainingDevices[0]?.id ?? null
                   : state.selectedDeviceId;
-              
+
               return {
                 devices: remainingDevices,
                 selectedDeviceId: newSelectedId,
