@@ -46,6 +46,9 @@ jobs:
     name: Deploy
     needs: build-check  # Only deploy if build succeeds
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://cloud.brewos.io
     steps:
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.2.4
