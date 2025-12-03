@@ -14,12 +14,10 @@ Tracks the overall firmware release version. Both Pico and ESP32 firmware share 
   - Protocol version changes
   - Incompatible API changes
   - Requires coordinated update of both devices
-  
 - **MINOR**: New features (backward compatible)
   - New message types
   - New features that don't break existing functionality
   - Devices can be updated independently
-  
 - **PATCH**: Bug fixes (backward compatible)
   - Bug fixes
   - Performance improvements
@@ -30,6 +28,7 @@ Tracks the overall firmware release version. Both Pico and ESP32 firmware share 
 Tracked separately in `src/shared/protocol_defs.h` as `ECM_PROTOCOL_VERSION`. Incremented only for breaking protocol changes.
 
 **Relationship:**
+
 - Protocol version changes → Firmware MAJOR version should also increment
 - Protocol version stays same → Firmware can increment MINOR or PATCH
 
@@ -55,6 +54,7 @@ node src/scripts/version.js --show
 ```
 
 Output:
+
 ```
 Firmware Version: 0.1.0
 Protocol Version: 1
@@ -102,11 +102,13 @@ node src/scripts/version.js --bump minor --protocol 2
 The version script automatically updates:
 
 1. **Pico**: `src/pico/include/config.h`
+
    - `FIRMWARE_VERSION_MAJOR`
    - `FIRMWARE_VERSION_MINOR`
    - `FIRMWARE_VERSION_PATCH`
 
 2. **ESP32**: `src/esp32/include/config.h`
+
    - `ESP32_VERSION_MAJOR`
    - `ESP32_VERSION_MINOR`
    - `ESP32_VERSION_PATCH`
@@ -145,6 +147,7 @@ git push origin main --tags
 ```
 
 The GitHub workflow will automatically:
+
 - Build both firmwares
 - Create a release with artifacts
 - Attach firmware files to the release
@@ -158,6 +161,7 @@ The GitHub workflow will automatically:
 ### Artifacts
 
 Each release includes:
+
 - `brewos_dual_boiler.uf2` - Pico firmware for dual boiler machines
 - `brewos_single_boiler.uf2` - Pico firmware for single boiler machines
 - `brewos_heat_exchanger.uf2` - Pico firmware for heat exchanger machines
@@ -220,23 +224,25 @@ git push origin main --tags
 
 Use conventional commit prefixes to auto-generate release notes:
 
-| Prefix | Category | Example |
-|--------|----------|---------|
-| `feat:` | 🚀 Features | `feat: add brew-by-weight support` |
-| `fix:` | 🐛 Bug Fixes | `fix: temperature display flickering` |
-| `perf:` | ⚡ Performance | `perf: optimize PID loop` |
-| `docs:` | 📖 Documentation | `docs: update setup guide` |
-| `refactor:` | ♻️ Refactor | `refactor: simplify state management` |
-| `chore:` | 🔧 Maintenance | `chore: update dependencies` |
-| `ci:` | 👷 CI/CD | `ci: add build caching` |
+| Prefix      | Category         | Example                               |
+| ----------- | ---------------- | ------------------------------------- |
+| `feat:`     | 🚀 Features      | `feat: add brew-by-weight support`    |
+| `fix:`      | 🐛 Bug Fixes     | `fix: temperature display flickering` |
+| `perf:`     | ⚡ Performance   | `perf: optimize PID loop`             |
+| `docs:`     | 📖 Documentation | `docs: update setup guide`            |
+| `refactor:` | ♻️ Refactor      | `refactor: simplify state management` |
+| `chore:`    | 🔧 Maintenance   | `chore: update dependencies`          |
+| `ci:`       | 👷 CI/CD         | `ci: add build caching`               |
 
 You can also add a **scope** for more context:
+
 ```
 feat(esp32): add OTA update support
 fix(pico): correct temperature offset
 ```
 
 Breaking changes use `!` or `BREAKING CHANGE:`:
+
 ```
 feat!: new protocol version
 ```
@@ -294,4 +300,3 @@ If `VERSION` file is missing, the script will create a default:
 node src/scripts/version.js --show
 # Creates VERSION with 0.1.0 / 1
 ```
-
