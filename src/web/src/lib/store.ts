@@ -29,7 +29,7 @@ import type {
   DiagnosticResult,
   DiagnosticHeader,
 } from "./types";
-import { diagStatusFromCode, getDiagnosticTestName } from "./types";
+import { diagStatusFromCode, getDiagnosticTestName, type DiagnosticTestId } from "./types";
 
 interface BrewOSState {
   // Connection
@@ -744,9 +744,10 @@ export const useStore = create<BrewOSState>()(
         }
 
         case "diagnostics_result": {
+          const testIdNum = (data.testId as number) ?? 0;
           const result: DiagnosticResult = {
-            testId: (data.testId as number) ?? 0,
-            name: getDiagnosticTestName((data.testId as number) ?? 0),
+            testId: testIdNum as DiagnosticTestId,
+            name: getDiagnosticTestName(testIdNum),
             status: diagStatusFromCode((data.status as number) ?? 1),
             rawValue: (data.rawValue as number) ?? 0,
             expectedMin: (data.expectedMin as number) ?? 0,

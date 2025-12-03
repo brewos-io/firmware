@@ -1,14 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
-import { X, Flame, Wind, Zap, Brain, Check, AlertTriangle } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useStore } from '@/lib/store';
-import { getMachineByBrandModel } from '@/lib/machines';
+import { useState, useEffect, useMemo } from "react";
+import { X, Flame, Wind, Zap, Brain, Check, AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useStore } from "@/lib/store";
+import { getMachineByBrandModel } from "@/lib/machines";
 import {
   validateHeatingStrategy,
   calculateHeaterCurrents,
-  HEATING_STRATEGIES as STRATEGY_VALUES,
   type HeatingStrategy as HeatingStrategyValue,
-} from '@/lib/powerValidation';
+} from "@/lib/powerValidation";
 
 export interface HeatingStrategy {
   value: number;
@@ -21,31 +20,32 @@ export interface HeatingStrategy {
 export const HEATING_STRATEGIES: HeatingStrategy[] = [
   {
     value: 0,
-    label: 'Brew Only',
-    desc: 'Heat only brew boiler',
+    label: "Brew Only",
+    desc: "Heat only brew boiler",
     icon: <Flame className="w-5 h-5 sm:w-6 sm:h-6" />,
-    detail: 'Fastest for espresso. Ideal when you only need coffee.',
+    detail: "Fastest for espresso. Ideal when you only need coffee.",
   },
   {
     value: 1,
-    label: 'Sequential',
-    desc: 'Brew first, then steam',
+    label: "Sequential",
+    desc: "Brew first, then steam",
     icon: <Wind className="w-5 h-5 sm:w-6 sm:h-6" />,
-    detail: 'Brew boiler heats first, then steam. Balanced and efficient.',
+    detail: "Brew boiler heats first, then steam. Balanced and efficient.",
   },
   {
     value: 2,
-    label: 'Parallel',
-    desc: 'Heat both simultaneously',
+    label: "Parallel",
+    desc: "Heat both simultaneously",
     icon: <Zap className="w-5 h-5 sm:w-6 sm:h-6" />,
-    detail: 'Fastest overall. Both boilers heat at the same time.',
+    detail: "Fastest overall. Both boilers heat at the same time.",
   },
   {
     value: 3,
-    label: 'Smart Stagger',
-    desc: 'Power-aware heating',
+    label: "Smart Stagger",
+    desc: "Power-aware heating",
     icon: <Brain className="w-5 h-5 sm:w-6 sm:h-6" />,
-    detail: 'Intelligently manages power to avoid overload. Recommended for most setups.',
+    detail:
+      "Intelligently manages power to avoid overload. Recommended for most setups.",
   },
 ];
 
@@ -56,7 +56,7 @@ interface HeatingStrategyModalProps {
   defaultStrategy?: number;
 }
 
-const STORAGE_KEY = 'brewos-last-heating-strategy';
+const STORAGE_KEY = "brewos-last-heating-strategy";
 
 export function HeatingStrategyModal({
   isOpen,
@@ -80,7 +80,7 @@ export function HeatingStrategyModal({
   const strategyValidations = useMemo(() => {
     const heaterCurrents = calculateHeaterCurrents(machine, voltage);
     const powerConfig = { voltage, maxCurrent };
-    
+
     return HEATING_STRATEGIES.reduce((acc, strategy) => {
       acc[strategy.value] = validateHeatingStrategy(
         strategy.value as HeatingStrategyValue,
@@ -115,25 +115,25 @@ export function HeatingStrategyModal({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
-      } else if (e.key.startsWith('Arrow')) {
+      } else if (e.key.startsWith("Arrow")) {
         e.preventDefault();
         const currentIndex = HEATING_STRATEGIES.findIndex(
           (s) => s.value === selectedStrategy
         );
         let newIndex = currentIndex;
 
-        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        if (e.key === "ArrowDown" || e.key === "ArrowRight") {
           newIndex = (currentIndex + 1) % HEATING_STRATEGIES.length;
-        } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
           newIndex =
             (currentIndex - 1 + HEATING_STRATEGIES.length) %
             HEATING_STRATEGIES.length;
         }
 
         setSelectedStrategy(HEATING_STRATEGIES[newIndex].value);
-      } else if (e.key === 'Enter') {
+      } else if (e.key === "Enter") {
         e.preventDefault();
         // Confirm with currently selected strategy
         localStorage.setItem(STORAGE_KEY, selectedStrategy.toString());
@@ -142,8 +142,8 @@ export function HeatingStrategyModal({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, selectedStrategy, onClose, onSelect]);
 
   if (!isOpen) return null;
@@ -164,7 +164,9 @@ export function HeatingStrategyModal({
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-theme flex-shrink-0">
           <div className="flex-1 min-w-0 pr-2">
-            <h2 className="text-xl sm:text-2xl font-bold text-theme">Select Heating Strategy</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-theme">
+              Select Heating Strategy
+            </h2>
             <p className="text-xs sm:text-sm text-theme-muted mt-1">
               Choose how the machine should heat up
             </p>
@@ -185,7 +187,7 @@ export function HeatingStrategyModal({
               const isSelected = selectedStrategy === strategy.value;
               const validation = strategyValidations[strategy.value];
               const isUnsafe = validation && !validation.isAllowed;
-              
+
               return (
                 <button
                   key={strategy.value}
@@ -195,18 +197,21 @@ export function HeatingStrategyModal({
                     }
                     setSelectedStrategy(strategy.value);
                     // Immediately confirm selection
-                    localStorage.setItem(STORAGE_KEY, strategy.value.toString());
+                    localStorage.setItem(
+                      STORAGE_KEY,
+                      strategy.value.toString()
+                    );
                     onSelect(strategy.value);
                     onClose();
                   }}
                   className={cn(
-                    'relative p-4 sm:p-5 rounded-xl border-2 transition-all text-left group',
-                    'hover:scale-[1.02] hover:shadow-lg cursor-pointer active:scale-[0.98]',
+                    "relative p-4 sm:p-5 rounded-xl border-2 transition-all text-left group",
+                    "hover:scale-[1.02] hover:shadow-lg cursor-pointer active:scale-[0.98]",
                     isSelected
-                      ? 'border-accent bg-accent/10 shadow-md'
+                      ? "border-accent bg-accent/10 shadow-md"
                       : isUnsafe
-                        ? 'border-amber-500/50 bg-amber-500/5 hover:border-amber-500'
-                        : 'border-theme bg-theme-secondary hover:border-theme-tertiary'
+                      ? "border-amber-500/50 bg-amber-500/5 hover:border-amber-500"
+                      : "border-theme bg-theme-secondary hover:border-theme-tertiary"
                   )}
                 >
                   {/* Selection indicator */}
@@ -226,12 +231,12 @@ export function HeatingStrategyModal({
                   {/* Icon */}
                   <div
                     className={cn(
-                      'w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center mb-2 sm:mb-3 transition-colors flex-shrink-0',
+                      "w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center mb-2 sm:mb-3 transition-colors flex-shrink-0",
                       isSelected
-                        ? 'bg-accent/20 text-accent'
+                        ? "bg-accent/20 text-accent"
                         : isUnsafe
-                          ? 'bg-amber-500/20 text-amber-500'
-                          : 'bg-theme-tertiary text-theme-muted group-hover:text-accent'
+                        ? "bg-amber-500/20 text-amber-500"
+                        : "bg-theme-tertiary text-theme-muted group-hover:text-accent"
                     )}
                   >
                     {strategy.icon}
@@ -240,43 +245,55 @@ export function HeatingStrategyModal({
                   {/* Label */}
                   <h3
                     className={cn(
-                      'text-base sm:text-lg font-semibold mb-1',
-                      isSelected ? 'text-theme' : isUnsafe ? 'text-amber-500' : 'text-theme-secondary'
+                      "text-base sm:text-lg font-semibold mb-1",
+                      isSelected
+                        ? "text-theme"
+                        : isUnsafe
+                        ? "text-amber-500"
+                        : "text-theme-secondary"
                     )}
                   >
                     {strategy.label}
                   </h3>
 
                   {/* Description */}
-                  <p className="text-xs sm:text-sm text-theme-muted mb-1.5 sm:mb-2">{strategy.desc}</p>
+                  <p className="text-xs sm:text-sm text-theme-muted mb-1.5 sm:mb-2">
+                    {strategy.desc}
+                  </p>
 
                   {/* Detail or Warning */}
                   {isUnsafe && validation?.reason ? (
                     <div className="flex items-start gap-1.5 text-xs text-amber-500">
                       <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                       <span>
-                        May trip breaker: {validation.combinedCurrent?.toFixed(1)}A needed, 
-                        limit {validation.safeLimit?.toFixed(1)}A
+                        May trip breaker:{" "}
+                        {validation.combinedCurrent?.toFixed(1)}A needed, limit{" "}
+                        {validation.safeLimit?.toFixed(1)}A
                       </span>
                     </div>
                   ) : (
-                    <p className="text-xs text-theme-muted leading-relaxed">{strategy.detail}</p>
+                    <p className="text-xs text-theme-muted leading-relaxed">
+                      {strategy.detail}
+                    </p>
                   )}
                 </button>
               );
             })}
           </div>
-          
+
           {/* Power settings info */}
           {machine && (
             <div className="mt-4 pt-4 border-t border-theme">
               <p className="text-xs text-theme-muted text-center">
                 Power settings: {voltage}V / {maxCurrent}A max
-                {machine.specs.brewPowerWatts && machine.specs.steamPowerWatts && (
-                  <span className="block mt-1">
-                    {machine.brand} {machine.model}: {machine.specs.brewPowerWatts}W brew + {machine.specs.steamPowerWatts}W steam
-                  </span>
-                )}
+                {machine.specs.brewPowerWatts &&
+                  machine.specs.steamPowerWatts && (
+                    <span className="block mt-1">
+                      {machine.brand} {machine.model}:{" "}
+                      {machine.specs.brewPowerWatts}W brew +{" "}
+                      {machine.specs.steamPowerWatts}W steam
+                    </span>
+                  )}
               </p>
             </div>
           )}
@@ -285,4 +302,3 @@ export function HeatingStrategyModal({
     </div>
   );
 }
-

@@ -11,6 +11,12 @@ import { ToastProvider } from "./components/Toast";
 // Initialize dev mode detection early (checks ?dev=true in URL)
 import "./lib/dev-mode";
 
+// Initialize demo mode detection early (checks ?demo=true in URL)
+// This MUST happen before React mounts to ensure localStorage is set
+// before App component evaluates isDemoMode()
+import { initDemoModeFromUrl } from "./lib/demo-mode";
+initDemoModeFromUrl();
+
 // Google Analytics - only in production
 const GA_MEASUREMENT_ID = "G-KY0H392KGB";
 

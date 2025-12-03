@@ -6,6 +6,7 @@
  */
 
 #include "pico/stdlib.h"
+#include "hardware/watchdog.h"
 #include "diagnostics.h"
 #include "config.h"
 #include "hardware.h"
@@ -440,10 +441,11 @@ uint8_t diag_test_ssr_brew(diag_result_t* result) {
     
     // Brief PWM pulse to verify signal path (10% for 100ms)
     // This won't heat anything but verifies the output works
-    hw_pwm_init(pcb->pins.ssr_brew, PWM_FREQUENCY_SSR);
-    hw_pwm_set_duty(pcb->pins.ssr_brew, 10);
+    uint8_t slice_num;
+    hw_pwm_init_ssr(pcb->pins.ssr_brew, &slice_num);
+    hw_set_pwm_duty(slice_num, 10.0f);
     sleep_ms(100);
-    hw_pwm_set_duty(pcb->pins.ssr_brew, 0);
+    hw_set_pwm_duty(slice_num, 0.0f);
     
     // Note: We can't verify the SSR actually switched without additional feedback
     // This test just verifies the GPIO/PWM is functional
@@ -463,10 +465,11 @@ uint8_t diag_test_ssr_steam(diag_result_t* result) {
     }
     
     // Brief PWM pulse to verify signal path
-    hw_pwm_init(pcb->pins.ssr_steam, PWM_FREQUENCY_SSR);
-    hw_pwm_set_duty(pcb->pins.ssr_steam, 10);
+    uint8_t slice_num;
+    hw_pwm_init_ssr(pcb->pins.ssr_steam, &slice_num);
+    hw_set_pwm_duty(slice_num, 10.0f);
     sleep_ms(100);
-    hw_pwm_set_duty(pcb->pins.ssr_steam, 0);
+    hw_set_pwm_duty(slice_num, 0.0f);
     
     set_result(result, DIAG_STATUS_PASS, "PWM signal OK");
     

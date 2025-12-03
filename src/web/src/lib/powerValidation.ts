@@ -97,7 +97,7 @@ export function validateHeatingStrategy(
   powerConfig: PowerConfig,
   heaterCurrents: HeaterCurrents
 ): StrategyValidation {
-  const { maxCurrent, voltage } = powerConfig;
+  const { maxCurrent } = powerConfig;
   const { brewCurrent, steamCurrent } = heaterCurrents;
   const combinedCurrent = brewCurrent + steamCurrent;
   const safeLimit = maxCurrent * SAFETY_MARGIN;

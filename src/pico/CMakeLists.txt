@@ -111,6 +111,7 @@ set(COMMON_SOURCES
     src/pzem.c
     src/cleaning.c
     src/bootloader.c
+    src/diagnostics.c         # Hardware diagnostics tests
 )
 
 # -----------------------------------------------------------------------------

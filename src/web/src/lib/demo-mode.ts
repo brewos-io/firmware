@@ -6,6 +6,36 @@
 const DEMO_MODE_KEY = "brewos-demo-mode";
 
 /**
+ * Initialize demo mode from URL parameters
+ * This should be called EARLY, before React mounts, to ensure
+ * localStorage is set before any components check isDemoMode()
+ */
+export function initDemoModeFromUrl(): void {
+  if (typeof window === "undefined") return;
+
+  const params = new URLSearchParams(window.location.search);
+
+  // Check if we're exiting demo mode
+  if (params.get("exitDemo") === "true") {
+    disableDemoMode();
+    // Clean up the URL
+    params.delete("exitDemo");
+    const newUrl = params.toString()
+      ? `${window.location.pathname}?${params.toString()}`
+      : window.location.pathname;
+    window.history.replaceState({}, "", newUrl);
+    return;
+  }
+
+  // Check URL parameter to enter demo mode
+  if (params.get("demo") === "true") {
+    // Persist to localStorage so it survives navigation
+    enableDemoMode();
+    console.log("[Demo] Demo mode enabled from URL parameter");
+  }
+}
+
+/**
  * Check if demo mode is enabled (from localStorage or URL param)
  */
 export function isDemoMode(): boolean {
