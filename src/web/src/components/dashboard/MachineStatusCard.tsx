@@ -451,7 +451,7 @@ const PowerControls = memo(function PowerControls({
         return heatingStrategy;
       }
       const stored = localStorage.getItem("brewos-last-heating-strategy");
-      return stored ? parseInt(stored, 10) : 1; // Default to Sequential
+      return stored && !isNaN(parseInt(stored, 10)) ? parseInt(stored, 10) : 1; // Default to Sequential
     };
 
     const effectiveStrategy = getEffectiveStrategy();
