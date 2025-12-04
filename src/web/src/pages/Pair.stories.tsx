@@ -5,7 +5,7 @@ import { Input } from "@/components/Input";
 import { Logo } from "@/components/Logo";
 import { Check, X, Loader2 } from "lucide-react";
 import React from "react";
-import { darkBgStyles } from "@/lib/darkBgStyles";
+import { OnboardingLayout } from "@/components/onboarding";
 
 // Wrapper component for stories
 function PairStoryWrapper({ children }: { children?: React.ReactNode }) {
@@ -35,19 +35,16 @@ function DesktopWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Mobile wrapper without Card (full-screen)
+// Mobile wrapper - uses shared OnboardingLayout
 function MobileWrapper({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-coffee-800 to-coffee-900">
-      <div 
-        className="min-h-screen flex flex-col justify-center px-5 py-8"
-        style={darkBgStyles}
-      >
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {children}
-        </div>
-      </div>
-    </div>
+    <OnboardingLayout
+      gradient="bg-gradient-to-br from-coffee-800 to-coffee-900"
+      maxWidth="max-w-md"
+      desktopTopPadding="pt-0"
+    >
+      {children}
+    </OnboardingLayout>
   );
 }
 

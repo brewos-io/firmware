@@ -21,50 +21,53 @@ export function WelcomeStep() {
   ];
 
   return (
-    <div className="text-center py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="text-center py-4 sm:py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Logo */}
-      <div className="flex justify-center mb-8">
+      <div className="flex justify-center mb-4 sm:mb-8">
         <div className="relative">
           <div className="absolute inset-0 bg-accent/20 rounded-full blur-2xl animate-pulse" />
           <div className="relative">
-            <Logo size="xl" />
+            {/* Mobile: force light text for dark background */}
+            <Logo size="lg" forceLight className="sm:hidden" />
+            {/* Desktop: use theme colors */}
+            <Logo size="xl" className="hidden sm:flex" />
           </div>
         </div>
       </div>
 
       {/* Welcome heading */}
-      <div className="mb-10">
-        <div className="inline-flex items-center gap-2 mb-3">
-          <Sparkles className="w-5 h-5 text-accent animate-pulse" />
-          <h1 className="text-4xl font-bold text-theme tracking-tight">
+      <div className="mb-5 sm:mb-10">
+        <div className="inline-flex items-center gap-2 mb-2 sm:mb-3">
+          <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-accent animate-pulse" />
+          <h1 className="text-2xl sm:text-4xl font-bold text-theme tracking-tight">
             Welcome to BrewOS
           </h1>
         </div>
-        <p className="text-theme-muted text-lg max-w-md mx-auto leading-relaxed">
+        <p className="text-theme-muted text-sm sm:text-lg max-w-md mx-auto leading-relaxed">
           Let's set up your espresso machine. This will only take a minute.
         </p>
       </div>
 
       {/* Setup steps */}
-      <div className="max-w-md mx-auto space-y-4">
+      <div className="max-w-md mx-auto space-y-2 sm:space-y-4">
         {steps.map((step, index) => {
           const Icon = step.icon;
           return (
             <div
               key={index}
-              className="flex items-start gap-4 p-4 bg-theme-secondary/50 rounded-xl border border-theme/10 hover:bg-theme-secondary transition-colors duration-200 animate-in fade-in slide-in-from-left-4"
+              className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white/5 sm:bg-theme-secondary/50 rounded-xl border border-white/10 sm:border-theme/10 hover:bg-white/10 sm:hover:bg-theme-secondary transition-colors duration-200 animate-in fade-in slide-in-from-left-4"
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0 border border-accent/20">
-                <Icon className="w-5 h-5 text-accent" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0 border border-accent/20">
+                <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
               </div>
               <div className="flex-1 text-left">
-                <p className="font-semibold text-theme mb-0.5">{step.title}</p>
-                <p className="text-sm text-theme-muted">{step.description}</p>
+                <p className="font-semibold text-sm sm:text-base text-theme mb-0.5">{step.title}</p>
+                <p className="text-xs sm:text-sm text-theme-muted">{step.description}</p>
               </div>
               <div className="flex-shrink-0">
-                <div className="w-6 h-6 rounded-full bg-accent/10 flex items-center justify-center">
-                  <span className="text-xs font-bold text-accent">
+                <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-accent/10 flex items-center justify-center">
+                  <span className="text-[10px] sm:text-xs font-bold text-accent">
                     {index + 1}
                   </span>
                 </div>
@@ -75,8 +78,8 @@ export function WelcomeStep() {
       </div>
 
       {/* Quick tip */}
-      <div className="mt-8 text-center">
-        <p className="text-xs text-theme-muted">
+      <div className="mt-4 sm:mt-8 text-center">
+        <p className="text-[10px] sm:text-xs text-theme-muted">
           💡 All settings can be changed later in Settings
         </p>
       </div>

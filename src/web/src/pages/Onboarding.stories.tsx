@@ -6,9 +6,9 @@ import {
   ManualStep,
   MachineNameStep,
   SuccessStep,
+  OnboardingLayout,
 } from "@/components/onboarding";
 import React from "react";
-import { darkBgStyles } from "@/lib/darkBgStyles";
 
 // Wrapper component for stories
 function OnboardingStoryWrapper({ children }: { children?: React.ReactNode }) {
@@ -40,20 +40,9 @@ function DesktopWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Mobile wrapper without Card (full-screen)
+// Mobile wrapper - uses shared OnboardingLayout
 function MobileWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-coffee-800 via-coffee-900 to-coffee-950">
-      <div 
-        className="min-h-screen flex flex-col justify-center px-5 py-8"
-        style={darkBgStyles}
-      >
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
+  return <OnboardingLayout>{children}</OnboardingLayout>;
 }
 
 // ============ WELCOME STEP ============
@@ -85,11 +74,7 @@ export const ScanDesktop: Story = {
   name: "2. Scan QR - Desktop",
   render: () => (
     <DesktopWrapper>
-      <ScanStep
-        onScan={() => {}}
-        onBack={() => {}}
-        onValidate={() => {}}
-      />
+      <ScanStep onScan={() => {}} onBack={() => {}} onValidate={() => {}} />
     </DesktopWrapper>
   ),
 };
@@ -101,11 +86,7 @@ export const ScanMobile: Story = {
   },
   render: () => (
     <MobileWrapper>
-      <ScanStep
-        onScan={() => {}}
-        onBack={() => {}}
-        onValidate={() => {}}
-      />
+      <ScanStep onScan={() => {}} onBack={() => {}} onValidate={() => {}} />
     </MobileWrapper>
   ),
 };

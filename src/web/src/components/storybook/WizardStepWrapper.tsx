@@ -52,12 +52,12 @@ export function WizardStepWrapper({
   const mobileLayout = (
     <div className="min-h-screen bg-gradient-to-br from-coffee-800 via-coffee-900 to-coffee-950">
       <div 
-        className="min-h-screen flex flex-col px-5 py-6"
+        className="h-screen flex flex-col px-5 py-4 overflow-hidden"
         style={darkBgStyles}
       >
         <ProgressIndicator steps={steps} currentStep={currentStep} />
         
-        <div className={`flex-1 flex flex-col ${isWelcomeStep ? 'justify-center' : 'pt-4'}`}>
+        <div className={`flex-1 flex flex-col overflow-y-auto ${isWelcomeStep ? 'justify-center' : 'pt-2'}`}>
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {children}
             {renderNavigation()}
