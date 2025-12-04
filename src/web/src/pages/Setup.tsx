@@ -61,7 +61,7 @@ export function Setup() {
         setStatus('error');
         setErrorMessage(data.error || 'Connection failed');
       }
-    } catch (err) {
+    } catch {
       setStatus('error');
       setErrorMessage('Failed to connect');
     }

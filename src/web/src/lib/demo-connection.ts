@@ -329,18 +329,6 @@ export class DemoConnection implements IConnection {
       ...allTests[testId],
     }));
 
-    // Count results
-    let passCount = 0;
-    let failCount = 0;
-    let warnCount = 0;
-    let skipCount = 0;
-    tests.forEach(t => {
-      if (t.status === 0) passCount++;
-      else if (t.status === 1) failCount++;
-      else if (t.status === 2) warnCount++;
-      else if (t.status === 3) skipCount++;
-    });
-
     // Emit header first (tests starting)
     this.emit({
       type: "diagnostics_header",

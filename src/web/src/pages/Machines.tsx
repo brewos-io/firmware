@@ -152,7 +152,7 @@ export function Machines() {
       } else {
         setClaimError("Failed to add machine. Code may be expired.");
       }
-    } catch (error) {
+    } catch {
       setClaimError("An error occurred");
     }
 

@@ -119,7 +119,7 @@ export function validateHeatingStrategy(
           : undefined,
       };
       
-    case HEATING_STRATEGIES.SEQUENTIAL:
+    case HEATING_STRATEGIES.SEQUENTIAL: {
       const maxSingle = Math.max(brewCurrent, steamCurrent);
       return {
         isAllowed: maxSingle <= safeLimit,
@@ -127,6 +127,7 @@ export function validateHeatingStrategy(
           ? `Single heater draws ${maxSingle.toFixed(1)}A, exceeds ${safeLimit.toFixed(1)}A limit`
           : undefined,
       };
+    }
       
     case HEATING_STRATEGIES.PARALLEL:
     case HEATING_STRATEGIES.SMART_STAGGER:

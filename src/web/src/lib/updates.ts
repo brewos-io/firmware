@@ -149,7 +149,7 @@ async function fetchGitHubReleases(): Promise<VersionInfo[]> {
 
     const releases = await response.json();
 
-    return releases.map((release: any) => {
+    return releases.map((release: { tag_name: string; prerelease: boolean; published_at: string; body: string; html_url: string }) => {
       const tagName = release.tag_name;
       const isDev = tagName === "dev-latest";
       

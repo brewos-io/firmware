@@ -82,7 +82,7 @@ export class Connection implements IConnection {
           try {
             const message = JSON.parse(event.data) as WebSocketMessage;
             this.notifyMessage(message);
-          } catch (e) {
+          } catch {
             console.warn('[BrewOS] Invalid message:', event.data);
           }
         };
