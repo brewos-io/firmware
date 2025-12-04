@@ -230,7 +230,7 @@ export const themes: Record<ThemeId, Theme> = {
     },
   },
 
-  // Mulberry - Rich berry wine with romantic mauve tones
+  // Mulberry - Berry wine with rose dust
   mulberry: {
     id: "mulberry",
     name: "Mulberry",
