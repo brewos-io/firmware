@@ -271,7 +271,8 @@ jobs:
             # Rebuild web UI with release version embedded
             cd src/web
             npm ci
-            RELEASE_VERSION="$VERSION_NUM" npm run build
+            # Increase Node.js memory limit for Vite build
+            NODE_OPTIONS="--max-old-space-size=4096" RELEASE_VERSION="$VERSION_NUM" npm run build
 
             # Copy built web UI to cloud service
             cp -r dist ../cloud/web
