@@ -163,14 +163,14 @@ export function ShareDevice({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200"
+      className="fixed inset-0 bg-black/50 xs:backdrop-blur-sm flex items-center justify-center xs:p-4 z-50 animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
     >
-      <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200 shadow-2xl">
+      <Card className="w-full h-full xs:h-auto xs:max-w-md xs:max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200 xs:shadow-2xl rounded-none xs:rounded-2xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">

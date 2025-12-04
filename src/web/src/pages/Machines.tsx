@@ -322,9 +322,9 @@ export function Machines() {
 
       {/* Add Machine Flow */}
       {addMode && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in duration-200">
-          <div className="w-full max-w-lg max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-            <Card className="animate-in zoom-in-95 duration-300 m-0">
+        <div className="fixed inset-0 bg-black/50 xs:backdrop-blur-sm flex items-center justify-center xs:p-4 z-50 animate-in fade-in duration-200">
+          <div className="w-full h-full xs:h-auto xs:max-w-lg xs:max-h-[90vh] overflow-y-auto">
+            <Card className="animate-in zoom-in-95 duration-300 m-0 h-full xs:h-auto rounded-none xs:rounded-2xl">
               <div className="flex items-center justify-between mb-4 pb-4 border-b border-theme/10">
                 <h2 className="text-xl sm:text-2xl font-bold text-theme">
                   Add Machine
