@@ -203,7 +203,9 @@ export async function initDatabase(): Promise<SqlJsDatabase> {
         needsMigration[0].values.length > 0 &&
         (needsMigration[0].values[0][0] as number) > 0
       ) {
-        console.log("[DB] Migrating existing device ownership to user_devices...");
+        console.log(
+          "[DB] Migrating existing device ownership to user_devices..."
+        );
         // Migrate existing owner_id + name to user_devices
         db.run(`
           INSERT INTO user_devices (user_id, device_id, name, claimed_at, created_at, updated_at)
