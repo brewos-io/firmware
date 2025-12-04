@@ -473,7 +473,7 @@ export function createShareToken(
   }
 
   // Generate a random token
-  const token = randomUUID().replace(/-/g, "").substring(0, 16).toUpperCase();
+  const token = randomUUID().replace(/-/g, "").toUpperCase();
   const tokenHash = hashToken(token);
   const expiresAt = futureUTC(24, "hours"); // Share links expire in 24 hours
   const id = randomUUID();
