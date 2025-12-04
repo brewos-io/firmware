@@ -229,35 +229,30 @@ router.patch("/:id", sessionAuthMiddleware, userWriteLimiter, (req, res) => {
  * GET /api/devices/:id/users
  * Get all users who have access to a device
  */
-router.get(
-  "/:id/users",
-  sessionAuthMiddleware,
-  userReadLimiter,
-  (req, res) => {
-    try {
-      const { id } = req.params;
+router.get("/:id/users", sessionAuthMiddleware, userReadLimiter, (req, res) => {
+  try {
+    const { id } = req.params;
 
-      // Verify the requesting user has access to the device
-      if (!userOwnsDevice(req.user!.id, id)) {
-        return res.status(404).json({ error: "Device not found" });
-      }
-
-      const users = getDeviceUsers(id);
-
-      res.json({
-        users: users.map((u) => ({
-          userId: u.user_id,
-          email: u.email,
-          displayName: u.display_name,
-          avatarUrl: u.avatar_url,
-          claimedAt: u.claimed_at,
-        })),
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to get device users" });
+    // Verify the requesting user has access to the device
+    if (!userOwnsDevice(req.user!.id, id)) {
+      return res.status(404).json({ error: "Device not found" });
     }
+
+    const users = getDeviceUsers(id);
+
+    res.json({
+      users: users.map((u) => ({
+        userId: u.user_id,
+        email: u.email,
+        displayName: u.display_name,
+        avatarUrl: u.avatar_url,
+        claimedAt: u.claimed_at,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to get device users" });
   }
-);
+});
 
 /**
  * DELETE /api/devices/:id/users/:userId
