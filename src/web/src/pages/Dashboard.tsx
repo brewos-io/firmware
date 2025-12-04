@@ -145,74 +145,76 @@ export function Dashboard() {
   }, [waterTankLevel]);
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Dashboard"
-        subtitle="Monitor your machine status"
-        action={<StatusBar />}
-      />
-
-      <MachineStatusCard
-        mode={machineMode}
-        state={machineState}
-        isDualBoiler={isDualBoiler}
-        heatingStrategy={heatingStrategy}
-        onSetMode={setMode}
-        onPowerOn={handleOnClick}
-      />
-
-      <TemperatureGauges
-        machineType={machineType}
-        brewTemp={brewTemp}
-        steamTemp={steamTemp}
-        groupTemp={groupTemp}
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <PressureCard pressure={pressure} />
-        <PowerCard
-          current={powerCurrent}
-          todayKwh={powerTodayKwh}
-          voltage={powerVoltage}
-        />
-      </div>
-
-      {/* Quick Stats - Improved layout */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Coffee stats group */}
-        <QuickStat
-          icon={<Coffee className="w-5 h-5" />}
-          label="Shots Today"
-          value={shotsToday.toString()}
-        />
-        <QuickStat
-          icon={<Clock className="w-5 h-5" />}
-          label="Session"
-          value={machineMode !== "standby" ? formattedUptime : "Off"}
+    <>
+      <div className="space-y-6">
+        <PageHeader
+          title="Dashboard"
+          subtitle="Monitor your machine status"
+          action={<StatusBar />}
         />
 
-        {/* Machine status group */}
-        <QuickStat
-          icon={<Droplets className="w-5 h-5" />}
-          label="Water Tank"
-          value={waterDisplayValue}
-          status={waterStatus}
-          showPulse={waterTankLevel !== "ok"}
-          subtext={
-            waterTankLevel === "low"
-              ? "Refill soon"
-              : waterTankLevel === "empty"
-              ? "Refill now!"
-              : undefined
-          }
+        <MachineStatusCard
+          mode={machineMode}
+          state={machineState}
+          isDualBoiler={isDualBoiler}
+          heatingStrategy={heatingStrategy}
+          onSetMode={setMode}
+          onPowerOn={handleOnClick}
         />
-        <QuickStat
-          icon={<Scale className="w-5 h-5" />}
-          label="Scale"
-          value={scaleDisplayValue}
-          status={scaleConnected ? "success" : undefined}
-          subtext={scaleSubtext}
+
+        <TemperatureGauges
+          machineType={machineType}
+          brewTemp={brewTemp}
+          steamTemp={steamTemp}
+          groupTemp={groupTemp}
         />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <PressureCard pressure={pressure} />
+          <PowerCard
+            current={powerCurrent}
+            todayKwh={powerTodayKwh}
+            voltage={powerVoltage}
+          />
+        </div>
+
+        {/* Quick Stats - Improved layout */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Coffee stats group */}
+          <QuickStat
+            icon={<Coffee className="w-5 h-5" />}
+            label="Shots Today"
+            value={shotsToday.toString()}
+          />
+          <QuickStat
+            icon={<Clock className="w-5 h-5" />}
+            label="Session"
+            value={machineMode !== "standby" ? formattedUptime : "Off"}
+          />
+
+          {/* Machine status group */}
+          <QuickStat
+            icon={<Droplets className="w-5 h-5" />}
+            label="Water Tank"
+            value={waterDisplayValue}
+            status={waterStatus}
+            showPulse={waterTankLevel !== "ok"}
+            subtext={
+              waterTankLevel === "low"
+                ? "Refill soon"
+                : waterTankLevel === "empty"
+                ? "Refill now!"
+                : undefined
+            }
+          />
+          <QuickStat
+            icon={<Scale className="w-5 h-5" />}
+            label="Scale"
+            value={scaleDisplayValue}
+            status={scaleConnected ? "success" : undefined}
+            subtext={scaleSubtext}
+          />
+        </div>
       </div>
 
       <HeatingStrategyModal
@@ -220,6 +222,6 @@ export function Dashboard() {
         onClose={() => setShowStrategyModal(false)}
         onSelect={handleStrategySelect}
       />
-    </div>
+    </>
   );
 }
