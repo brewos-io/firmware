@@ -460,7 +460,7 @@ const PowerControls = memo(function PowerControls({
       STRATEGY_LABELS[effectiveStrategy]?.label || "Sequential";
 
     return (
-      <div className="flex-1 flex rounded-xl overflow-hidden">
+      <div role="group" aria-label="Power control" className="flex-1 flex rounded-xl overflow-hidden">
         {/* Main button - 70% - Turn On with strategy */}
         <button
           onClick={onQuickOn}
