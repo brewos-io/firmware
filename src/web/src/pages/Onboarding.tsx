@@ -106,14 +106,13 @@ export function Onboarding() {
   return (
     <div className="full-page-scroll bg-gradient-to-br from-coffee-800 via-coffee-900 to-coffee-950 flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        {/* Logo outside cards for consistent look */}
-        <div className="flex justify-center mb-6">
-          <Logo size="lg" forceDark />
-        </div>
-
         {step === "welcome" && (
           <Card className="text-center">
             <div className="py-8">
+              <div className="flex justify-center mb-6">
+                <Logo size="lg" />
+              </div>
+
               <h1 className="text-3xl font-bold text-theme mb-2">
                 Welcome to BrewOS
               </h1>
@@ -161,14 +160,6 @@ export function Onboarding() {
               <QRScanner
                 onScan={(result) => {
                   setClaimCode(result);
-                  // Auto-submit if valid URL
-                  if (
-                    result.includes("?") &&
-                    result.includes("id=") &&
-                    result.includes("token=")
-                  ) {
-                    handleClaim(result);
-                  }
                 }}
                 onError={(err) => console.log("QR scan error:", err)}
               />
@@ -180,13 +171,6 @@ export function Onboarding() {
             </div>
 
             <div className="border-t border-theme pt-4 space-y-4">
-              <Input
-                label="Or paste the pairing URL"
-                placeholder="https://brewos.io/pair?id=BRW-..."
-                value={claimCode}
-                onChange={(e) => setClaimCode(e.target.value)}
-              />
-
               <Input
                 label="Machine Name (optional)"
                 placeholder="Kitchen Espresso"

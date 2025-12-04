@@ -29,12 +29,11 @@ export function Login() {
   if (!isGoogleAuthConfigured) {
     return (
       <div className="full-page bg-gradient-to-br from-coffee-800 to-coffee-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="flex justify-center mb-6">
-            <Logo size="lg" forceDark />
+        <Card className="w-full max-w-md text-center">
+          <div className="flex justify-center mb-4">
+            <Logo size="lg" />
           </div>
-          <Card className="text-center">
-            <p className="text-coffee-500">
+          <p className="text-coffee-500">
               Cloud features are not configured. Connect directly to your device
               at{" "}
               <a
@@ -42,23 +41,21 @@ export function Login() {
                 className="text-accent hover:underline"
               >
                 brewos.local
-              </a>
-            </p>
-          </Card>
-        </div>
+            </a>
+          </p>
+        </Card>
       </div>
     );
   }
 
   return (
     <div className="full-page bg-gradient-to-br from-coffee-800 to-coffee-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="flex justify-center mb-6">
-          <Logo size="lg" forceDark />
-        </div>
-        <Card>
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-theme">Welcome to BrewOS</h1>
+      <Card className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <Logo size="lg" />
+          </div>
+          <h1 className="text-2xl font-bold text-theme">Welcome to BrewOS</h1>
             <p className="text-theme-muted mt-2">
               Sign in to manage your espresso machines from anywhere
             </p>
@@ -118,10 +115,9 @@ export function Login() {
               >
                 brewos.local
               </a>
-            </p>
-          </div>
-        </Card>
-      </div>
+          </p>
+        </div>
+      </Card>
     </div>
   );
 }

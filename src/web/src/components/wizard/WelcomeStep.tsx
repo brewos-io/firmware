@@ -1,8 +1,12 @@
+import { Logo } from "@/components/Logo";
 import { Settings, Cloud } from "lucide-react";
 
 export function WelcomeStep() {
   return (
     <div className="text-center py-8">
+      <div className="flex justify-center mb-6">
+        <Logo size="xl" />
+      </div>
       <h1 className="text-3xl font-bold text-theme mb-3">Welcome to BrewOS</h1>
       <p className="text-theme-muted max-w-md mx-auto mb-8">
         Let's set up your espresso machine. This will only take a minute.

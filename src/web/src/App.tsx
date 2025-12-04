@@ -28,6 +28,7 @@ import { UpdateNotification } from "@/components/UpdateNotification";
 import { getDemoConnection, clearDemoConnection } from "@/lib/demo-connection";
 import { isDemoMode, disableDemoMode } from "@/lib/demo-mode";
 import { isRunningAsPWA, isDemoModeAllowed } from "@/lib/pwa";
+import { isDevModeEnabled } from "@/lib/dev-mode";
 
 // Maximum time to wait for initialization before showing error/fallback
 const INIT_TIMEOUT_MS = 10000;
@@ -36,10 +37,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [setupComplete, setSetupComplete] = useState(true); // Default true to avoid flash
   const [initError, setInitError] = useState<string | null>(null);
-  
+
   // Check if running as PWA - PWA mode only supports cloud, not demo/local
   const [isPWA] = useState(() => isRunningAsPWA());
-  
+
   // Demo mode is only allowed for cloud website visitors in browser
   // NOT allowed when: running as PWA, or running on ESP32 local mode
   const [inDemoMode] = useState(() => {
@@ -61,7 +62,7 @@ function App() {
     initialize,
     getSelectedDevice,
   } = useAppStore();
-  
+
   // Track if we've completed the initial device fetch (for returning users)
   const [initialDevicesFetched, setInitialDevicesFetched] = useState(false);
 
@@ -71,12 +72,14 @@ function App() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (loading || (mode === "cloud" && user && !initialDevicesFetched)) {
-        console.error('[App] Initialization timeout - forcing load complete');
+        console.error("[App] Initialization timeout - forcing load complete");
         setLoading(false);
         setInitialDevicesFetched(true); // Prevent infinite loading on device fetch timeout
         // If we're still not initialized after timeout, set error for cloud mode
         if (!initialized && !inDemoMode) {
-          setInitError('Connection timeout. Please check your network and try again.');
+          setInitError(
+            "Connection timeout. Please check your network and try again."
+          );
         }
       }
     }, INIT_TIMEOUT_MS);
@@ -90,21 +93,23 @@ function App() {
 
     const initDemo = async () => {
       try {
-      initTheme();
+        initTheme();
 
-      const demoConnection = getDemoConnection();
+        const demoConnection = getDemoConnection();
 
-      // Set as active connection so useCommand works
-      setActiveConnection(demoConnection);
+        // Set as active connection so useCommand works
+        setActiveConnection(demoConnection);
 
-      initializeStore(demoConnection);
+        initializeStore(demoConnection);
 
-      await demoConnection.connect();
+        await demoConnection.connect();
       } catch (error) {
-        console.error('[App] Demo initialization error:', error);
-        setInitError('Failed to initialize demo mode. Please refresh the page.');
+        console.error("[App] Demo initialization error:", error);
+        setInitError(
+          "Failed to initialize demo mode. Please refresh the page."
+        );
       } finally {
-      setLoading(false);
+        setLoading(false);
       }
     };
 
@@ -122,13 +127,13 @@ function App() {
 
     const init = async () => {
       try {
-      // Initialize theme first for immediate visual consistency
-      initTheme();
+        // Initialize theme first for immediate visual consistency
+        initTheme();
 
-      // Initialize app - this fetches mode from server
-      await initialize();
+        // Initialize app - this fetches mode from server
+        await initialize();
       } catch (error) {
-        console.error('[App] Initialization error:', error);
+        console.error("[App] Initialization error:", error);
         // Don't set error here - we'll rely on timeout for edge cases
       }
     };
@@ -151,38 +156,38 @@ function App() {
         // Local mode is only allowed when NOT running as PWA
         if (mode === "local" && !apMode && !isPWA) {
           // Check if setup is complete (with timeout via AbortController)
-        try {
+          try {
             const setupResponse = await fetch("/api/setup/status", {
               signal: abortController.signal,
             });
-          if (setupResponse.ok) {
-            const setupData = await setupResponse.json();
-            setSetupComplete(setupData.complete);
-          }
+            if (setupResponse.ok) {
+              const setupData = await setupResponse.json();
+              setSetupComplete(setupData.complete);
+            }
           } catch (error) {
             // If endpoint doesn't exist, times out, or aborts, assume setup is complete
-            if ((error as Error).name !== 'AbortError') {
-              console.warn('[App] Setup status check failed:', error);
+            if ((error as Error).name !== "AbortError") {
+              console.warn("[App] Setup status check failed:", error);
             }
-          setSetupComplete(true);
+            setSetupComplete(true);
+          }
+
+          // Initialize WebSocket connection
+          const connection = initConnection({
+            mode: "local",
+            endpoint: "/ws",
+          });
+
+          initializeStore(connection);
+
+          connection.connect().catch((error) => {
+            console.error("Initial connection failed:", error);
+          });
         }
-
-        // Initialize WebSocket connection
-        const connection = initConnection({
-          mode: "local",
-          endpoint: "/ws",
-        });
-
-        initializeStore(connection);
-
-        connection.connect().catch((error) => {
-          console.error("Initial connection failed:", error);
-        });
-      }
       } finally {
         // ALWAYS clear timeout and set loading to false
         clearTimeout(timeoutId);
-      setLoading(false);
+        setLoading(false);
       }
     };
 
@@ -193,17 +198,17 @@ function App() {
       getConnection()?.disconnect();
     };
   }, [initialized, mode, apMode, inDemoMode]);
-  
+
   // Track when initial device fetch completes (for cloud mode with existing user)
   useEffect(() => {
     if (mode !== "cloud" || !user || initialDevicesFetched) return;
-    
+
     // Once devicesLoading becomes false after initialization, mark as fetched
     if (initialized && !devicesLoading) {
       setInitialDevicesFetched(true);
     }
   }, [mode, user, initialized, devicesLoading, initialDevicesFetched]);
-  
+
   // Reset initialDevicesFetched when user logs out (so re-login waits for devices)
   useEffect(() => {
     if (!user && initialDevicesFetched) {
@@ -225,8 +230,9 @@ function App() {
 
   // Show loading state
   // For cloud mode with existing user, also wait for initial device fetch
-  const isWaitingForDevices = mode === "cloud" && user && !initialDevicesFetched;
-  
+  const isWaitingForDevices =
+    mode === "cloud" && user && !initialDevicesFetched;
+
   if (loading || (!inDemoMode && !initialized) || isWaitingForDevices) {
     return <Loading message={initError || undefined} />;
   }
@@ -234,10 +240,10 @@ function App() {
   // Show error state if initialization failed
   if (initError) {
     return (
-      <Loading 
-        message={initError} 
-        showRetry 
-        onRetry={() => window.location.reload()} 
+      <Loading
+        message={initError}
+        showRetry
+        onRetry={() => window.location.reload()}
       />
     );
   }
@@ -276,9 +282,29 @@ function App() {
       return <FirstRunWizard onComplete={handleSetupComplete} />;
     }
 
+    // Check for dev preview routes (dev mode enabled via ?dev=true or localStorage)
+    const isDev = isDevModeEnabled();
+
     return (
       <>
         <Routes>
+          {/* Dev preview routes for testing welcome screens */}
+          {isDev && (
+            <>
+              <Route path="/dev/login" element={<Login />} />
+              <Route path="/dev/onboarding" element={<Onboarding />} />
+              <Route path="/dev/pair" element={<Pair />} />
+              <Route
+                path="/dev/wizard"
+                element={
+                  <FirstRunWizard
+                    onComplete={() => (window.location.href = "/")}
+                  />
+                }
+              />
+            </>
+          )}
+
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="brewing" element={<Brewing />} />
@@ -357,7 +383,9 @@ function App() {
           path="/"
           element={
             <Navigate
-              to={selectedDevice ? `/machine/${selectedDevice.id}` : "/machines"}
+              to={
+                selectedDevice ? `/machine/${selectedDevice.id}` : "/machines"
+              }
               replace
             />
           }

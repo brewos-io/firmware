@@ -70,12 +70,8 @@ export function Pair() {
 
   return (
     <div className="full-page-scroll bg-gradient-to-br from-coffee-800 to-coffee-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="flex justify-center mb-6">
-          <Logo size="lg" forceDark />
-        </div>
-        <Card>
-          {status === "success" ? (
+      <Card className="w-full max-w-md">
+        {status === "success" ? (
             <div className="text-center py-8">
               <div className="w-16 h-16 bg-success-soft rounded-full flex items-center justify-center mx-auto mb-4">
                 <Check className="w-8 h-8 text-success" />
@@ -114,9 +110,12 @@ export function Pair() {
               </h2>
             </div>
           ) : (
-            <>
-              <div className="text-center mb-6">
-                <h1 className="text-2xl font-bold text-theme">Pair Device</h1>
+          <>
+            <div className="text-center mb-6">
+              <div className="flex justify-center mb-4">
+                <Logo size="lg" />
+              </div>
+              <h1 className="text-2xl font-bold text-theme">Pair Device</h1>
                 <p className="text-theme-secondary mt-2">
                   Add this BrewOS device to your account
                 </p>
@@ -165,8 +164,7 @@ export function Pair() {
               )}
             </>
           )}
-        </Card>
-      </div>
+      </Card>
     </div>
   );
 }
