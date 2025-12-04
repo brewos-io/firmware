@@ -11,6 +11,7 @@
 class PicoUART;
 class MQTTClient;
 class PairingManager;
+class CloudConnection;
 
 class WebServer {
 public:
@@ -21,6 +22,9 @@ public:
     
     // Update - call in loop
     void loop();
+    
+    // Set cloud connection for remote state broadcasting
+    void setCloudConnection(CloudConnection* cloudConnection);
     
     // Send data to all WebSocket clients - Unified Status Broadcast
     void broadcastFullStatus(const ui_state_t& machineState);  // Comprehensive status (periodic)
@@ -36,6 +40,10 @@ public:
     
     // Get client count
     size_t getClientCount();
+    
+    // Process a command from any source (local WebSocket or cloud)
+    // Used by CloudConnection to forward cloud commands to the same handler
+    void processCommand(JsonDocument& doc);
 
 private:
     AsyncWebServer _server;
@@ -44,6 +52,7 @@ private:
     PicoUART& _picoUart;
     MQTTClient& _mqttClient;
     PairingManager* _pairingManager;
+    CloudConnection* _cloudConnection = nullptr;
     
     // Request handlers
     void setupRoutes();
