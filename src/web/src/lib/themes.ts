@@ -9,6 +9,7 @@ export type ThemeId =
   | "latte"
   | "warm-mocha"
   | "cappuccino"
+  | "cortado"
   | "roasted"
   | "dark-roast"
   | "midnight";
@@ -415,6 +416,55 @@ export const themes: Record<ThemeId, Theme> = {
       navInactiveText: "#c0a088",
       navHoverBg: "#302420",
       headerGlassBg: "rgba(32, 24, 20, 0.95)",
+      headerGlassBlur: "12px",
+    },
+  },
+
+  // Cortado - Lighter dark theme with warm milk chocolate tones
+  cortado: {
+    id: "cortado",
+    name: "Cortado",
+    description: "Soft dark with milky warmth",
+    preview: {
+      primary: "#f0e0d0",
+      secondary: "#3a3230",
+      accent: "#c8956c",
+    },
+    isDark: true,
+    colors: {
+      bg: "#3a3230",
+      bgSecondary: "#4a423e",
+      bgTertiary: "#5a524c",
+      text: "#f5ece4",
+      textSecondary: "#e0d0c4",
+      textMuted: "#b8a898",
+      coffee50: "#f5ece4",
+      coffee100: "#f0e0d0",
+      coffee200: "#e0d0c0",
+      coffee300: "#c8b8a8",
+      coffee400: "#a89888",
+      coffee500: "#887868",
+      coffee600: "#686058",
+      coffee700: "#5a524c",
+      coffee800: "#4a423e",
+      coffee900: "#3a3230",
+      cream100: "#5a524c",
+      cream200: "#686058",
+      cream300: "#78706a",
+      cream400: "#88807a",
+      accent: "#c8956c",
+      accentLight: "#e0b090",
+      accentGlow: "rgba(200, 149, 108, 0.35)",
+      cardBg: "#48403c",
+      border: "#5a524c",
+      borderLight: "#4a423e",
+      shadowColor: "rgba(0, 0, 0, 0.3)",
+      navBg: "#3a3230",
+      navActiveBg: "#c8956c",
+      navActiveText: "#3a3230",
+      navInactiveText: "#b8a898",
+      navHoverBg: "#4a423e",
+      headerGlassBg: "rgba(58, 50, 48, 0.92)",
       headerGlassBlur: "12px",
     },
   },
