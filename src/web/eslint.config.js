@@ -19,10 +19,9 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      // Disable react-refresh rule - it's overly strict for common React patterns
+      // (exporting hooks/utilities alongside components). Fast Refresh still works fine.
+      'react-refresh/only-export-components': 'off',
     },
   }
 );

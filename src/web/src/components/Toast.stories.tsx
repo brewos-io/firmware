@@ -146,7 +146,7 @@ function StaticToastPreview() {
     toast.success("Machine is ready to brew");
     toast.warning("Descaling recommended");
     toast.error("Connection lost");
-  }, []); // Empty dependency array - run only on mount
+  }, [toast]); // Run only on mount
 
   return (
     <Card className="max-w-md">

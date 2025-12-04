@@ -154,6 +154,56 @@ function App() {
 
     const setupLocalMode = async () => {
       try {
+        // In cloud mode, setupComplete is not applicable - always treat as complete
+        // (FirstRunWizard is only for local ESP32 device setup)
+        if (mode === "cloud") {
+          setSetupComplete(true);
+          setLoading(false);
+          return;
+        }
+
+        // IMPORTANT: If setup is not complete, we're in wizard mode
+        // Stay in local mode and check setup status - don't allow mode changes
+        // until wizard completes
+        if (!setupComplete && !apMode && !isPWA) {
+          // Check if setup is complete (with timeout via AbortController)
+          try {
+            const setupResponse = await fetch("/api/setup/status", {
+              signal: abortController.signal,
+            });
+            if (setupResponse.ok) {
+              const setupData = await setupResponse.json();
+              setSetupComplete(setupData.complete);
+              // If setup is now complete, continue with normal flow
+              if (setupData.complete) {
+                setLoading(false);
+                return;
+              }
+            }
+          } catch (error) {
+            // If endpoint doesn't exist, times out, or aborts, keep checking
+            if ((error as Error).name !== "AbortError") {
+              console.warn("[App] Setup status check failed:", error);
+            }
+            // Don't set setupComplete to true here - let wizard handle it
+          }
+
+          // Initialize WebSocket connection for wizard
+          const connection = initConnection({
+            mode: "local",
+            endpoint: "/ws",
+          });
+
+          initializeStore(connection);
+
+          connection.connect().catch((error) => {
+            console.error("Initial connection failed:", error);
+          });
+
+          setLoading(false);
+          return;
+        }
+
         // Local mode is only allowed when NOT running as PWA
         if (mode === "local" && !apMode && !isPWA) {
           // Check if setup is complete (with timeout via AbortController)
@@ -198,7 +248,7 @@ function App() {
       abortController.abort(); // Cancel any pending requests on cleanup
       getConnection()?.disconnect();
     };
-  }, [initialized, mode, apMode, inDemoMode]);
+  }, [initialized, mode, apMode, inDemoMode, isPWA, setupComplete]);
 
   // Track when initial device fetch completes (for cloud mode with existing user)
   useEffect(() => {
@@ -273,13 +323,18 @@ function App() {
   }
 
   // ===== LOCAL MODE (ESP32) =====
-  if (mode === "local") {
+  // IMPORTANT: If setup is not complete, we MUST stay in local mode
+  // even if mode detection changes. The wizard must complete first.
+  const effectiveMode = !setupComplete ? "local" : mode;
+
+  if (effectiveMode === "local") {
     // Show WiFi setup page in AP mode
     if (apMode) {
       return <Setup />;
     }
 
     // Show first-run wizard if setup not complete
+    // This takes precedence over everything - wizard must complete first
     if (!setupComplete) {
       return <FirstRunWizard onComplete={handleSetupComplete} />;
     }

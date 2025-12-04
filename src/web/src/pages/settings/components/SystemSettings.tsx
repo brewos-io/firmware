@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useStore } from "@/lib/store";
 import { useCommand } from "@/lib/useCommand";
 import { Card, CardHeader, CardTitle } from "@/components/Card";
@@ -48,14 +48,7 @@ export function SystemSettings() {
   );
   const [showBetaWarning, setShowBetaWarning] = useState(false);
 
-  // Check for updates on mount or when channel changes
-  useEffect(() => {
-    if (esp32.version) {
-      handleCheckForUpdates();
-    }
-  }, [esp32.version, channel]);
-
-  const handleCheckForUpdates = async () => {
+  const handleCheckForUpdates = useCallback(async () => {
     if (!esp32.version) return;
 
     setCheckingUpdate(true);
@@ -67,7 +60,14 @@ export function SystemSettings() {
     } finally {
       setCheckingUpdate(false);
     }
-  };
+  }, [esp32.version]);
+
+  // Check for updates on mount or when channel changes
+  useEffect(() => {
+    if (esp32.version) {
+      handleCheckForUpdates();
+    }
+  }, [esp32.version, channel, handleCheckForUpdates]);
 
   const [showDevWarning, setShowDevWarning] = useState(false);
 

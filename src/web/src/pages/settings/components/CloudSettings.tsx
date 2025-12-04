@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useCommand } from "@/lib/useCommand";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
@@ -117,7 +117,7 @@ export function CloudSettings() {
     }
   };
 
-  const fetchPairingQR = async () => {
+  const fetchPairingQR = useCallback(async () => {
     // Demo mode: use mock data
     if (isDemo) {
       setPairing({ ...DEMO_PAIRING, expiresIn: 300 });
@@ -138,7 +138,7 @@ export function CloudSettings() {
     } finally {
       setLoadingQR(false);
     }
-  };
+  }, [isDemo]);
 
   const refreshPairing = async () => {
     // Demo mode: simulate refresh with new expiry
@@ -217,7 +217,7 @@ export function CloudSettings() {
     setTimeout(() => setSaving(false), 600);
   };
 
-  const fetchCloudStatus = async () => {
+  const fetchCloudStatus = useCallback(async () => {
     // Demo mode: use mock data
     if (isDemo) {
       setCloudConfig(DEMO_CLOUD_STATUS);
@@ -240,7 +240,7 @@ export function CloudSettings() {
     } catch {
       // Device might not support cloud status endpoint yet
     }
-  };
+  }, [isDemo]);
 
   useEffect(() => {
     // Skip API calls in demo mode - data already initialized
@@ -248,7 +248,7 @@ export function CloudSettings() {
 
     fetchPairingQR();
     fetchCloudStatus();
-  }, [isDemo]);
+  }, [isDemo, fetchPairingQR, fetchCloudStatus]);
 
   const isExpired = pairing?.expiresIn !== undefined && pairing.expiresIn <= 0;
 

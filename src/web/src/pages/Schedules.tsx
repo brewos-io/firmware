@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useStore } from "@/lib/store";
 import { Card, CardHeader, CardTitle } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -38,11 +38,7 @@ export function Schedules() {
 
   const isDemo = isDemoMode();
 
-  useEffect(() => {
-    fetchSchedules();
-  }, []);
-
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     // Use mock data in demo mode
     if (isDemo) {
       const demoData = getDemoSchedules();
@@ -68,7 +64,11 @@ export function Schedules() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isDemo]);
+
+  useEffect(() => {
+    fetchSchedules();
+  }, [fetchSchedules]);
 
   const saveSchedule = async () => {
     setSaving(true);

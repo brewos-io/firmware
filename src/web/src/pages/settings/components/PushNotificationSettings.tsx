@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { isDemoMode } from "@/lib/demo-mode";
 import {
@@ -180,14 +180,7 @@ export function PushNotificationSettings() {
   const [loadingPrefs, setLoadingPrefs] = useState(false);
   const [savingPrefs, setSavingPrefs] = useState(false);
 
-  // Fetch notification preferences
-  useEffect(() => {
-    if (isSubscribed) {
-      fetchPreferences();
-    }
-  }, [isSubscribed]);
-
-  const fetchPreferences = async () => {
+  const fetchPreferences = useCallback(async () => {
     // Get local firmware update preference
     const firmwareUpdateEnabled = getFirmwareUpdateNotificationEnabled();
 
@@ -217,7 +210,14 @@ export function PushNotificationSettings() {
     } finally {
       setLoadingPrefs(false);
     }
-  };
+  }, [isDemo]);
+
+  // Fetch notification preferences
+  useEffect(() => {
+    if (isSubscribed) {
+      fetchPreferences();
+    }
+  }, [isSubscribed, fetchPreferences]);
 
   const updatePreference = async (
     key: keyof NotificationPreferences,

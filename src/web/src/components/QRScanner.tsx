@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
-import { Camera, CameraOff, RefreshCw } from 'lucide-react';
-import { Button } from './Button';
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
+import { Camera, CameraOff, RefreshCw } from "lucide-react";
+import { Button } from "./Button";
 
 interface QRScannerProps {
   onScan: (result: string) => void;
@@ -15,15 +15,15 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const startScanner = async () => {
+  const startScanner = useCallback(async () => {
     if (!containerRef.current) return;
 
     setError(null);
-    
+
     try {
       // Create scanner instance if not exists
       if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode('qr-reader');
+        scannerRef.current = new Html5Qrcode("qr-reader");
       }
 
       // Check if already scanning
@@ -32,7 +32,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
       }
 
       await scannerRef.current.start(
-        { facingMode: 'environment' },
+        { facingMode: "environment" },
         {
           fps: 10,
           qrbox: { width: 250, height: 250 },
@@ -51,25 +51,31 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
       setIsScanning(true);
       setHasPermission(true);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to start camera';
-      
-      if (errorMessage.includes('Permission') || errorMessage.includes('NotAllowed')) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to start camera";
+
+      if (
+        errorMessage.includes("Permission") ||
+        errorMessage.includes("NotAllowed")
+      ) {
         setHasPermission(false);
-        setError('Camera permission denied. Please allow camera access.');
-      } else if (errorMessage.includes('NotFound')) {
-        setError('No camera found on this device.');
+        setError("Camera permission denied. Please allow camera access.");
+      } else if (errorMessage.includes("NotFound")) {
+        setError("No camera found on this device.");
       } else {
         setError(errorMessage);
       }
-      
+
       onError?.(errorMessage);
     }
-  };
+  }, [onScan, onError]);
 
   const stopScanner = async () => {
     if (scannerRef.current) {
       try {
-        if (scannerRef.current.getState() === Html5QrcodeScannerState.SCANNING) {
+        if (
+          scannerRef.current.getState() === Html5QrcodeScannerState.SCANNING
+        ) {
           await scannerRef.current.stop();
         }
       } catch {
@@ -89,7 +95,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
       clearTimeout(timer);
       stopScanner();
     };
-  }, []);
+  }, [startScanner]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -108,10 +114,10 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
   return (
     <div className="w-full" ref={containerRef}>
       {/* Scanner container */}
-      <div 
-        id="qr-reader" 
+      <div
+        id="qr-reader"
         className="w-full rounded-xl overflow-hidden bg-black"
-        style={{ minHeight: '280px' }}
+        style={{ minHeight: "280px" }}
       />
 
       {/* Error state */}
@@ -119,11 +125,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
         <div className="mt-4 p-4 bg-error-soft border border-error rounded-xl text-center">
           <CameraOff className="w-8 h-8 text-error mx-auto mb-2" />
           <p className="text-sm text-error mb-3">{error}</p>
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            onClick={startScanner}
-          >
+          <Button variant="secondary" size="sm" onClick={startScanner}>
             <RefreshCw className="w-4 h-4" />
             Try Again
           </Button>
@@ -154,4 +156,3 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
     </div>
   );
 }
-

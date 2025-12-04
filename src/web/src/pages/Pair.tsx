@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { GoogleLogin, CredentialResponse } from "@react-oauth/google";
 import { Card } from "@/components/Card";
@@ -31,7 +31,7 @@ export function Pair() {
     }
   }, [deviceId, token, navigate]);
 
-  const handlePair = async () => {
+  const handlePair = useCallback(async () => {
     if (!user) return;
 
     setStatus("claiming");
@@ -55,14 +55,14 @@ export function Pair() {
       setStatus("error");
       setErrorMessage("An error occurred while pairing.");
     }
-  };
+  }, [user, deviceId, token, deviceName, claimDevice, navigate]);
 
   // Auto-pair after login
   useEffect(() => {
     if (user && status === "idle" && deviceId && token) {
       handlePair();
     }
-  }, [user, status, deviceId, token]);
+  }, [user, status, deviceId, token, handlePair]);
 
   if (authLoading) {
     return <Loading />;
