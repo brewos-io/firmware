@@ -31,6 +31,7 @@ src/
 └── scripts/        # Build and utility scripts
     ├── build_firmware.sh
     ├── build_web.sh
+    ├── run_storybook.sh
     └── version.js
 ```
 
@@ -106,6 +107,28 @@ make -j4
 1. Hold BOOTSEL button on Pico
 2. Connect USB
 3. Copy `ecm_pico.uf2` to the RPI-RP2 drive
+
+### Storybook (Component Library)
+
+Browse and test all UI components with live theme switching:
+
+```bash
+cd src/scripts
+
+# Start Storybook dev server
+./run_storybook.sh
+
+# Build static Storybook site
+./run_storybook.sh --build
+```
+
+Storybook will be available at http://localhost:6006
+
+**Features:**
+- 🎨 **Theme Switcher** - Use the paintbrush icon in toolbar to preview all 10 themes
+- 📚 **Component Docs** - Auto-generated documentation for all components
+- 🔧 **Interactive Controls** - Adjust props and see live updates
+- 📱 **Responsive Testing** - Test components at different viewport sizes
 
 ## Development Workflow
 

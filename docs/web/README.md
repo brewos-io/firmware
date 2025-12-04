@@ -196,15 +196,75 @@ Receive real-time notifications when your machine needs attention. See [Push Not
 
 See [WebSocket Protocol](./WebSocket_Protocol.md) for message format details.
 
+## Storybook
+
+Browse and test all UI components interactively using Storybook:
+
+```bash
+# From project root
+./src/scripts/run_storybook.sh
+
+# Or from web directory
+cd src/web
+npm run storybook
+```
+
+Storybook runs at http://localhost:6006 and provides:
+
+- **🎨 Theme Switcher** - Preview all 10 themes using the toolbar (paintbrush icon)
+- **📚 Component Documentation** - Auto-generated docs with usage examples
+- **🔧 Interactive Controls** - Adjust component props in real-time
+- **📱 Viewport Testing** - Test responsive behavior at different sizes
+
+### Available Stories
+
+| Category | Components |
+|----------|------------|
+| **Core** | Button, Badge, Card, Input, Toggle, Gauge, Loading, Toast, Logo |
+| **Dashboard** | MachineStatusCard, TemperatureGauges, PowerCard |
+| **Settings** | SettingsSection, ThemeSettings |
+| **Design System** | Theme Showcase, Color Palettes |
+
+### Building Storybook
+
+```bash
+# Build static site
+npm run build-storybook
+
+# Output: src/web/storybook-static/
+```
+
 ## Design System
 
-The UI uses a coffee-themed design system defined in `tailwind.config.js`:
+The UI uses a coffee-themed design system with 10 customizable themes.
+
+### Themes
+
+**Light Themes:**
+- ☀️ Caramel - Warm amber and honey tones (default)
+- ☀️ Classic Coffee - Warm and inviting browns
+- ☀️ Mocha - Rich chocolate with purple hints
+- ☀️ Espresso - Deep and bold with golden accent
+- ☀️ Latte - Light, airy, and creamy
+- ☀️ Warm Mocha - Soft mocha with warm accents
+
+**Dark Themes:**
+- 🌙 Cappuccino - Warm caramel on dark espresso
+- 🌙 Roasted - Rich dark coffee atmosphere
+- 🌙 Dark Roast - Deep and intense dark mode
+- 🌙 Midnight Brew - Elegant dark with teal accents
+
+Theme definitions are in `src/lib/themes.ts` and managed via `useThemeStore`.
 
 ### Colors
 
-- `coffee-50` to `coffee-900` - Brown palette
-- `cream-100` to `cream-400` - Light backgrounds
-- `accent` - Orange highlight color
+All colors use CSS variables for theme-awareness:
+
+- `coffee-50` to `coffee-900` - Primary brown palette
+- `cream-100` to `cream-400` - Secondary light tones
+- `accent`, `accent-light`, `accent-glow` - Highlight colors
+- `bg`, `bg-secondary`, `bg-tertiary` - Background layers
+- `text`, `text-secondary`, `text-muted` - Text colors
 
 ### Components
 
