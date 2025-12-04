@@ -54,7 +54,7 @@ export function ShareDevice({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(DEMO_SHARE.expiresIn);
+  const [timeLeft, setTimeLeft] = useState(isDemo ? DEMO_SHARE.expiresIn : 0);
 
   const generateShareLink = useCallback(async () => {
     if (isDemo) {
