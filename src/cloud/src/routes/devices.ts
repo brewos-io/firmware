@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { sessionAuthMiddleware } from "../middleware/auth.js";
 import {
   claimDevice,
@@ -17,12 +18,45 @@ import {
 
 const router = Router();
 
+// Rate limiters with different strictness levels
+
+// Strict limiter for sensitive operations (claiming devices)
+// 5 requests per minute per IP
+const strictLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
+
+// Write limiter for mutations (PATCH, DELETE)
+// 30 requests per 15 minutes per IP
+const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
+
+// Read limiter for GET operations
+// 100 requests per 15 minutes per IP
+const readLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
+
 /**
  * POST /api/devices/register-claim
  * Called by ESP32 to register a claim token
  * No auth required (the token itself is the auth)
+ * Rate limited strictly to prevent abuse
  */
-router.post("/register-claim", (req, res) => {
+router.post("/register-claim", strictLimiter, (req, res) => {
   try {
     const { deviceId, token } = req.body;
 
@@ -47,8 +81,9 @@ router.post("/register-claim", (req, res) => {
 /**
  * POST /api/devices/claim
  * Claim a device using QR code token
+ * Rate limited strictly to prevent brute-force attacks
  */
-router.post("/claim", sessionAuthMiddleware, (req, res) => {
+router.post("/claim", strictLimiter, sessionAuthMiddleware, (req, res) => {
   try {
     const { deviceId, token, name } = req.body;
     const userId = req.user!.id;
@@ -89,7 +124,7 @@ router.post("/claim", sessionAuthMiddleware, (req, res) => {
  * GET /api/devices
  * List user's devices
  */
-router.get("/", sessionAuthMiddleware, (req, res) => {
+router.get("/", readLimiter, sessionAuthMiddleware, (req, res) => {
   try {
     const devices = getUserDevices(req.user!.id);
 
@@ -116,7 +151,7 @@ router.get("/", sessionAuthMiddleware, (req, res) => {
  * GET /api/devices/:id
  * Get a specific device
  */
-router.get("/:id", sessionAuthMiddleware, (req, res) => {
+router.get("/:id", readLimiter, sessionAuthMiddleware, (req, res) => {
   try {
     const { id } = req.params;
 
@@ -157,7 +192,7 @@ router.get("/:id", sessionAuthMiddleware, (req, res) => {
  * PATCH /api/devices/:id
  * Update device (name, brand, model)
  */
-router.patch("/:id", sessionAuthMiddleware, (req, res) => {
+router.patch("/:id", writeLimiter, sessionAuthMiddleware, (req, res) => {
   try {
     const { id } = req.params;
     const { name, brand, model } = req.body;
@@ -179,7 +214,7 @@ router.patch("/:id", sessionAuthMiddleware, (req, res) => {
  * GET /api/devices/:id/users
  * Get all users who have access to a device
  */
-router.get("/:id/users", sessionAuthMiddleware, (req, res) => {
+router.get("/:id/users", readLimiter, sessionAuthMiddleware, (req, res) => {
   try {
     const { id } = req.params;
 
@@ -193,6 +228,7 @@ router.get("/:id/users", sessionAuthMiddleware, (req, res) => {
     res.json({
       users: users.map((u) => ({
         userId: u.user_id,
+        email: u.email,
         displayName: u.display_name,
         avatarUrl: u.avatar_url,
         claimedAt: u.claimed_at,
@@ -207,31 +243,36 @@ router.get("/:id/users", sessionAuthMiddleware, (req, res) => {
  * DELETE /api/devices/:id/users/:userId
  * Revoke a user's access to a device (mutual removal)
  */
-router.delete("/:id/users/:userId", sessionAuthMiddleware, (req, res) => {
-  try {
-    const { id, userId } = req.params;
-    const removingUserId = req.user!.id;
+router.delete(
+  "/:id/users/:userId",
+  writeLimiter,
+  sessionAuthMiddleware,
+  (req, res) => {
+    try {
+      const { id, userId } = req.params;
+      const removingUserId = req.user!.id;
 
-    revokeUserAccess(id, userId, removingUserId);
+      revokeUserAccess(id, userId, removingUserId);
 
-    res.json({ success: true });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to revoke user access";
-    const status = message.includes("not have access")
-      ? 404
-      : message.includes("Cannot remove yourself")
-      ? 400
-      : 500;
-    res.status(status).json({ error: message });
+      res.json({ success: true });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to revoke user access";
+      const status = message.includes("not have access")
+        ? 404
+        : message.includes("Cannot remove yourself")
+        ? 400
+        : 500;
+      res.status(status).json({ error: message });
+    }
   }
-});
+);
 
 /**
  * DELETE /api/devices/:id
  * Remove device from account
  */
-router.delete("/:id", sessionAuthMiddleware, (req, res) => {
+router.delete("/:id", writeLimiter, sessionAuthMiddleware, (req, res) => {
   try {
     const { id } = req.params;
 

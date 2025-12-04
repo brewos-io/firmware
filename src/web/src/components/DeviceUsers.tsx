@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -49,47 +49,50 @@ export function DeviceUsers({
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
-  const fetchUsers = async (showLoading = true) => {
-    if (showLoading) {
-      setLoading(true);
-      setErrorState(null);
-    }
-    try {
-      const token = await getAccessToken();
-      if (!token) {
-        setErrorState("Not authenticated");
-        error("Not authenticated");
-        return;
-      }
-
-      const response = await fetch(`/api/devices/${deviceId}/users`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data.users || []);
+  const fetchUsers = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) {
+        setLoading(true);
         setErrorState(null);
-      } else {
+      }
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          setErrorState("Not authenticated");
+          error("Not authenticated");
+          return;
+        }
+
+        const response = await fetch(`/api/devices/${deviceId}/users`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUsers(data.users || []);
+          setErrorState(null);
+        } else {
+          const errorMsg = "Failed to load device users";
+          setErrorState(errorMsg);
+          error(errorMsg);
+        }
+      } catch (err) {
+        console.error("Failed to fetch device users:", err);
         const errorMsg = "Failed to load device users";
         setErrorState(errorMsg);
         error(errorMsg);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to fetch device users:", err);
-      const errorMsg = "Failed to load device users";
-      setErrorState(errorMsg);
-      error(errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [deviceId, getAccessToken, error]
+  );
 
   useEffect(() => {
     fetchUsers();
-  }, [deviceId]);
+  }, [fetchUsers]);
 
   // Close on ESC key
   useEffect(() => {
