@@ -5,6 +5,7 @@
 #include "brew_by_weight.h"
 #include "scale/scale_manager.h"
 #include "pairing_manager.h"
+#include "cloud_connection.h"
 #include "state/state_manager.h"
 #include "statistics/statistics_manager.h"
 #include <LittleFS.h>
@@ -43,6 +44,10 @@ void WebServer::begin() {
     // Start server
     _server.begin();
     LOG_I("Web server started on port %d", WEB_SERVER_PORT);
+}
+
+void WebServer::setCloudConnection(CloudConnection* cloudConnection) {
+    _cloudConnection = cloudConnection;
 }
 
 void WebServer::loop() {
@@ -1239,6 +1244,11 @@ void WebServer::handleWsMessage(AsyncWebSocketClient* client, uint8_t* data, siz
         return;
     }
     
+    // Use shared command processor
+    processCommand(doc);
+}
+
+void WebServer::processCommand(JsonDocument& doc) {
     String type = doc["type"] | "";
     
     if (type == "ping") {
@@ -1646,6 +1656,11 @@ void WebServer::broadcastLog(const String& message, const String& level) {
     String json;
     serializeJson(doc, json);
     _ws.textAll(json);
+    
+    // Also send to cloud
+    if (_cloudConnection) {
+        _cloudConnection->send(json);
+    }
 }
 
 void WebServer::broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_t len) {
@@ -1667,10 +1682,20 @@ void WebServer::broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_
     String json;
     serializeJson(doc, json);
     _ws.textAll(json);
+    
+    // Also send to cloud (debug messages)
+    if (_cloudConnection) {
+        _cloudConnection->send(json);
+    }
 }
 
 void WebServer::broadcastRaw(const String& json) {
     _ws.textAll(json);
+    
+    // Also send to cloud
+    if (_cloudConnection) {
+        _cloudConnection->send(json);
+    }
 }
 
 // =============================================================================
@@ -1802,6 +1827,7 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     connections["wifi"] = state.wifi_connected;
     connections["mqtt"] = state.mqtt_connected;
     connections["scale"] = state.scale_connected;
+    connections["cloud"] = state.cloud_connected;
     
     // =========================================================================
     // ESP32 Info
@@ -1814,6 +1840,11 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     String json;
     serializeJson(doc, json);
     _ws.textAll(json);
+    
+    // Also send to cloud - this is the main state broadcast
+    if (_cloudConnection) {
+        _cloudConnection->send(json);
+    }
 }
 
 void WebServer::broadcastDeviceInfo() {
@@ -1834,6 +1865,11 @@ void WebServer::broadcastDeviceInfo() {
     String json;
     serializeJson(doc, json);
     _ws.textAll(json);
+    
+    // Also send to cloud
+    if (_cloudConnection) {
+        _cloudConnection->send(json);
+    }
 }
 
 void WebServer::broadcastEvent(const String& event, const JsonDocument* data) {
@@ -1849,6 +1885,11 @@ void WebServer::broadcastEvent(const String& event, const JsonDocument* data) {
     String json;
     serializeJson(doc, json);
     _ws.textAll(json);
+    
+    // Also send to cloud - events are important for remote users
+    if (_cloudConnection) {
+        _cloudConnection->send(json);
+    }
 }
 
 size_t WebServer::getClientCount() {

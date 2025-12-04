@@ -47,11 +47,15 @@
 // Pairing
 #include "pairing_manager.h"
 
+// Cloud Connection
+#include "cloud_connection.h"
+
 // Global instances
 WiFiManager wifiManager;
 PicoUART picoUart(Serial1);
 MQTTClient mqttClient;
 PairingManager pairingManager;
+CloudConnection cloudConnection;
 WebServer webServer(wifiManager, picoUart, mqttClient, &pairingManager);
 
 // Scale state
@@ -507,11 +511,28 @@ void setup() {
     LOG_I("Initializing State Manager...");
     State.begin();
     
-    // Initialize Pairing Manager if cloud is enabled
+    // Initialize Pairing Manager and Cloud Connection if cloud is enabled
     auto& cloudSettings = State.settings().cloud;
     if (cloudSettings.enabled && strlen(cloudSettings.serverUrl) > 0) {
         LOG_I("Initializing Pairing Manager...");
         pairingManager.begin(String(cloudSettings.serverUrl));
+        
+        // Initialize Cloud Connection for real-time state relay
+        LOG_I("Initializing Cloud Connection...");
+        cloudConnection.begin(
+            String(cloudSettings.serverUrl),
+            String(cloudSettings.deviceId),
+            String(cloudSettings.deviceKey)
+        );
+        
+        // Set up command handler - forward cloud commands to WebServer
+        cloudConnection.onCommand([](const String& type, JsonDocument& doc) {
+            // Commands from cloud users are processed the same as local WebSocket
+            webServer.processCommand(doc);
+        });
+        
+        // Connect cloud to WebServer for state broadcasting
+        webServer.setCloudConnection(&cloudConnection);
     }
     
     // Initialize Notification Manager
@@ -578,6 +599,9 @@ void loop() {
     // Update web server
     webServer.loop();
     
+    // Update cloud connection (WebSocket to cloud relay)
+    cloudConnection.loop();
+    
     // Update MQTT
     mqttClient.loop();
     
@@ -616,6 +640,7 @@ void loop() {
     bool picoConnected = picoUart.isConnected();
     machineState.mqtt_connected = mqttClient.isConnected();
     machineState.scale_connected = scaleManager.isConnected();
+    machineState.cloud_connected = cloudConnection.isConnected();
     
     // Demo mode: If Pico not connected for DEMO_MODE_TIMEOUT_MS, simulate data
     if (!picoConnected && picoUart.getPacketsReceived() == 0) {
@@ -665,14 +690,15 @@ void loop() {
     if (millis() - lastStatusBroadcast > 500) {
         lastStatusBroadcast = millis();
         
-        // Only if we have connected clients
-        if (webServer.getClientCount() > 0) {
+        // Broadcast if we have local clients OR cloud connection
+        if (webServer.getClientCount() > 0 || cloudConnection.isConnected()) {
             // Update connection status in machineState
             machineState.pico_connected = picoUart.isConnected();
             machineState.wifi_connected = wifiManager.isConnected();
             machineState.mqtt_connected = mqttClient.isConnected();
+            machineState.cloud_connected = cloudConnection.isConnected();
             
-            // Broadcast unified status
+            // Broadcast unified status (goes to both local and cloud clients)
             webServer.broadcastFullStatus(machineState);
         }
     }

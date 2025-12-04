@@ -104,6 +104,7 @@ typedef struct {
     bool wifi_connected;
     bool mqtt_connected;
     bool scale_connected;
+    bool cloud_connected;
     
     // WiFi info
     char wifi_ssid[32];
