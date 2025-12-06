@@ -169,7 +169,7 @@ If your debug board has test points (like TX1, RX1, TX2, RX2, PBZ, etc.), you ca
 ## Power Requirements
 
 - **ESP32 + Display:** 300-500mA @ 5V
-- **Control PCB provides:** 5V @ 3A (via HLK-5M05)
+- **Control PCB provides:** 5V @ 3A (via HLK-15M05C)
 - **J15 Pin 1:** 5V power output
 - **J15 Pin 2:** Ground
 

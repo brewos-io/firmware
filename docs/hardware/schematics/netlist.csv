@@ -1,6 +1,6 @@
 Reference,Component,Value,Footprint,Net1,Net2,Net3,Description
-U1,Raspberry_Pi_Pico,RP2040,Module,VSYS=+5V,GND=GND,3V3=+3.3V,Microcontroller module
-U2,AC_DC_Converter,HLK-5M05,Module,L=L_FUSED,N=N_FUSED,+Vout=+5V,Isolated 5V 3A power supply (compact)
+U1,Raspberry_Pi_Pico_2,RP2350,Module,VSYS=+5V,GND=GND,3V3=+3.3V,Microcontroller module (Pico 2)
+U2,AC_DC_Converter,HLK-15M05C,Module,L=L_FUSED,N=N_FUSED,+Vout=+5V,Isolated 5V 3A/15W power supply
 U3,LDO_Regulator,AP2112K-3.3,SOT-23-5,VIN=+5V,VOUT=+3.3V,GND=GND,3.3V 600mA LDO
 U4,Thermocouple_Amp,MAX31855KASA+,SOIC-8,T+=TC_POS,T-=TC_NEG,VCC=+3.3V,K-type thermocouple amplifier
 U6,Op_Amp,OPA342UA,SOIC-8,VCC=+3.3V,OUT=AC_OUT,GND=GND,Level probe oscillator (Wien bridge)

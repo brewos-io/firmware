@@ -56,9 +56,8 @@ Plug & play replacement for the factory GICAR control board and PID controller:
 | Connector | Type                  | Function                       |
 | --------- | --------------------- | ------------------------------ |
 | J26       | Screw Terminal 22-pos | All sensors & SSR control      |
-| J15       | JST-XH 8-pin          | ESP32 display + brew-by-weight |
+| J15       | JST-XH 8-pin          | ESP32 display + brew-by-weight + expansion (Pin 8) |
 | J17       | JST-XH 6-pin          | Power meter UART/RS485         |
-| J25       | Pin Header 3-pin      | Expansion (GPIO23)             |
 
 ---
 

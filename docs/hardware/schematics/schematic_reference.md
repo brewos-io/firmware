@@ -16,15 +16,15 @@
 4. **Supports multiple modules:** PZEM-004T, JSY-MK-163T/194T, Eastron SDM, and more
 5. **MAX3485 RS485 transceiver (U8)** - On-board with jumper-selectable 120Ω termination
 6. **JP2/JP3 NTC jumpers** - Select between 50kΩ (ECM) and 10kΩ (Rocket/Gaggia) NTC sensors
-5. **J26 reduced to 22-pos** - CT clamp pins removed (now on external module)
-6. **No HV on PCB for metering** - External modules handle their own mains connections
-7. **GPIO20 → RS485 DE/RE** - Direction control for industrial meters
-8. **Unified J26 Screw Terminal (22-pos)** - Switches, sensors, SSR outputs (no CT)
-9. **6.3mm spades retained ONLY for 220V AC**: Mains input (L, N, PE), relay outputs
-10. **OPA342 + TLV3201** for steam boiler level probe (AC sensing)
-11. **HLK-5M05** power supply (3A, compact 16mm height)
-12. **Snubbers MANDATORY** for K2 (Pump) and K3 (Solenoid)
-13. **Mounting holes**: MH1=PE star point (PTH), MH2-4=NPTH (isolated)
+7. **J26 reduced to 22-pos** - CT clamp pins removed (now on external module)
+8. **No HV on PCB for metering** - External modules handle their own mains connections
+9. **GPIO20 → RS485 DE/RE** - Direction control for industrial meters
+10. **Unified J26 Screw Terminal (22-pos)** - Switches, sensors, SSR outputs (no CT)
+11. **6.3mm spades retained ONLY for 220V AC**: Mains input (L, N, PE), relay outputs
+12. **OPA342 + TLV3201** for steam boiler level probe (AC sensing)
+13. **HLK-15M05C** power supply (3A/15W, 48×28×18mm)
+14. **MOV arc suppression MANDATORY** for K2 (Pump) and K3 (Solenoid)
+15. **Mounting holes**: MH1=PE star point (PTH), MH2-4=NPTH (isolated)
 
 ---
 
@@ -67,7 +67,7 @@
                                 AC/DC ISOLATED CONVERTER
     ════════════════════════════════════════════════════════════════════════════
 
-                                    U2: Hi-Link HLK-5M05
+                                    U2: Hi-Link HLK-15M05C
                                     (3A, compact 16mm height)
                               ┌──────────────────────────┐
                               │                          │
@@ -89,13 +89,13 @@
     • Primary side (L, N) is MAINS VOLTAGE - maintain 6mm clearance to secondary
     • Secondary side (-Vout) becomes system GND
     • GND is ISOLATED from mains PE (earth)
-    • HLK-5M05 is 50×27×16mm - verify clearance to fuse holder
+    • HLK-15M05C is 48×28×18mm - verify clearance to fuse holder
 
     Component Values:
     ─────────────────
-    U2:  Hi-Link HLK-5M05 (5V 3A) - adequate for ~1.1A peak load
+    U2:  Hi-Link HLK-15M05C (5V 3A/15W) - adequate for ~1.1A peak load
          Alt: Mean Well IRM-20-5 (5V 4A) if more headroom needed
-    C2:  100µF 16V Electrolytic, Low ESR, 6.3mm diameter
+    C2:  470µF 6.3V Polymer (low ESR, long life in hot environment)
 ```
 
 ## 1.3 5V to 3.3V LDO Regulator
@@ -137,7 +137,6 @@
     Component Values:
     ─────────────────
     U3:  Diodes Inc. AP2112K-3.3TRG1, 600mA, SOT-23-5
-    C3:  100µF 16V Electrolytic
     C4:  47µF 10V Ceramic, 1206 (X5R or X7R)
     C5:  100nF 25V Ceramic, 0805
     FB1: Murata BLM18PG601SN1D, 600Ω @ 100MHz, 0603
@@ -147,15 +146,15 @@
 
 ---
 
-# Sheet 2: Microcontroller (Raspberry Pi Pico)
+# Sheet 2: Microcontroller (Raspberry Pi Pico 2)
 
-## 2.1 Pico Module & Decoupling
+## 2.1 Pico 2 Module & Decoupling
 
 ```
-                            RASPBERRY PI PICO MODULE
+                           RASPBERRY PI PICO 2 MODULE
     ════════════════════════════════════════════════════════════════════════════
 
-                                U1: Raspberry Pi Pico
+                               U1: Raspberry Pi Pico 2
 
          +3.3V ◄────────────────┐           ┌────────────────► (Internal 3.3V)
                                 │           │
@@ -249,7 +248,7 @@
                             RELAY DRIVER CIRCUIT
     ════════════════════════════════════════════════════════════════════════════
 
-    (Identical circuit for K1, K2, K3. K2 uses 16A relay for pump.)
+    (Identical driver circuit for K1, K2, K3. Different relay sizes by load.)
 
                                         +5V
                                          │
@@ -302,8 +301,11 @@
 
     Component Values:
     ─────────────────
-    K1, K3: HF46F-G/005-HS1 (5V coil, 10A contacts, SPST-NO)
-    K2:     Omron G5LE-1A4 DC5 (5V coil, 16A contacts, SPST-NO) - FOR PUMP
+    K1, K3: Panasonic APAN3105 (5V coil, 3A contacts, slim 5mm, IEC61010)
+            • K1 (LED): ~100mA load, 3A relay is plenty
+            • K3 (Solenoid): ~0.5A load, 3A relay is plenty
+    K2:     Omron G5LE-1A4 DC5 (5V coil, 16A contacts, standard size)
+            • Pump motor needs robust contacts for inrush current
     D1-D3:  1N4007 (1A, 1000V) or LL4007 MINIMELF
     Q1-Q3:  MMBT2222A (SOT-23)
     LED1-3: Green 0805, Vf~2.0V
@@ -312,36 +314,41 @@
     R10-12: 10kΩ 5% 0805 (pull-down, ensures relay off at boot)
 
     ═══════════════════════════════════════════════════════════════════════════
-    RC SNUBBER CIRCUITS (Inductive Load Protection)
+    MOV ARC SUPPRESSION (Inductive Load Protection)
     ═══════════════════════════════════════════════════════════════════════════
 
-    ⚠️ MANDATORY for K2 (Pump) and K3 (Solenoid) - prevents EMI crashes!
+    ⚠️ MANDATORY for K2 (Pump) and K3 (Solenoid) - prevents contact welding!
 
-    Across relay contacts (HV side):
-    ─────────────────────────────────
+    MOV across relay contacts (HV side):
+    ─────────────────────────────────────
 
          Relay NO ──────┬───────────────────────────► To Load
                         │
-                   ┌────┴────┐      ┌────────┐
-                   │  100nF  │──────┤  100Ω  │
-                   │   X2    │      │   2W   │
-                   │  275VAC │      │        │
-                   └────┬────┘      └────┬───┘
-                        │               │
-                        └───────┬───────┘
-                                │
-         Relay COM ─────────────┴───────────────────── From L_FUSED
+                   ┌────┴────┐
+                   │   MOV   │  RV2 or RV3 (275V Varistor)
+                   │  275VAC │  10mm disc, ~4mm thick
+                   │  10mm   │
+                   └────┬────┘
+                        │
+         Relay COM ─────┴───────────────────────────── From L_FUSED
 
-    Snubber Components:
-    ────────────────────
-    K2 (Pump):     C50 (100nF X2) + R80 (100Ω 2W) - MANDATORY
-    K3 (Solenoid): C51 (100nF X2) + R81 (100Ω 2W) - MANDATORY
-    K1 (LED):      C52 (100nF X2) + R82 (100Ω 2W) - DNP (footprint only)
+    MOV vs RC Snubber:
+    ───────────────────
+    • ~70% smaller than X2 capacitor + resistor combo
+    • No series resistor needed - simpler BOM
+    • Faster clamping response (nanoseconds)
+    • Critical with downsized K1/K3 relays (3A contacts)
 
-    Snubber Component Values:
-    ─────────────────────────
-    C50-C53: 100nF X2, 275V AC (Vishay MKP1840 or TDK B32922)
-    R80-R83: 100Ω 2W, Metal Film (1210 package or through-hole)
+    MOV Components:
+    ────────────────
+    K2 (Pump):     RV2 (S10K275) - MANDATORY
+    K3 (Solenoid): RV3 (S10K275) - MANDATORY
+    K1 (LED):      DNP (footprint only, resistive load)
+
+    MOV Component Values:
+    ─────────────────────
+    RV2-RV3: S10K275 (275V AC, 10mm disc, 2500A surge)
+             Footprint: Disc_D10mm_W5.0mm_P7.50mm
 ```
 
 ---
@@ -520,6 +527,7 @@
 ## 5.2 K-Type Thermocouple Input
 
 **⚠️ SENSOR RESTRICTION:** MAX31855**K** is hard-wired for **Type-K ONLY**.
+
 - ✅ Type-K (Chromel/Alumel) - Standard for E61 group head thermometers
 - ❌ Type-J, Type-T, PT100/RTD (will NOT work - different chips required)
 
@@ -577,6 +585,7 @@
 ## 5.3 Pressure Transducer Input (J26 Pin 14-16 - Amplified 0.5-4.5V)
 
 **⚠️ SENSOR RESTRICTION:** Circuit designed for **0.5-4.5V ratiometric ONLY**.
+
 - ✅ 3-wire sensors (5V, GND, Signal) like YD4060 or automotive pressure sensors
 - ✅ 0.5V offset = broken wire detection (0.0V = fault, 0.5V = 0 bar)
 - ❌ 4-20mA current loop sensors (require different circuit)
@@ -1304,7 +1313,7 @@
     ─────────────────
     FB2: Ferrite Bead, 600Ω @ 100MHz, 0805 (optional, for noise)
     D20: SMBJ5.0A, SMB package, 5V TVS diode (absorbs transients)
-    C2:  100µF 16V Electrolytic (bulk decoupling)
+    C2:  470µF 6.3V Polymer (low ESR, better for hot environment inside machine)
 ```
 
 ---
@@ -1363,8 +1372,8 @@
     GPIO19 → BUZZER
     GPIO20 → RS485_DE_RE (MAX3485 direction control, J17-6)
     GPIO21 → WEIGHT_STOP (J15-7, ESP32 brew-by-weight signal)
-    GPIO22 → SPARE (J15-8, reserved for future)
-    GPIO23 → EXPANSION (J25-3, future: flow meter)
+    GPIO22 → SPARE/EXPANSION (J15-8, available for future use)
+    GPIO23-25 → INTERNAL (Pico 2 module - NOT on header)
     GPIO26 → ADC0_BREW_NTC (J26-8/9)
     GPIO27 → ADC1_STEAM_NTC (J26-10/11)
     GPIO28 → ADC2_PRESSURE (from J26-16 voltage divider)
@@ -1392,11 +1401,9 @@
     J24-2  (N)     → Neutral (from N bus)
     J24-3  (PE)    → Protective Earth (optional, for DIN rail meters)
 
-    J25 EXPANSION HEADER (3-pin, 2.54mm):
-    ─────────────────────────────────────
-    J25-1  (3V3)   → 3.3V power (100mA max)
-    J25-2  (GND)   → System ground
-    J25-3  (IO)    → GPIO23 (with 10kΩ pull-down, future: flow meter)
+    NOTE: GPIO23-25 and GPIO29 are used internally by Pico 2 module
+          and are NOT available on the 40-pin header.
+          For expansion, use GPIO22 via J15 Pin 8 (SPARE).
 
     J26 UNIFIED LOW-VOLTAGE TERMINAL BLOCK (22-pos):
     ─────────────────────────────────────────────────

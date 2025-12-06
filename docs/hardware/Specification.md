@@ -4,7 +4,7 @@
 
 **Document Purpose:** Complete technical specification for PCB design and manufacturing  
 **Target:** Plug & play replacement for GICAR control board and PID controller  
-**Revision:** 2.21  
+**Revision:** 2.21.1  
 **Date:** December 2025
 
 ---
@@ -69,16 +69,16 @@ This specification defines a custom control PCB to replace the factory GICAR con
 │   │   100-240V AC   │     │  ┌─────────────────────────────────────────┐   │    │
 │   │   50/60 Hz      │────►│  │  ISOLATED AC/DC         LOW VOLTAGE     │   │    │
 │   │                 │     │  │  POWER SUPPLY    ║      SECTION         │   │    │
-│   └─────────────────┘     │  │  (HLK-PM05)      ║                      │   │    │
+│   └─────────────────┘     │  │  (HLK-15M05C)    ║                      │   │    │
 │                           │  │       │          ║   ┌──────────────┐   │   │    │
 │   ┌─────────────────┐     │  │       ▼          ║   │ Raspberry Pi │   │   │    │
 │   │  POWER METER    │     │  │    5V Rail ──────╫──►│    Pico      │   │   │    │
-│   │  (PZEM-004T)    │◄────│  │       │          ║   │   RP2040     │   │   │    │
+│   │  (PZEM-004T)    │◄────│  │       │          ║   │   RP2350     │   │   │    │
 │   │  External + CT  │     │  │       ▼          ║   └──────┬───────┘   │   │    │
 │   └─────────────────┘     │  │   3.3V Rail ─────╫──────────┘           │   │    │
 │                           │  │                  ║                      │   │    │
 │   ┌─────────────────┐     │  │   RELAY DRIVERS  ║   SENSOR INPUTS      │   │    │
-│   │   RELAYS (4x)   │◄────│  │   + INDICATOR    ║   + PROTECTION       │   │  │
+│   │   RELAYS (3x)   │◄────│  │   + INDICATOR    ║   + PROTECTION       │   │  │
 │   │   Pump          │     │  │   LEDs           ║                      │   │  │
 │   │   Solenoid      │     │  │                  ║                      │   │  │
 │   │   Water LED     │     │  ╠══════════════════╬══════════════════════╣   │  │
@@ -166,7 +166,7 @@ This specification defines a custom control PCB to replace the factory GICAR con
 
 **⚠️ SENSOR COMPATIBILITY NOTES:**
 
-- **NTC:** Default configured for 50kΩ @ 25°C. R1/R2 are socketed (1206) for other NTC values.
+- **NTC:** Default configured for 50kΩ @ 25°C. Use JP2/JP3 solder jumpers to switch to 10kΩ (see Section 7.1).
 - **Thermocouple:** MAX31855**K** = Type-K **ONLY**. Cannot use Type-J, Type-T, or PT100 RTD.
 - **Pressure:** 0.5-4.5V ratiometric only. Cannot use 4-20mA current loop sensors.
 
@@ -174,11 +174,11 @@ This specification defines a custom control PCB to replace the factory GICAR con
 
 | ID   | Component              | Load Rating         | Control             | Connection       |
 | ---- | ---------------------- | ------------------- | ------------------- | ---------------- |
-| K1   | Water Status LED       | 100-240V AC, ≤100mA | Onboard Relay       | J2 (6.3mm spade) |
+| K1   | Water Status LED       | 100-240V AC, ≤100mA | Onboard Relay (3A)  | J2 (6.3mm spade) |
 | K2   | Pump Motor             | 100-240V AC, 65W    | Onboard Relay (16A) | J3 (6.3mm spade) |
-| K3   | Solenoid Valve (3-way) | 100-240V AC, 15W    | Onboard Relay (10A) | J4 (6.3mm spade) |
-| SSR1 | Brew Boiler Heater     | 100-240V AC, 1400W  | External SSR 40A    | J26 Pin 19-20    |
-| SSR2 | Steam Boiler Heater    | 100-240V AC, 1400W  | External SSR 40A    | J26 Pin 21-22    |
+| K3   | Solenoid Valve (3-way) | 100-240V AC, 15W    | Onboard Relay (3A)  | J4 (6.3mm spade) |
+| SSR1 | Brew Boiler Heater     | 100-240V AC, 1400W  | External SSR 40A    | J26 Pin 17-18    |
+| SSR2 | Steam Boiler Heater    | 100-240V AC, 1400W  | External SSR 40A    | J26 Pin 19-20    |
 
 ## 3.3 Communication Interfaces
 
@@ -203,28 +203,29 @@ This specification defines a custom control PCB to replace the factory GICAR con
 
 # 4. Microcontroller & GPIO Allocation
 
-## 4.1 Raspberry Pi Pico Specifications
+## 4.1 Raspberry Pi Pico 2 Specifications
 
-| Parameter         | Value                                    |
-| ----------------- | ---------------------------------------- |
-| MCU               | RP2040 Dual-core ARM Cortex-M0+ @ 133MHz |
-| Flash             | 2MB onboard (W25Q16JV)                   |
-| SRAM              | 264KB                                    |
-| GPIO              | 26 multi-function pins                   |
-| ADC               | 3 channels, 12-bit, 500 ksps             |
-| UART              | 2× peripherals                           |
-| SPI               | 2× peripherals                           |
-| I2C               | 2× peripherals                           |
-| PWM               | 8× slices (16 channels)                  |
-| PIO               | 2× programmable I/O blocks               |
-| Operating Voltage | 1.8V - 5.5V (via VSYS), 3.3V logic       |
-| Temperature Range | -20°C to +85°C                           |
+| Parameter         | Value                                          |
+| ----------------- | ---------------------------------------------- |
+| MCU               | RP2350 Dual-core ARM Cortex-M33 @ 150MHz       |
+| Flash             | 4MB onboard QSPI                               |
+| SRAM              | 520KB                                          |
+| GPIO              | 26 multi-function pins                         |
+| ADC               | 4 channels, 12-bit, 500 ksps                   |
+| UART              | 2× peripherals                                 |
+| SPI               | 2× peripherals                                 |
+| I2C               | 2× peripherals                                 |
+| PWM               | 12× slices (24 channels)                       |
+| PIO               | 3× programmable I/O blocks (12 state machines) |
+| Operating Voltage | 1.8V - 5.5V (via VSYS), 3.3V logic             |
+| Temperature Range | -20°C to +85°C                                 |
+| Security          | ARM TrustZone, signed boot, 8KB OTP            |
 
 ## 4.2 Complete GPIO Allocation
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│                         RASPBERRY PI PICO GPIO MAP                              │
+│                        RASPBERRY PI PICO 2 GPIO MAP                             │
 │                          (All 26 GPIOs Allocated)                               │
 ├────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                 │
@@ -296,13 +297,19 @@ This specification defines a custom control PCB to replace the factory GICAR con
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │  ESP32 CONTROL SIGNALS (J15 Pins 7-8)                                   │  │
+│  │  ├── GPIO21 ── WEIGHT_STOP (ESP32→Pico signal for brew-by-weight)     │  │
+│  │  └── GPIO22 ── SPARE/EXPANSION (Available for future use)              │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
 │  │  HARDWARE CONTROL (Direct to Pico pins, not GPIO)                       │  │
 │  │  ├── RUN Pin ─── Reset Button (SMD tactile, to GND)                    │  │
 │  │  └── BOOTSEL ─── Boot Button (SMD tactile, directly to QSPI_SS)        │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
-│  GPIO UTILIZATION: 26/26 (100% allocated)                                      │
-│  REMAINING: None                                                                │
+│  GPIO UTILIZATION: 25/26 available (GPIO22 spare for expansion)               │
+│  ⚠️ GPIO23-25, GPIO29 are INTERNAL to Pico 2 module - NOT on header!         │
 │                                                                                 │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -333,11 +340,34 @@ This specification defines a custom control PCB to replace the factory GICAR con
 | 19   | Buzzer PWM                      | Output    | PWM     | None          | -                                 |
 | 20   | RS485 DE/RE                     | Output    | Digital | Pull-down     | MAX3485 direction (TTL mode: NC)  |
 | 21   | WEIGHT_STOP (ESP32→Pico)        | Input     | Digital | Pull-down     | Brew-by-weight signal (J15 Pin 7) |
-| 22   | SPARE (ESP32)                   | I/O       | Digital | None          | Reserved for future (J15 Pin 8)   |
-| 23   | EXPANSION (J25)                 | I/O       | Digital | Pull-down     | 3-pin header for future use       |
+| 22   | SPARE/EXPANSION                 | I/O       | Digital | None          | Available via J15 Pin 8           |
 | 26   | ADC0 - Brew NTC                 | Input     | Analog  | None          | RC filter                         |
 | 27   | ADC1 - Steam NTC                | Input     | Analog  | None          | RC filter                         |
 | 28   | ADC2 - Pressure                 | Input     | Analog  | None          | RC filter, divider                |
+
+### ⚠️ RP2350 GPIO Considerations
+
+**Internal GPIOs (NOT available on Pico 2 header):**
+
+| GPIO   | Internal Function | Notes                              |
+| ------ | ----------------- | ---------------------------------- |
+| GPIO23 | SMPS Power Save   | Controls regulator efficiency mode |
+| GPIO24 | VBUS Detect       | High when USB connected            |
+| GPIO25 | Onboard LED       | Green LED on Pico 2 module         |
+| GPIO29 | VSYS/3 ADC        | Internal voltage monitoring        |
+
+**⚠️ These GPIOs are NOT exposed on the 40-pin header - do not attempt to use them!**
+
+### RP2350 E9 Errata (GPIO Input Latching)
+
+The RP2350 has a documented errata (E9) where GPIO inputs can latch in a high state under certain conditions. **Mitigation is already implemented in this design:**
+
+| Input GPIO | Function          | Protection                                      | Notes                   |
+| ---------- | ----------------- | ----------------------------------------------- | ----------------------- |
+| GPIO2-5    | Switches          | Internal pull-up + external pull-down (R10-R13) | Ensures defined state   |
+| GPIO20-21  | RS485/WEIGHT_STOP | 10kΩ pull-down                                  | Prevents false triggers |
+
+**All digital inputs have either internal pull-ups OR external pull-down resistors**, ensuring they cannot float and trigger the E9 errata condition.
 
 ---
 
@@ -349,33 +379,33 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 
 ### Power Budget Analysis
 
-| Consumer            | Typical    | Peak        | Notes                      |
-| ------------------- | ---------- | ----------- | -------------------------- |
-| Raspberry Pi Pico   | 50mA       | 100mA       | Via VSYS                   |
-| Relay coils (×3)    | 120mA      | 240mA       | ~80mA each when active     |
-| SSR drivers (×2)    | 10mA       | 20mA        | Transistor current         |
-| ESP32 module        | 150mA      | 500mA       | **WiFi TX spikes!**        |
-| Indicator LEDs (×6) | 30mA       | 60mA        | 3 relay + 2 SSR + 1 status |
-| Buzzer              | 5mA        | 30mA        | When active                |
-| 3.3V LDO load       | 30mA       | 50mA        | Sensors, MAX31855          |
-| **TOTAL**           | **~395mA** | **~1000mA** |                            |
+| Consumer            | Typical    | Peak       | Notes                      |
+| ------------------- | ---------- | ---------- | -------------------------- |
+| Raspberry Pi Pico 2 | 50mA       | 100mA      | Via VSYS                   |
+| Relay coils (×3)    | 80mA       | 150mA      | K2:70mA, K1/K3:40mA each   |
+| SSR drivers (×2)    | 10mA       | 20mA       | Transistor current         |
+| ESP32 module        | 150mA      | 500mA      | **WiFi TX spikes!**        |
+| Indicator LEDs (×6) | 30mA       | 60mA       | 3 relay + 2 SSR + 1 status |
+| Buzzer              | 5mA        | 30mA       | When active                |
+| 3.3V LDO load       | 30mA       | 50mA       | Sensors, MAX31855          |
+| **TOTAL**           | **~355mA** | **~910mA** |                            |
 
-**Minimum: 1.5A, Selected: Hi-Link HLK-5M05 (3A)** - 3× headroom over 1A peak, compact size
+**Minimum: 1.5A, Selected: Hi-Link HLK-15M05C (3A/15W)** - 3× headroom over 1A peak
 
 ### AC/DC Module Selection
 
-| Parameter          | **HLK-5M05**    | Mean Well IRM-20-5 | Mean Well IRM-10-5 |
-| ------------------ | --------------- | ------------------ | ------------------ |
-| Output Voltage     | 5V DC ±2%       | 5V DC ±5%          | 5V DC ±5%          |
-| **Output Current** | **3A**          | 4A                 | 2A                 |
-| Input Voltage      | 100-240V AC     | 85-264V AC         | 85-264V AC         |
-| Isolation          | 3000V AC        | 3000V AC           | 3000V AC           |
-| Efficiency         | 80%             | 87%                | 84%                |
-| **Package**        | **50×27×16mm**  | 52×27×24mm         | 45×25×21mm         |
-| Safety             | CE              | UL, CE, CB         | UL, CE, CB         |
-| **Recommendation** | **Best choice** | Overkill           | Insufficient       |
+| Parameter          | **HLK-15M05C**  | Mean Well IRM-20-5 | HLK-5M05 (1A)    |
+| ------------------ | --------------- | ------------------ | ---------------- |
+| Output Voltage     | 5V DC ±2%       | 5V DC ±5%          | 5V DC ±2%        |
+| **Output Current** | **3A (15W)**    | 4A (20W)           | 1A (5W)          |
+| Input Voltage      | 100-240V AC     | 85-264V AC         | 100-240V AC      |
+| Isolation          | 3000V AC        | 3000V AC           | 3000V AC         |
+| Efficiency         | 82%             | 87%                | 80%              |
+| **Package**        | **48×28×18mm**  | 52×27×24mm         | 34×20×15mm       |
+| Safety             | CE              | UL, CE, CB         | CE               |
+| **Recommendation** | **Best choice** | Alternative        | **Insufficient** |
 
-**Selected: Hi-Link HLK-5M05** (3A, compact 16mm height, adequate for ~1.1A peak load)
+**Selected: Hi-Link HLK-15M05C** (3A/15W, adequate for ~1.1A peak load with 3× headroom)
 
 ### Power Module Schematic
 
@@ -393,7 +423,7 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 │                 │   (10A)    │                                │               │
 │            ┌────┴────┐  ┌────┴────┐     ┌─────────────────┐  │               │
 │            │  MOV    │  │   X2    │     │                 │  │               │
-│            │ 275V    │  │  100nF  │     │   HLK-PM05      │  │               │
+│            │ 275V    │  │  100nF  │     │   HLK-15M05C    │  │               │
 │            │ (RV1)   │  │  (C1)   │     │   or similar    │  │               │
 │            └────┬────┘  └────┬────┘     │                 │  │               │
 │                 │            │          │  L ─────────────┼──┘               │
@@ -441,9 +471,9 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 │         │                                                            │         │
 │         │      ┌──────────────────────────────────────┐             │         │
 │    ┌────┴────┐ │                                      │        ┌────┴────┐    │
-│    │  100µF  │ │     ┌────────────────────┐          │        │  47µF   │    │
-│    │ 10V     │ │     │    AMS1117-3.3     │          │        │  6.3V   │    │
-│    │ Alum.   │ │     │    or AP2112K-3.3  │          │        │ Tant.   │    │
+│    │  470µF  │ │     ┌────────────────────┐          │        │  47µF   │    │
+│    │  6.3V   │ │     │    AMS1117-3.3     │          │        │  6.3V   │    │
+│    │ Polymer │ │     │    or AP2112K-3.3  │          │        │ Tant.   │    │
 │    └────┬────┘ │     │                    │          │        └────┬────┘    │
 │         │      │     │  VIN         VOUT  │──────────┴─────────────┤         │
 │         │      └────►│                    │                        │         │
@@ -461,15 +491,19 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 │      - Quiescent: 55µA                                                         │
 │      - Low thermal dissipation                                                 │
 │                                                                                 │
-│    Load Budget (3.3V Rail):                                                    │
-│    ────────────────────────                                                    │
-│    Pico (including internal regulators): ~50mA typical                        │
+│    Load Budget (External 3.3V Rail - U3):                                      │
+│    ──────────────────────────────────────                                      │
 │    MAX31855: ~1mA                                                              │
 │    NTC dividers: ~1mA brew (3.3kΩ), ~3mA steam (1.2kΩ)                       │
-│    ESP32 Module (if 3.3V powered): 150-350mA                                  │
-│    Total: ~400mA maximum                                                       │
+│    MAX3485 RS485: ~1mA                                                         │
+│    TLV3201 comparator: ~1mA                                                    │
+│    Total: ~10mA typical                                                        │
 │                                                                                 │
-│    RECOMMENDATION: Power ESP32 from 5V rail instead                           │
+│    ⚠️ IMPORTANT: This 3.3V rail is for SENSORS ONLY                          │
+│    The Pico 2's internal regulator provides 3.3V for the RP2350.             │
+│    Do NOT connect this rail to the Pico's 3V3 pin!                           │
+│                                                                                 │
+│    ESP32: Power from 5V rail (J15 Pin 1) - has its own LDO.                  │
 │                                                                                 │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -482,15 +516,15 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 ├────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                 │
 │                                                                                 │
-│    From HLK-PM05                                                               │
+│    From HLK-15M05C                                                             │
 │         │                                                                       │
 │         │    ┌─────────────────────────────────────────────────────────────┐  │
 │         │    │                    5V DISTRIBUTION                          │  │
 │         ▼    │                                                              │  │
 │    ┌────────┐│    ┌──────┐        ┌──────┐        ┌──────┐                │  │
-│    │ 100µF  ├┼───►│ Pico │───────►│Relays│───────►│ SSR  │                │  │
-│    │ 16V    ││    │ VSYS │        │Driver│        │Driver│                │  │
-│    │ Elect. ││    └───┬──┘        └──────┘        └──────┘                │  │
+│    │ 470µF  ├┼───►│ Pico │───────►│Relays│───────►│ SSR  │                │  │
+│    │  6.3V  ││    │ VSYS │        │Driver│        │Driver│                │  │
+│    │Polymer ││    └───┬──┘        └──────┘        └──────┘                │  │
 │    └────┬───┘│        │                                                    │  │
 │         │    │   ┌────┴────┐      ┌─────────────────────────────────────┐ │  │
 │         │    │   │  100nF  │      │ Place 100nF ceramic at each load   │ │  │
@@ -545,11 +579,11 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 
 | Location                | Capacitor | Type             | Notes                    |
 | ----------------------- | --------- | ---------------- | ------------------------ |
-| 5V rail main            | 100µF     | Electrolytic     | Near HLK-PM05 output     |
+| 5V rail main            | 470µF     | Polymer (6.3V)   | Near HLK-15M05C output   |
 | 5V at Pico VSYS         | 100nF     | Ceramic (0805)   | Adjacent to pin          |
 | 5V at each relay driver | 100nF     | Ceramic (0805)   | Suppress switching noise |
-| 3.3V LDO output         | 47µF      | Tantalum/Ceramic | Low ESR required         |
-| 3.3V at Pico 3V3        | 100nF     | Ceramic (0805)   | Adjacent to pin          |
+| 3.3V LDO output (U3)    | 47µF      | Tantalum/Ceramic | For sensors, low ESR     |
+| 3.3V Pico output (3V3)  | 100nF     | Ceramic (0805)   | Pico internal rail only  |
 | 3.3V at MAX31855        | 100nF     | Ceramic (0805)   | Adjacent to VCC pin      |
 | 3.3V at each ADC input  | 100nF     | Ceramic (0603)   | Filter network           |
 | AGND/DGND star point    | 10µF      | Ceramic          | Optional, reduces noise  |
@@ -605,72 +639,82 @@ All relays use identical driver circuits with integrated indicator LEDs.
 │    GPIO LOW  → Transistor OFF → Relay OFF, LED OFF                            │
 │    GPIO HIGH → Transistor ON  → Relay ON, LED ON                              │
 │                                                                                 │
-│    Relay coil current: 5V / ~70Ω = ~70mA (through transistor)                │
+│    Relay coil current:                                                       │
+│    • K2 (G5LE-1A4): 5V / ~70Ω = ~70mA                                       │
+│    • K1/K3 (APAN3105): 5V / ~125Ω = ~40mA                                   │
 │    LED current: (5V - 2.0V) / 470Ω = 6.4mA (bright indicator)                │
 │                                                                                 │
 │    Component Specifications:                                                   │
 │    ─────────────────────────                                                   │
 │    Q: MMBT2222A (SOT-23) - NPN transistor, Ic(max)=600mA, Vce(sat)<0.4V       │
-│    Relay: HF46F-G/005-HS1 or SRD-05VDC-SL-C                                   │
-│      - Coil: 5V DC, ~75mA                                                      │
-│      - Contacts: 10A @ 250V AC (16A for K2 pump relay)                        │
 │    1N4007: Flyback diode, 1A, 1000V (DO-41 or MINIMELF)                       │
 │    LED: Green 0805, Vf=2.0V, If=6mA                                           │
 │    R20+n: 1kΩ 5% 0805 (base resistor)                                         │
 │    R30+n: 470Ω 5% 0805 (LED resistor - brighter than 1kΩ)                     │
 │    R10+n: 10kΩ 5% 0805 (pull-down)                                            │
 │                                                                                 │
-│    For Pump Relay (K2) - use higher rated relay:                              │
-│    Omron G5LE-1A4 DC5: 16A @ 250V AC, 5V coil                                 │
+│    RELAY SELECTION (Optimized by load):                                       │
+│    ────────────────────────────────────                                       │
+│    K1 (LED): Panasonic APAN3105 - 3A @ 250V AC, 5V coil, slim 5mm width      │
+│              IEC61010 rated (reinforced insulation), ~40mA coil               │
+│    K2 (Pump): Omron G5LE-1A4 DC5 - 16A @ 250V AC, 5V coil, standard size     │
+│              DO NOT downsize - motor inrush needs robust contacts             │
+│    K3 (Solenoid): Panasonic APAN3105 - 3A @ 250V AC, 5V coil, slim 5mm       │
+│              Solenoid ~15W (~0.5A) - 3A rating is plenty                      │
 │                                                                                 │
-│    ⚠️  CRITICAL: RC SNUBBER PROTECTION (Inductive Loads)                      │
-│    ────────────────────────────────────────────────────                       │
+│    SPACE SAVINGS: K1+K3 slim relays save ~16mm PCB width                      │
+│                                                                                 │
+│    ⚠️  CRITICAL: MOV SURGE PROTECTION (Inductive Loads)                      │
+│    ─────────────────────────────────────────────────────                      │
 │    The Pump (Ulka) and Solenoid Valves are INDUCTIVE loads. When the relay   │
 │    contacts open, they generate high-voltage arcs that cause:                 │
-│    • Premature relay contact welding/pitting                                  │
-│    • EMI spikes that can reset the RP2040 or freeze I2C/SPI                  │
+│    • Premature relay contact welding/pitting (critical with slim relays!)    │
+│    • EMI spikes that can reset the RP2350 or freeze I2C/SPI                  │
 │    • Even with opto-isolation, RF noise couples into PCB traces              │
 │                                                                                 │
-│    SOLUTION: Add RC Snubber across relay CONTACTS (HV side)                  │
-│    ──────────────────────────────────────────────────────────                │
+│    SOLUTION: MOV (Varistor) across relay CONTACTS (HV side)                  │
+│    ─────────────────────────────────────────────────────────                 │
 │                                                                                │
 │         Relay Contact (NO)                                                    │
 │              │                                                                │
 │              ├───────────┐                                                    │
 │              │           │                                                    │
-│         To  Load     ┌───┴───┐      ┌───────┐                                │
-│        (Pump/Valve)  │ 100nF │──────┤ 100Ω  │                                │
-│                      │  X2   │      │ 2W    │                                │
-│                      │ 275V  │      │ Metal │                                │
-│                      └───┬───┘      └───┬───┘                                │
-│                          │              │                                     │
-│                          └──────┬───────┘                                     │
-│                                 │                                             │
-│                          Relay COM (or Load return)                           │
+│         To  Load     ┌───┴───┐                                               │
+│        (Pump/Valve)  │  MOV  │  RV2/RV3 (275V AC Varistor)                   │
+│                      │ 275V  │  10mm disc, ~4mm thick                        │
+│                      └───┬───┘                                               │
+│                          │                                                    │
+│                   Relay COM (or Load return)                                  │
 │                                                                                │
-│    Snubber Component Specifications:                                         │
-│    ─────────────────────────────────                                         │
-│    C: 100nF X2 capacitor, 275V AC (MUST be X2 safety rated)                 │
-│       Example: Vishay MKP1840, TDK B32922                                    │
-│    R: 100Ω resistor, 2W, metal film or wirewound                            │
-│       Power dissipation: P = V²/R = (340V)²/100Ω = 1.15W (2W provides margin)│
+│    MOV vs RC Snubber:                                                        │
+│    ──────────────────                                                        │
+│    • MOV is ~70% smaller than X2 capacitor + resistor                       │
+│    • No resistor needed - simpler BOM, fewer components                     │
+│    • Faster clamping - MOV responds in nanoseconds                          │
+│    • Standard protection for espresso machine relays                        │
 │                                                                                │
-│    Snubber Placement on PCB:                                                 │
-│    ─────────────────────────                                                 │
-│    • Add footprints for C+R in parallel across K2 and K3 contact terminals  │
-│    • Place as close as possible to relay contact pads                        │
-│    • Snubber is on HIGH VOLTAGE side - maintain clearance to LV section     │
+│    MOV Component Specifications:                                             │
+│    ─────────────────────────────                                             │
+│    Part: S10K275 or equivalent (275V AC, 10mm disc)                         │
+│    Footprint: Disc_D10mm_W5.0mm_P7.50mm                                      │
+│    Clamping Voltage: ~455V @ 1mA                                            │
+│    Surge Current: 2500A (8/20µs)                                            │
 │                                                                                │
-│    Which Relays Need Snubbers?                                               │
-│    ────────────────────────────                                              │
+│    MOV Placement on PCB:                                                     │
+│    ─────────────────────                                                     │
+│    • Place across K2 and K3 contact terminals (NO to COM)                   │
+│    • As close as possible to relay contact pads                              │
+│    • HV side - maintain >6mm clearance to LV section                        │
+│                                                                                │
+│    Which Relays Need MOVs?                                                   │
+│    ───────────────────────                                                   │
 │    • K2 (Pump) - MANDATORY (Ulka pump generates severe EMI spikes)          │
-│    • K3 (3-Way Valve) - MANDATORY (Solenoid back-EMF can crash RP2040)      │
-│    • K1 (Water LED) - OPTIONAL (depends on load type)                       │
+│    • K3 (Solenoid) - MANDATORY (back-EMF can weld slim relay contacts)      │
+│    • K1 (Water LED) - OPTIONAL (resistive load, DNP footprint provided)     │
 │    • SSRs (heaters) - NOT NEEDED (resistive load)                           │
 │                                                                                │
-│    ⚠️  WARNING: Unsnubbed inductive loads (pump/solenoid) generate EMI      │
-│    spikes that can cause RP2040 hangs, USB disconnects, and erratic         │
-│    behavior. K2 and K3 snubbers are NOT optional for reliable operation.    │
+│    ⚠️  WARNING: With downsized K1/K3 relays (3A contacts), MOV protection   │
+│    is MORE critical than ever. Unprotected arcs will weld contacts shut!    │
 │                                                                                │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -700,7 +744,7 @@ Solution: NPN transistor as low-side switch provides full 5V to SSR.
 │                        │  To External     │                                    │
 │                        │  SSR Input (+)   │                                    │
 │                        │                  │                                    │
-│                        │ (J26 Pin 19/21)  │                                    │
+│                        │ (J26 Pin 17/19)  │                                    │
 │                        └────────┬─────────┘                                    │
 │                                 │                                              │
 │                                 │              ┌───────────────────┐           │
@@ -715,7 +759,7 @@ Solution: NPN transistor as low-side switch provides full 5V to SSR.
 │                        │  To External     │                                    │
 │                        │  SSR Input (-)   │                                    │
 │                        │                  │                                    │
-│                        │ (J26 Pin 20/22)  │                         ┌────────┐ │
+│                        │ (J26 Pin 18/20)  │                         ┌────────┐ │
 │                        └────────┬─────────┘                         │   C    │ │
 │                                 │                                   │MMBT2222│ │
 │                                 │                                   │ Q5/Q6  │ │
@@ -779,7 +823,7 @@ Solution: NPN transistor as low-side switch provides full 5V to SSR.
 │    ⚠️  SSRs MUST be mounted on adequate heatsink!                             │
 │    ⚠️  Dissipation: ~1W per amp at full load                                  │
 │                                                                                 │
-│    Connector: J26 Pin 19-20 (SSR1), Pin 21-22 (SSR2)                          │
+│    Connector: J26 Pin 17-18 (SSR1), Pin 19-20 (SSR2)                          │
 │                                                                                 │
 │    Component Values:                                                           │
 │    ─────────────────                                                           │
@@ -2053,7 +2097,7 @@ The control PCB provides a universal interface for connecting external power met
 │                 Alt: Schurter 0031.8201 (enclosed PCB mount)                  │
 │                                                                                │
 │    ⚠️  FUSE HOLDER LAYOUT NOTES:                                              │
-│    • Holder is ~27mm long - verify clearance to HLK-5M05 and AC terminals    │
+│    • Holder is ~27mm long - verify clearance to HLK-15M05C and AC terminals  │
 │    • Orient PARALLEL to board edge for easy fuse access when installed       │
 │    • Minimum 4mm clearance from high-voltage components                       │
 │    • Verify physical fit in CAD before committing layout                      │
@@ -2106,7 +2150,7 @@ The control PCB provides a universal interface for connecting external power met
 │    ────────────────────                                                        │
 │                                                                                 │
 │    1. AC Input to 5V DC Rail: ≥6mm creepage, ≥4mm clearance                  │
-│       (achieved by HLK-PM05 internal isolation + PCB layout)                  │
+│       (achieved by HLK-15M05C internal isolation + PCB layout)                │
 │                                                                                 │
 │    2. Relay Contacts to Coil: ≥6mm creepage, ≥4mm clearance                  │
 │       (check relay datasheet - most meet this internally)                     │
@@ -2170,7 +2214,7 @@ The control PCB provides a universal interface for connecting external power met
 │    5V RAIL TRANSIENT SUPPRESSION:                                             │
 │    ───────────────────────────────                                            │
 │                                                                                 │
-│    From HLK-PM05 ────┬────[Ferrite Bead]────┬──► 5V to circuits              │
+│    From HLK-15M05C ──┬────[Ferrite Bead]────┬──► 5V to circuits              │
 │                      │                       │                                 │
 │                 ┌────┴────┐            ┌────┴────┐                            │
 │                 │  TVS    │            │  100µF  │                            │
@@ -2197,15 +2241,14 @@ The control PCB provides a universal interface for connecting external power met
 │                                                                                 │
 │    │ Component          │ Power Dissipation │ Management                    │ │
 │    │────────────────────│───────────────────│───────────────────────────────│ │
-│    │ HLK-PM05 (AC/DC)   │ 0.5-1.0W @ 1A     │ Place away from heat-sensitive│ │
+│    │ HLK-15M05C (AC/DC) │ ~2.7W @ 1A load   │ Place away from heat-sensitive│ │
 │    │ LDO Regulator      │ 0.3W @ 200mA      │ Use AP2112K for lower drop    │ │
-│    │ Relay Coils (×4)   │ 0.4W each @ 80mA  │ Normal, space apart           │ │
-│    │ Shunt Resistor     │ 0.26W @ 16A cont. │ 5W rating provides margin     │ │
+│    │ Relay Coils (×3)   │ 0.2-0.4W each     │ Normal, space apart           │ │
 │    │ Transistor drivers │ <0.1W each        │ Negligible                    │ │
 │                                                                                 │
 │    GUIDELINES:                                                                 │
 │    ───────────                                                                 │
-│    1. HLK-PM05: Leave 5mm clearance on all sides for airflow                 │
+│    1. HLK-15M05C: Leave 5mm clearance on all sides for airflow               │
 │    2. Place electrolytic capacitors away from heat sources (reduces aging)   │
 │    3. LDO: Use thermal vias under SOT-223 tab (5× 0.3mm vias to GND plane)  │
 │    4. Relays: Space 10mm apart if possible                                    │
@@ -2213,7 +2256,7 @@ The control PCB provides a universal interface for connecting external power met
 │                                                                                 │
 │    VENTILATION:                                                               │
 │    ────────────                                                               │
-│    If enclosed, ensure enclosure has ventilation holes near HLK-PM05         │
+│    If enclosed, ensure enclosure has ventilation holes near HLK-15M05C       │
 │    and relay section. Natural convection is usually sufficient.              │
 │                                                                                 │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -2272,7 +2315,7 @@ The control PCB provides a universal interface for connecting external power met
 │    ─────────────────────────────────────────────────────────────              │
 │    • ECM Synchronika: GICAR box is low in chassis, near bottom plate         │
 │    • Space is tight but relatively cool (away from boilers)                   │
-│    • CRITICAL: Ensure Raspberry Pi Pico USB port is ACCESSIBLE               │
+│    • CRITICAL: Ensure Raspberry Pi Pico 2 USB port is ACCESSIBLE              │
 │                                                                                │
 │    Pico Orientation Recommendations:                                          │
 │    ─────────────────────────────────                                          │
@@ -2285,7 +2328,7 @@ The control PCB provides a universal interface for connecting external power met
 │    Thermal Considerations:                                                    │
 │    ──────────────────────                                                     │
 │    • Keep board away from boilers and steam paths                            │
-│    • Max operating temp: 50°C ambient (derate HLK-PM05 above this)           │
+│    • Max operating temp: 50°C ambient (derate HLK-15M05C above this)         │
 │    • Add ventilation holes in enclosure if mounting near warm components     │
 │                                                                                │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -2299,18 +2342,19 @@ The control PCB provides a universal interface for connecting external power met
 
 ## 12.2 Trace Width Requirements
 
-| Signal/Power        | Current | Width (2oz Cu)     | Notes                     |
-| ------------------- | ------- | ------------------ | ------------------------- |
-| Mains Live/Neutral  | 6A peak | 1.5mm (60 mil)     | Relay-switched loads only |
-| Relay K2 (Pump)     | 5A peak | 1.5mm (60 mil)     | Ulka pump                 |
-| Relay K1 (LED)      | 100mA   | 0.5mm (20 mil)     | Water status LED          |
-| Relay K3 (Solenoid) | 0.5A    | 1.0mm (40 mil)     | 3-way solenoid valve      |
-| 5V power rail       | 1A      | 1.0mm (40 mil)     | Main distribution         |
-| 5V to Pico VSYS     | 500mA   | 0.5mm (20 mil)     |                           |
-| 3.3V power rail     | 500mA   | 0.5mm (20 mil)     |                           |
-| Relay coil drive    | 80mA    | 0.3mm (12 mil)     |                           |
-| Signal traces       | <10mA   | 0.25mm (10 mil)    | GPIO, UART, SPI           |
-| Ground returns      | -       | Match signal width | Use ground plane          |
+| Signal/Power        | Current | Width (2oz Cu)     | Notes                      |
+| ------------------- | ------- | ------------------ | -------------------------- |
+| Mains Live/Neutral  | 6A peak | 1.5mm (60 mil)     | Relay-switched loads only  |
+| Relay K2 (Pump)     | 5A peak | 1.5mm (60 mil)     | Ulka pump                  |
+| Relay K1 (LED)      | 100mA   | 0.5mm (20 mil)     | Water status LED           |
+| Relay K3 (Solenoid) | 0.5A    | 1.0mm (40 mil)     | 3-way solenoid valve       |
+| 5V power rail       | 1A      | 1.0mm (40 mil)     | Main distribution          |
+| 5V to Pico VSYS     | 500mA   | 0.5mm (20 mil)     |                            |
+| 5V to J15 (ESP32)   | 500mA   | 1.0mm (40 mil)     | WiFi TX spikes need margin |
+| 3.3V power rail     | 500mA   | 0.5mm (20 mil)     |                            |
+| Relay coil drive    | 80mA    | 0.3mm (12 mil)     |                            |
+| Signal traces       | <10mA   | 0.25mm (10 mil)    | GPIO, UART, SPI            |
+| Ground returns      | -       | Match signal width | Use ground plane           |
 
 ### ✅ SIMPLIFIED PCB DESIGN (PZEM-004T External Metering)
 
@@ -2394,7 +2438,7 @@ For the relay-switched loads (max ~6A):
 │                                                                                 │
 │    1. PZEM UART TRACES (GPIO6/7) - PIO Driven                                  │
 │    ──────────────────────────────────────────────                              │
-│    GPIO6/7 (PZEM-004T UART) will be driven by RP2040 PIO (Programmable I/O),  │
+│    GPIO6/7 (PZEM-004T UART) will be driven by RP2350 PIO (Programmable I/O),  │
 │    not hardware UART. This means:                                              │
 │                                                                                 │
 │    ✅ NO differential pair routing required                                    │
@@ -2470,8 +2514,8 @@ For the relay-switched loads (max ~6A):
 │    │  │        HIGH VOLTAGE          │ ║ │       LOW VOLTAGE            ││   │
 │    │  │                              │ ║ │                              ││   │
 │    │  │  ┌────────────┐  ┌────────┐  │ ║ │  ┌─────────────────────────┐ ││   │
-│    │  │  │ AC Input   │  │HLK-PM05│  │ ║ │  │    RASPBERRY PI PICO   │ ││   │
-│    │  │  │ L N PE     │  │ AC/DC  │  │ ║ │  │    (Module or socket)  │ ││   │
+│    │  │  │ AC Input   │  │HLK-15M│  │ ║ │  │   RASPBERRY PI PICO 2  │ ││   │
+│    │  │  │ L N PE     │  │ AC/DC  │  │ ║ │  │   (Module or socket)   │ ││   │
 │    │  │  │ Fuse, MOV  │  │        │  │ ║ │  │                        │ ││   │
 │    │  │  └────────────┘  └────────┘  │ ║ │  └─────────────────────────┘ ││   │
 │    │  │                              │ S │                              ││   │
@@ -2649,13 +2693,7 @@ Relay-switched loads (pump, valves) are fused and distributed via internal bus. 
 │   (J1-PE)                                                  (optional, for DIN)  │
 │                                                                                  │
 │   ⚠️ SSR heater power: Mains → SSR → Heater (via existing machine wiring)       │
-│      NOT through this PCB! PCB provides 5V control signals via J26 Pin 19-22.   │
-│                                                                                  │
-│   N_IN ──────────────────────────────────────────────────► N (to all loads)     │
-│   (J1-N)                                                                         │
-│                                                                                  │
-│   PE ────────────────────────────────────────────────────► Chassis ground       │
-│   (J1-PE)                                                                        │
+│      NOT through this PCB! PCB provides 5V control signals via J26 Pin 17-20.   │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -2767,7 +2805,6 @@ Relay-switched loads (pump, valves) are fused and distributed via internal bus. 
 | J20        | Pico Socket         | 2×20 female header   | 2.54mm | Or solder direct                          |
 | J23        | I2C Accessory       | Pin header 4-pin     | 2.54mm | 3V3, GND, SDA, SCL (GPIO8/9)              |
 | J24        | Power Meter HV      | Screw terminal 3-pos | 5.08mm | L (fused), N, PE for external meter       |
-| J25        | Expansion Header    | Pin header 3-pin     | 2.54mm | 3V3, GND, GPIO23 (future: flow meter)     |
 
 ### J24 External Power Meter HV Terminals (L, N, PE)
 
@@ -2818,40 +2855,37 @@ Relay-switched loads (pump, valves) are fused and distributed via internal bus. 
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### J25 Expansion Header (Future-Proofing)
+### Expansion via J15 Pin 8 (GPIO22)
 
-3-pin header for future expansion (e.g., flow meter, shot timer display).
+For future expansion (e.g., flow meter), use **GPIO22** available on **J15 Pin 8 (SPARE)**:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│                    J25 - EXPANSION HEADER (3-Pin 2.54mm)                        │
+│                    EXPANSION VIA J15 PIN 8 (GPIO22)                             │
 ├────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                 │
-│    ┌───┬───┬───┐                                                               │
-│    │ 1 │ 2 │ 3 │                                                               │
-│    │3V3│GND│IO │                                                               │
-│    └───┴───┴───┘                                                               │
+│    GPIO22 is available on J15 (ESP32 connector) Pin 8 for expansion:          │
 │                                                                                 │
-│    Pin 1: 3.3V (100mA max)                                                     │
-│    Pin 2: GND                                                                  │
-│    Pin 3: GPIO23 (with 10kΩ pull-down, 5V tolerant input)                     │
+│    ┌──────────────────────────────────────────────────────────────────┐       │
+│    │  J15 (ESP32 8-pin JST-XH)                                        │       │
+│    │  ┌───┬───┬───┬───┬───┬───┬───┬───┐                              │       │
+│    │  │5V │GND│TX │RX │RUN│BOOT│WGHT│SPARE│                           │       │
+│    │  └───┴───┴───┴───┴───┴───┴───┴──┬──┘                            │       │
+│    │                                  │                               │       │
+│    │                          GPIO22 ─┘  (Available for expansion)   │       │
+│    └──────────────────────────────────────────────────────────────────┘       │
 │                                                                                 │
 │    EXAMPLE USES:                                                               │
 │    ─────────────                                                               │
-│    • Flow Meter: 5V Hall-effect flow sensor (pulse output)                    │
+│    • Flow Meter: Hall-effect pulse sensor                                     │
 │    • Shot Timer: External display trigger                                      │
-│    • Additional sensor: Any 3.3V or 5V tolerant digital input                 │
+│    • Any 3.3V digital I/O                                                     │
 │                                                                                 │
-│    WIRING FOR FLOW METER:                                                      │
-│    ──────────────────────                                                      │
-│    │ Flow Meter │ J25  │ Notes                                                │
-│    │────────────│──────│──────────────────────────────────────────────────────│
-│    │ VCC (Red)  │ Pin 1│ 3.3V power (or external 5V if flow meter needs it)  │
-│    │ GND (Black)│ Pin 2│ Ground                                               │
-│    │ Signal     │ Pin 3│ Pulse output → GPIO23 (count in firmware)           │
+│    ⚠️ RP2350 GPIO is NOT 5V tolerant! Max input = 3.6V.                       │
+│       For 5V sensors, use voltage divider or level shifter.                   │
 │                                                                                 │
-│    ⚠️ NOTE: GPIO23 has 10kΩ pull-down. For 5V flow meters, verify             │
-│       the sensor's output is open-collector or logic-level compatible.        │
+│    NOTE: GPIO23-25 and GPIO29 are used internally by the Pico 2 module        │
+│    and are NOT available on the 40-pin header.                                │
 │                                                                                 │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -2930,8 +2964,8 @@ Relay-switched loads (pump, valves) are fused and distributed via internal bus. 
 
 | Qty | Ref | Description           | Part Number     | Package  | Notes                                      |
 | --- | --- | --------------------- | --------------- | -------- | ------------------------------------------ |
-| 1   | U1  | Raspberry Pi Pico     | SC0915          | Module   | Or Pico W                                  |
-| 1   | U2  | AC/DC Converter 5V 3A | HLK-5M05        | Module   | Isolated, 3A, compact (alt: IRM-20-5)      |
+| 1   | U1  | Raspberry Pi Pico 2   | SC0942          | Module   | Or Pico 2 W (SC1632) for onboard WiFi      |
+| 1   | U2  | AC/DC Converter 5V 3A | HLK-15M05C      | Module   | Isolated, 15W/3A (alt: Mean Well IRM-20-5) |
 | 1   | U3  | 3.3V LDO Regulator    | AP2112K-3.3TRG1 | SOT-23-5 | 600mA                                      |
 | 1   | U4  | Thermocouple Amp      | MAX31855KASA+   | SOIC-8   | K-type                                     |
 | 1   | U6  | Rail-to-Rail Op-Amp   | OPA342UA        | SOIC-8   | Level probe oscillator (alt: OPA207)       |
@@ -2940,46 +2974,42 @@ Relay-switched loads (pump, valves) are fused and distributed via internal bus. 
 
 ## 14.2 Transistors and Diodes
 
-| Qty | Ref     | Description      | Part Number | Package | Notes              |
-| --- | ------- | ---------------- | ----------- | ------- | ------------------ |
-| 6   | Q1-Q6   | NPN Transistor   | MMBT2222A   | SOT-23  | Relay/SSR drivers  |
-| 2   | Q7-Q8   | N-Channel MOSFET | 2N7002      | SOT-23  | ESP32 control      |
-| 4   | D1-D4   | Flyback Diode    | 1N4007      | DO-41   | Or MINIMELF        |
-| 6   | D10-D15 | ESD Protection   | PESD5V0S1BL | SOD-323 | Sensor inputs      |
-| 1   | D20     | TVS Diode        | SMBJ5.0A    | SMB     | 5V rail protection |
+| Qty | Ref     | Description    | Part Number | Package | Notes                       |
+| --- | ------- | -------------- | ----------- | ------- | --------------------------- |
+| 5   | Q1-Q5   | NPN Transistor | MMBT2222A   | SOT-23  | Relay (3) + SSR (2) drivers |
+| 3   | D1-D3   | Flyback Diode  | 1N4007      | DO-41   | K1, K2, K3 coil protection  |
+| 6   | D10-D15 | ESD Protection | PESD5V0S1BL | SOD-323 | Sensor inputs               |
+| 1   | D20     | TVS Diode      | SMBJ5.0A    | SMB     | 5V rail protection          |
 
 ## 14.3 Passive Components - Resistors
 
-| Qty | Ref     | Value | Tolerance | Package | Notes                                                            |
-| --- | ------- | ----- | --------- | ------- | ---------------------------------------------------------------- |
-| 1   | R1      | 3.3kΩ | 1%        | 0805    | Brew NTC pull-up (always populated)                              |
-| 1   | R1A     | 1.5kΩ | 1%        | 0805    | Brew NTC parallel (via JP2, for 10kΩ NTC)                        |
-| 1   | R2      | 1.2kΩ | 1%        | 0805    | Steam NTC pull-up (always populated)                             |
-| 1   | R2A     | 680Ω  | 1%        | 0805    | Steam NTC parallel (via JP3, for 10kΩ NTC)                       |
-| 2   | R5-R6   | 1kΩ   | 1%        | 0805    | NTC ADC series protection                                        |
-| 1   | R3      | 10kΩ  | 1%        | 0805    | Pressure divider                                                 |
-| 1   | R4      | 4.7kΩ | 1%        | 0805    | Pressure divider (optimized for 90% ADC range)                   |
-| 10  | R10-R19 | 10kΩ  | 5%        | 0805    | Pull-ups/pull-downs                                              |
-| 8   | R20-R27 | 1kΩ   | 5%        | 0805    | Transistor base                                                  |
-| 4   | R30-R33 | 470Ω  | 5%        | 0805    | Relay Indicator LEDs (4× relays) - brighter                      |
-| 2   | R34-R35 | 330Ω  | 5%        | 0805    | SSR Indicator LEDs (logic-side)                                  |
-| 4   | R40-R43 | 33Ω   | 5%        | 0805    | UART series (ESP32/Service)                                      |
-| 2   | R44-R45 | 33Ω   | 5%        | 0805    | UART series (PZEM)                                               |
-| 2   | R46-R47 | 4.7kΩ | 5%        | 0805    | I2C pull-ups (SDA, SCL)                                          |
-| 1   | R48     | 330Ω  | 5%        | 0805    | Status LED                                                       |
-| 1   | R49     | 100Ω  | 5%        | 0805    | Buzzer                                                           |
-| 2   | R71-R72 | 10kΩ  | 5%        | 0805    | Pico RUN/BOOTSEL pull-ups (J15 Pin 5/6)                          |
-| 1   | R73     | 10kΩ  | 5%        | 0805    | WEIGHT_STOP pull-down (J15 Pin 7)                                |
-| 1   | R75     | 10kΩ  | 5%        | 0805    | GPIO23 expansion pull-down (J25 Pin 3)                           |
-| 1   | R91     | 10kΩ  | 1%        | 0805    | Level probe oscillator feedback                                  |
-| 2   | R92-R93 | 10kΩ  | 1%        | 0805    | Level probe Wien bridge                                          |
-| 1   | R94     | 100Ω  | 5%        | 0805    | Level probe current limit                                        |
-| 1   | R95     | 10kΩ  | 5%        | 0805    | Level probe AC bias                                              |
-| 2   | R96-R97 | 100kΩ | 1%        | 0805    | Level probe threshold divider                                    |
-| 1   | R98     | 1MΩ   | 5%        | 0805    | Level probe hysteresis                                           |
-| 2   | R80-R81 | 100Ω  | 2W        | 1210    | **MANDATORY** - Snubber for K2 (Pump), K3 (Solenoid)             |
-| 1   | R82     | 100Ω  | 2W        | 1210    | DNP - Snubber for K1 (footprint required, populate if inductive) |
-| 1   | R99     | 120Ω  | 1%        | 0805    | RS485 termination (via JP1 solder jumper)                        |
+| Qty | Ref     | Value | Tolerance | Package | Notes                                          |
+| --- | ------- | ----- | --------- | ------- | ---------------------------------------------- |
+| 1   | R1      | 3.3kΩ | 1%        | 0805    | Brew NTC pull-up (always populated)            |
+| 1   | R1A     | 1.5kΩ | 1%        | 0805    | Brew NTC parallel (via JP2, for 10kΩ NTC)      |
+| 1   | R2      | 1.2kΩ | 1%        | 0805    | Steam NTC pull-up (always populated)           |
+| 1   | R2A     | 680Ω  | 1%        | 0805    | Steam NTC parallel (via JP3, for 10kΩ NTC)     |
+| 2   | R5-R6   | 1kΩ   | 1%        | 0805    | NTC ADC series protection                      |
+| 1   | R3      | 10kΩ  | 1%        | 0805    | Pressure divider                               |
+| 1   | R4      | 4.7kΩ | 1%        | 0805    | Pressure divider (optimized for 90% ADC range) |
+| 10  | R10-R19 | 10kΩ  | 5%        | 0805    | Pull-ups/pull-downs                            |
+| 5   | R20-R24 | 1kΩ   | 5%        | 0805    | Transistor base (3 relay + 2 SSR)              |
+| 3   | R30-R32 | 470Ω  | 5%        | 0805    | Relay Indicator LEDs (K1, K2, K3)              |
+| 2   | R34-R35 | 330Ω  | 5%        | 0805    | SSR Indicator LEDs (logic-side)                |
+| 4   | R40-R43 | 33Ω   | 5%        | 0805    | UART series (ESP32/Service)                    |
+| 2   | R44-R45 | 33Ω   | 5%        | 0805    | UART series (PZEM)                             |
+| 2   | R46-R47 | 4.7kΩ | 5%        | 0805    | I2C pull-ups (SDA, SCL)                        |
+| 1   | R48     | 330Ω  | 5%        | 0805    | Status LED                                     |
+| 1   | R49     | 100Ω  | 5%        | 0805    | Buzzer                                         |
+| 2   | R71-R72 | 10kΩ  | 5%        | 0805    | Pico RUN/BOOTSEL pull-ups (J15 Pin 5/6)        |
+| 1   | R73     | 10kΩ  | 5%        | 0805    | WEIGHT_STOP pull-down (J15 Pin 7)              |
+| 1   | R91     | 10kΩ  | 1%        | 0805    | Level probe oscillator feedback                |
+| 2   | R92-R93 | 10kΩ  | 1%        | 0805    | Level probe Wien bridge                        |
+| 1   | R94     | 100Ω  | 5%        | 0805    | Level probe current limit                      |
+| 1   | R95     | 10kΩ  | 5%        | 0805    | Level probe AC bias                            |
+| 2   | R96-R97 | 100kΩ | 1%        | 0805    | Level probe threshold divider                  |
+| 1   | R98     | 1MΩ   | 5%        | 0805    | Level probe hysteresis                         |
+| 1   | R99     | 120Ω  | 1%        | 0805    | RS485 termination (via JP1 solder jumper)      |
 
 ## 14.3a Solder Jumpers
 
@@ -2993,32 +3023,31 @@ Relay-switched loads (pump, valves) are fused and distributed via internal bus. 
 
 ## 14.4 Passive Components - Capacitors
 
-| Qty | Ref     | Value    | Voltage | Package      | Notes                                                            |
-| --- | ------- | -------- | ------- | ------------ | ---------------------------------------------------------------- |
-| 1   | C1      | 100nF X2 | 275V AC | Radial       | Mains EMI filter                                                 |
-| 2   | C2-C3   | 100µF    | 16V     | Radial 6.3mm | 5V bulk                                                          |
-| 1   | C4      | 47µF     | 10V     | 1206 Ceramic | 3.3V output                                                      |
-| 1   | C5      | 22µF     | 10V     | 1206 Ceramic | 3.3V analog                                                      |
-| 12  | C10-C21 | 100nF    | 25V     | 0805         | Decoupling (general)                                             |
-| 1   | C60     | 100nF    | 25V     | 0805         | OPA342 VCC decoupling                                            |
-| 2   | C61-C62 | 100nF    | 25V     | 0805         | Level probe Wien bridge timing                                   |
-| 1   | C63     | 100nF    | 25V     | 0805         | TLV3201 VCC decoupling                                           |
-| 1   | C64     | 1µF      | 25V     | 0805         | Level probe AC coupling                                          |
-| 1   | C65     | 100nF    | 25V     | 0805         | Level probe sense filter                                         |
-| 4   | C30-C33 | 100pF    | 50V     | 0603         | UART/ADC filter                                                  |
-| 1   | C40     | 10nF     | 50V     | 0805         | Thermocouple filter                                              |
-| 2   | C50-C51 | 100nF X2 | 275V AC | Radial       | **MANDATORY** - Snubber for K2 (Pump), K3 (Solenoid)             |
-| 1   | C70     | 100nF    | 25V     | 0805         | RS485 transceiver (U8) decoupling                                |
-| 1   | C52     | 100nF X2 | 275V AC | Radial       | DNP - Snubber for K1 (footprint required, populate if inductive) |
+| Qty | Ref     | Value    | Voltage | Package      | Notes                                                        |
+| --- | ------- | -------- | ------- | ------------ | ------------------------------------------------------------ |
+| 1   | C1      | 100nF X2 | 275V AC | Radial       | Mains EMI filter                                             |
+| 1   | C2      | 470µF    | 6.3V    | Radial 6.3mm | 5V bulk, **Polymer** (low ESR, long life in hot environment) |
+| 1   | C4      | 47µF     | 10V     | 1206 Ceramic | 3.3V output                                                  |
+| 1   | C5      | 22µF     | 10V     | 1206 Ceramic | 3.3V analog                                                  |
+| 12  | C10-C21 | 100nF    | 25V     | 0805         | Decoupling (general)                                         |
+| 1   | C60     | 100nF    | 25V     | 0805         | OPA342 VCC decoupling                                        |
+| 2   | C61-C62 | 100nF    | 25V     | 0805         | Level probe Wien bridge timing                               |
+| 1   | C63     | 100nF    | 25V     | 0805         | TLV3201 VCC decoupling                                       |
+| 1   | C64     | 1µF      | 25V     | 0805         | Level probe AC coupling                                      |
+| 1   | C65     | 100nF    | 25V     | 0805         | Level probe sense filter                                     |
+| 4   | C30-C33 | 100pF    | 50V     | 0603         | UART/ADC filter                                              |
+| 1   | C40     | 10nF     | 50V     | 0805         | Thermocouple filter                                          |
+| 1   | C70     | 100nF    | 25V     | 0805         | RS485 transceiver (U8) decoupling                            |
 
 ## 14.5 Electromechanical
 
 | Qty | Ref     | Description          | Part Number             | Notes                             |
 | --- | ------- | -------------------- | ----------------------- | --------------------------------- |
-| 2   | K1,K3   | Relay 5V 10A SPST-NO | HF46F-G/005-HS1         | SPST-NO                           |
-| 1   | K2      | Relay 5V 16A SPST-NO | G5LE-1A4 DC5            | SPST-NO, Pump                     |
+| 2   | K1,K3   | Relay 5V 3A SPST-NO  | Panasonic APAN3105      | Slim 5mm, IEC61010, LED/Solenoid  |
+| 1   | K2      | Relay 5V 16A SPST-NO | Omron G5LE-1A4 DC5      | Standard size, Pump motor         |
 | 1   | F1      | Fuse 10A + Holder    | 0218010.MXP + 01000056Z | 5×20mm slow, PCB mount with cover |
-| 1   | RV1     | Varistor 275V        | S14K275                 | 14mm disc                         |
+| 1   | RV1     | Varistor 275V        | S14K275                 | 14mm disc, mains surge protection |
+| 2   | RV2-RV3 | Varistor 275V        | S10K275                 | 10mm disc, K2/K3 arc suppression  |
 | 2   | SW1-SW2 | Tactile Switch       | EVQP7A01P               | SMD 6×6mm                         |
 | 1   | BZ1     | Passive Buzzer       | CEM-1203(42)            | 12mm                              |
 
@@ -3042,7 +3071,6 @@ Relay-switched loads (pump, valves) are fused and distributed via internal bus. 
 | 1   | J20     | Female Header 2×20        | -                          | Pico socket                                    |
 | 1   | J23     | Pin Header 1×4 2.54mm     | -                          | I2C accessory port                             |
 | 1   | J24     | Screw Terminal 3-pos      | Phoenix MKDS 1/3-5.08      | Power Meter HV: L (fused), N, PE               |
-| 1   | J25     | Pin Header 1×3 2.54mm     | -                          | Expansion: 3V3, GND, GPIO23 (future use)       |
 
 ## 14.8 User-Supplied Components (NOT included with PCB)
 
@@ -3050,7 +3078,7 @@ The following components are **NOT** included with the PCB and must be sourced b
 
 | Component                   | Notes                                              |
 | --------------------------- | -------------------------------------------------- |
-| Raspberry Pi Pico           | SC0915 or Pico W (SC0918) for onboard WiFi         |
+| Raspberry Pi Pico 2         | SC0942 or Pico 2 W (SC1632) for onboard WiFi       |
 | JST-XH 8-pin Cable 50cm     | For ESP32 display connection (J15)                 |
 | JST-XH 6-pin Cable 30-50cm  | For power meter connection (J17)                   |
 | ESP32 Display Module        | User purchases separately                          |
@@ -3217,8 +3245,8 @@ The following components are **NOT** included with the PCB and must be sourced b
 ## 16.4 Assembly Notes
 
 1. **SMT components first**, then through-hole
-2. **Pico module**: Solder directly or use socket (socketed preferred for prototype)
-3. **HLK-PM05**: Solder last, check orientation (L, N marking)
+2. **Pico 2 module**: Solder directly or use socket (socketed preferred for prototype)
+3. **HLK-15M05C**: Solder last, check orientation (L, N marking)
 4. **Relays**: Check coil polarity if polarized
 5. **Electrolytic capacitors**: Observe polarity markings
 6. **ESD handling**: Use proper ESD precautions for Pico and ICs
@@ -3270,7 +3298,7 @@ Deliver: Native project files, PDF schematic, Gerber files (Section 16.2), STEP 
 
 **Safety Standards:** IEC 60950-1, IEC 62368-1, UL 60950-1
 
-**Key Datasheets:** Raspberry Pi Pico, RP2040, MAX31855, OPA342, TLV3201, MAX3485
+**Key Datasheets:** Raspberry Pi Pico 2, RP2350, MAX31855, OPA342, TLV3201, MAX3485
 
 **Machine Reference:** ECM Synchronika Service Manual, Parts Diagram
 

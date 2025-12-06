@@ -470,7 +470,7 @@ Verify SPI communication and temperature reading accuracy.
 
 ### Required
 
-- Raspberry Pi Pico (or Pico W)
+- Raspberry Pi Pico 2 (or Pico 2 W)
 - MAX31855 breakout board (or MAX31855KASA+ with supporting components)
 - K-type thermocouple
 
