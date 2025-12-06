@@ -73,17 +73,17 @@ This specification defines a custom control PCB to replace the factory GICAR con
 │                           │  │       │          ║   ┌──────────────┐   │   │    │
 │   ┌─────────────────┐     │  │       ▼          ║   │ Raspberry Pi │   │   │    │
 │   │  POWER METER    │     │  │    5V Rail ──────╫──►│    Pico      │   │   │    │
-│   │  (PZEM-004T)    │◄────│  │       │          ║   │   RP2350     │   │   │    │
-│   │  External + CT  │     │  │       ▼          ║   └──────┬───────┘   │   │    │
+│   │  (External)     │◄────│  │       │          ║   │   RP2350     │   │   │    │
+│   │  + CT Clamp     │     │  │       ▼          ║   └──────┬───────┘   │   │    │
 │   └─────────────────┘     │  │   3.3V Rail ─────╫──────────┘           │   │    │
 │                           │  │                  ║                      │   │    │
 │   ┌─────────────────┐     │  │   RELAY DRIVERS  ║   SENSOR INPUTS      │   │    │
 │   │   RELAYS (3x)   │◄────│  │   + INDICATOR    ║   + PROTECTION       │   │  │
-│   │   Pump          │     │  │   LEDs           ║                      │   │  │
-│   │   Solenoid      │     │  │                  ║                      │   │  │
-│   │   Water LED     │     │  ╠══════════════════╬══════════════════════╣   │  │
-│   │   Spare         │     │  │  HIGH VOLTAGE    ║    LOW VOLTAGE       │   │  │
-│   └─────────────────┘     │  │  SECTION         ║    SECTION           │   │  │
+│   │   K1: Indicator │     │  │   LEDs           ║                      │   │  │
+│   │   K2: Pump      │     │  │                  ║                      │   │  │
+│   │   K3: Solenoid  │     │  ╠══════════════════╬══════════════════════╣   │  │
+│   └─────────────────┘     │  │  HIGH VOLTAGE    ║    LOW VOLTAGE       │   │  │
+│                           │  │  SECTION         ║    SECTION           │   │  │
 │                           │  │  (ISOLATED)      ║    (SAFE)            │   │  │
 │   ┌─────────────────┐     │  └─────────────────────────────────────────┘   │  │
 │   │  EXTERNAL SSRs  │◄────│                                                 │  │
@@ -132,11 +132,11 @@ This specification defines a custom control PCB to replace the factory GICAR con
 
 ## 2.3 Isolation Requirements
 
-| Boundary              | Isolation Type | Requirement                         |
-| --------------------- | -------------- | ----------------------------------- |
-| Mains → 5V DC         | Reinforced     | 3000V AC for 1 minute               |
-| Relay Contacts → Coil | Basic          | 2500V AC                            |
-| Power Meter → Logic   | Functional     | Via opto-isolated UART in PZEM-004T |
+| Boundary              | Isolation Type | Requirement                            |
+| --------------------- | -------------- | -------------------------------------- |
+| Mains → 5V DC         | Reinforced     | 3000V AC for 1 minute                  |
+| Relay Contacts → Coil | Basic          | 2500V AC                               |
+| Power Meter → Logic   | Functional     | Via opto-isolated UART in meter module |
 
 ## 2.4 Environmental
 
@@ -174,7 +174,7 @@ This specification defines a custom control PCB to replace the factory GICAR con
 
 | ID   | Component              | Load Rating         | Control             | Connection       |
 | ---- | ---------------------- | ------------------- | ------------------- | ---------------- |
-| K1   | Water Status LED       | 100-240V AC, ≤100mA | Onboard Relay (3A)  | J2 (6.3mm spade) |
+| K1   | Mains Indicator Lamp   | 100-240V AC, ≤100mA | Onboard Relay (3A)  | J2 (6.3mm spade) |
 | K2   | Pump Motor             | 100-240V AC, 65W    | Onboard Relay (16A) | J3 (6.3mm spade) |
 | K3   | Solenoid Valve (3-way) | 100-240V AC, 15W    | Onboard Relay (3A)  | J4 (6.3mm spade) |
 | SSR1 | Brew Boiler Heater     | 100-240V AC, 1400W  | External SSR 40A    | J26 Pin 17-18    |
@@ -2061,7 +2061,7 @@ The control PCB provides a universal interface for connecting external power met
 │         │   1%    │                                                           │
 │         └────┬────┘                                                           │
 │              │                                                                 │
-│              ├──────────[33Ω R45B]───────────► GPIO7 (PZEM_RX)               │
+│              ├──────────[33Ω R45B]───────────► GPIO7 (METER_RX)              │
 │              │                                                                 │
 │         ┌────┴────┐                                                           │
 │         │  3.3kΩ  │  R45A (lower divider)                                     │
@@ -2226,9 +2226,9 @@ The control PCB provides a universal interface for connecting external power met
 │    • Minimum 4mm clearance from high-voltage components                       │
 │    • Verify physical fit in CAD before committing layout                      │
 │                                                                                │
-│    ✅ FUSE SIZING SIMPLIFIED (PZEM-004T Design):                              │
-│    ─────────────────────────────────────────────                              │
-│    With external PZEM-004T, heater current does NOT flow through the PCB.   │
+│    ✅ FUSE SIZING SIMPLIFIED (External Metering Design):                      │
+│    ─────────────────────────────────────────────────────                      │
+│    With external power meter, heater current does NOT flow through the PCB.  │
 │    The on-board fuse only protects relay-switched loads:                     │
 │    • K2 (Pump): ~5A peak (Ulka EP5)                                          │
 │    • K1 (LED): ≤100mA                                                        │
@@ -2480,9 +2480,9 @@ The control PCB provides a universal interface for connecting external power met
 | Signal traces       | <10mA   | 0.25mm (10 mil)    | GPIO, UART, SPI            |
 | Ground returns      | -       | Match signal width | Use ground plane           |
 
-### ✅ SIMPLIFIED PCB DESIGN (PZEM-004T External Metering)
+### ✅ SIMPLIFIED PCB DESIGN (External Power Metering)
 
-**With PZEM-004T external power metering, heater current (12A+) does NOT flow through the control PCB.**
+**With external power metering, heater current (12A+) does NOT flow through the control PCB.**
 
 The PCB only handles relay-switched loads:
 
@@ -2491,7 +2491,7 @@ The PCB only handles relay-switched loads:
 - **K3 (Solenoid):** ~0.5A
 - **Total maximum:** ~6A
 
-**Benefits of PZEM-004T Design:**
+**Benefits of External Metering Design:**
 
 - ✅ No 16A shunt resistor required
 - ✅ No solder mask openings on high-current traces needed
@@ -2560,9 +2560,9 @@ For the relay-switched loads (max ~6A):
 │                    (Review these BEFORE starting layout)                       │
 ├────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                 │
-│    1. PZEM UART TRACES (GPIO6/7) - PIO Driven                                  │
-│    ──────────────────────────────────────────────                              │
-│    GPIO6/7 (PZEM-004T UART) will be driven by RP2350 PIO (Programmable I/O),  │
+│    1. POWER METER UART TRACES (GPIO6/7) - PIO Driven                           │
+│    ─────────────────────────────────────────────────────                       │
+│    GPIO6/7 (Power Meter UART) will be driven by RP2350 PIO (Programmable I/O),│
 │    not hardware UART. This means:                                              │
 │                                                                                 │
 │    ✅ NO differential pair routing required                                    │
@@ -2792,7 +2792,7 @@ High-current connections to original machine wiring use 6.3mm (0.25") spade term
 
 ### Power Metering Wiring
 
-Relay-switched loads (pump, valves) are fused and distributed via internal bus. Power metering is handled by external PZEM-004T with CT clamp (no high current through PCB).
+Relay-switched loads (pump, valves) are fused and distributed via internal bus. Power metering is handled by external meter module with CT clamp (no high current through PCB).
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -3117,7 +3117,7 @@ GPIO22 is available on **J15 Pin 8 (SPARE)** for future expansion:
 | 3   | R30-R32 | 470Ω  | 5%        | 0805    | Relay Indicator LEDs (K1, K2, K3)              |
 | 2   | R34-R35 | 330Ω  | 5%        | 0805    | SSR Indicator LEDs (logic-side)                |
 | 4   | R40-R43 | 33Ω   | 5%        | 0805    | UART series (ESP32/Service)                    |
-| 1   | R44     | 33Ω   | 5%        | 0805    | PZEM TX series                                 |
+| 1   | R44     | 33Ω   | 5%        | 0805    | J17 TX series (power meter)                    |
 | 1   | R45     | 2.2kΩ | 1%        | 0805    | J17 RX 5V→3.3V level shifter (upper divider)   |
 | 1   | R45A    | 3.3kΩ | 1%        | 0805    | J17 RX 5V→3.3V level shifter (lower divider)   |
 | 1   | R45B    | 33Ω   | 5%        | 0805    | J17 RX series (after divider)                  |
