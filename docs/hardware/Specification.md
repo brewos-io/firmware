@@ -4,7 +4,7 @@
 
 **Document Purpose:** Complete technical specification for PCB design and manufacturing  
 **Target:** Plug & play replacement for GICAR control board and PID controller  
-**Revision:** 2.22  
+**Revision:** 2.23  
 **Date:** December 2025
 
 ---
@@ -2147,6 +2147,49 @@ The control PCB provides a universal interface for connecting external power met
 | **ATM90E32**     | -            | SPI        | SPI            | High precision (via I2C) |
 | **BL0937**       | -            | Pulse/CF   | GPIO           | Budget option            |
 
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  ⚠️  NON-ISOLATED POWER METERS (PZEM-004T, JSY, etc.) - GROUNDING WARNING      │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  BACKGROUND:                                                                   │
+│  This control board intentionally bonds PE (Earth) to GND at MH1 to provide   │
+│  a return path for the steam boiler water level probe. This is NOT a SELV     │
+│  (Safety Extra-Low Voltage) design - it is Class I (Earthed).                 │
+│                                                                                 │
+│  THE ISSUE WITH NON-ISOLATED METERS:                                          │
+│  ───────────────────────────────────                                          │
+│  TTL power meters like PZEM-004T internally connect their UART GND to mains   │
+│  Neutral (N). Connecting such a meter to J17 creates:                         │
+│                                                                                 │
+│      Control GND ──── MH1 ──── PE (Earth) ──── PZEM GND ──── Mains Neutral    │
+│                                                                                 │
+│  This creates a PE-N bond through the PZEM, which should only exist at the    │
+│  electrical service panel.                                                     │
+│                                                                                 │
+│  CONSEQUENCES:                                                                 │
+│  ─────────────                                                                 │
+│  • Any N-PE voltage difference causes current flow through board GND traces   │
+│  • Ground loop noise may affect ADC readings (temperature, pressure)          │
+│  • Violates electrical code in some jurisdictions (multiple PE-N bonds)       │
+│  • NOT a shock hazard (board is already at earth potential via MH1)          │
+│                                                                                 │
+│  RECOMMENDATIONS:                                                              │
+│  ────────────────                                                              │
+│  1. PREFERRED: Use RS485 industrial meters (Eastron SDM series) - typically   │
+│     have isolated RS485 outputs and avoid this issue entirely                 │
+│                                                                                 │
+│  2. ACCEPTABLE: Use PZEM/JSY with awareness of ground loop. If ADC noise      │
+│     becomes problematic, add opto-isolator between J17 and meter module       │
+│                                                                                 │
+│  3. ALTERNATIVE: Omit power metering entirely if not needed                   │
+│                                                                                 │
+│  ⚠️  The PZEM/JSY will WORK correctly - this is a grounding quality issue,   │
+│      not a functionality or safety issue given the existing PE-GND bond.      │
+│                                                                                 │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## 10.3 J17 Universal Power Meter Connector (JST-XH 6-pin)
 
 ```
@@ -2323,13 +2366,13 @@ The control PCB provides a universal interface for connecting external power met
 │                   │ (L_HLK)                                                    │
 │                   │                                                            │
 │              ┌────┴────┐     ┌─────────┐                                      │
-│              │  RV1    │     │   C1    │                                      │
-│              │  MOV    │     │   X2    │  ← EMI suppression capacitor         │
-│              │  275V   ├─────┤  100nF  │    X2 safety rated, 275V AC          │
-│              │  14mm   │     │  275V   │                                      │
-│              └────┬────┘     └────┬────┘                                      │
-│                   │               │ (to HLK L input)                          │
-│    N (Neutral) ───┴───────────────┴─────────────────────────────────────────  │
+│              │  RV1    │     │   C1    │     │  R_BLEED │                     │
+│              │  MOV    │     │   X2    │     │   1MΩ    │  ← Optional bleed   │
+│              │  275V   ├─────┤  100nF  ├─────┤  0.5W    │    resistor (DNP)   │
+│              │  14mm   │     │  275V   │     │  (opt)   │                     │
+│              └────┬────┘     └────┬────┘     └────┬─────┘                     │
+│                   │               │               │ (to HLK L input)          │
+│    N (Neutral) ───┴───────────────┴───────────────┴────────────────────────  │
 │                                                                                │
 │    Optional EMI Filter (for CE compliance):                                   │
 │    ────────────────────────────────────────                                   │
@@ -2358,6 +2401,11 @@ The control PCB provides a universal interface for connecting external power met
 │         Purpose: Fusing hierarchy - protects HLK module and its PCB traces   │
 │         independently from relay loads. If HLK fails, only F2 blows.         │
 │                 Alt: Schurter 0031.8201 (enclosed PCB mount)                  │
+│                                                                                │
+│    R_BLEED: 1MΩ 0.5W resistor across C1 (OPTIONAL - DNP by default)          │
+│         Purpose: Discharges X2 cap when machine unplugged (safety)           │
+│         At 100nF, discharge τ = 0.1s, fully discharged in <1 second          │
+│         Populate if required for safety certification (IEC 60950)            │
 │                                                                                │
 │    ⚠️  FUSE HOLDER LAYOUT NOTES:                                              │
 │    • Holder is ~27mm long - verify clearance to HLK-15M05C and AC terminals  │
@@ -3574,7 +3622,24 @@ See Section 7.2 for detailed explanation of the ground loop problem.
 4. **Relays**: Check coil polarity if polarized
 5. **Electrolytic capacitors**: Observe polarity markings
 6. **ESD handling**: Use proper ESD precautions for Pico and ICs
-7. **Conformal coating**: Apply to HV section after testing (optional)
+7. **Conformal coating**: See detailed guidance below
+8. **Pico retention**: After final testing, apply small dab of RTV silicone at module corners to prevent vibration-induced creep from pump operation
+
+### Conformal Coating Guidance (Recommended for Production)
+
+The espresso machine environment (heat, humidity, coffee vapor) benefits from conformal coating:
+
+| Area | Coating | Notes |
+|------|---------|-------|
+| HV section (relays, MOVs, fuse) | ✅ Recommended | Prevents tracking from moisture/contamination |
+| Level probe trace area | ✅ Recommended | High-impedance, sensitive to moisture |
+| LV analog section | ✅ Recommended | Protects ADC inputs from drift |
+| Connectors (J15, J17, J26) | ❌ Mask off | Must remain solderable/conductive |
+| Pico module socket | ❌ Mask off | Module must be removable |
+| Relay contacts | ❌ Mask off | Internal, already sealed |
+| Test points (TP1-TP6) | ❌ Mask off | Must remain accessible |
+
+**Coating type:** Acrylic (MG Chemicals 419D) or silicone-based. Apply after all testing complete.
 
 ## 16.5 Firmware Interface Summary
 

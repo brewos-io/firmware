@@ -401,6 +401,31 @@ Verify the level probe sensing circuit works correctly and requires PE-GND conne
     Without PE-GND connection, this circuit will NOT work!
 ```
 
+### Phase 2/3: AC Oscillator Circuit Validation (On Assembled PCB)
+
+The production design uses a Wien-bridge oscillator (OPA342) + comparator (TLV3201) for corrosion-free AC sensing. This cannot be easily breadboarded - test on assembled PCB:
+
+| Step | Action | Expected Result | ✓ |
+|------|--------|-----------------|---|
+| 1 | Power PCB, probe disconnected | GPIO4 reads HIGH (water low) | |
+| 2 | Connect oscilloscope to AC_OUT (TP if available) | ~160Hz sine wave, ~1.5Vpp | |
+| 3 | Short probe terminal to GND | GPIO4 reads LOW (water OK) | |
+| 4 | Dip probe in tap water (metal container grounded to PE) | GPIO4 reads LOW | |
+| 5 | Remove probe from water | GPIO4 returns HIGH within 1s | |
+| 6 | Dip probe in distilled/RO water | May read HIGH (low conductivity) | |
+| 7 | Add pinch of salt to water, retry | GPIO4 reads LOW | |
+
+**Sensitivity Adjustment (if needed):**
+- If probe doesn't detect water reliably: Reduce R95 (10kΩ → 4.7kΩ)
+- If probe triggers on steam/condensation: Increase R95 or adjust R98 hysteresis
+- Oscillator amplitude too low: Check OPA342 power, R91-R93 values
+
+**Pass Criteria for Production:**
+- [ ] Probe in air = GPIO4 HIGH (fail-safe: heater OFF)
+- [ ] Probe in tap water = GPIO4 LOW (heater enabled)
+- [ ] No oscillation/chatter at water surface level
+- [ ] Response time < 500ms in both directions
+
 ---
 
 ## 3.5 Pressure Transducer Circuit Test (YD4060)
