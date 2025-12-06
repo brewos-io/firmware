@@ -4,7 +4,7 @@
 
 **Document Purpose:** Complete technical specification for PCB design and manufacturing  
 **Target:** Plug & play replacement for GICAR control board and PID controller  
-**Revision:** 2.21.1  
+**Revision:** 2.22  
 **Date:** December 2025
 
 ---
@@ -387,7 +387,7 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 | ESP32 module        | 150mA      | 500mA      | **WiFi TX spikes!**        |
 | Indicator LEDs (×6) | 30mA       | 60mA       | 3 relay + 2 SSR + 1 status |
 | Buzzer              | 5mA        | 30mA       | When active                |
-| 3.3V LDO load       | 30mA       | 50mA       | Sensors, MAX31855          |
+| 3.3V Buck load      | 30mA       | 100mA      | Sensors, MAX31855, margin  |
 | **TOTAL**           | **~355mA** | **~910mA** |                            |
 
 **Minimum: 1.5A, Selected: Hi-Link HLK-15M05C (3A/15W)** - 3× headroom over 1A peak
@@ -459,37 +459,60 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 
 ## 5.2 Secondary Power Rails
 
-### 5V to 3.3V LDO Regulator
+### 5V to 3.3V Synchronous Buck Converter
+
+**⚠️ v2.22 CHANGE:** Replaced LDO (AP2112K) with synchronous buck converter (TPS563200)
+for improved thermal performance. LDO was identified as thermal risk in engineering review.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│                          3.3V LDO REGULATOR CIRCUIT                             │
+│                      3.3V SYNCHRONOUS BUCK CONVERTER                            │
 ├────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
 │                                                                                 │
 │      5V Rail                                                     3.3V Rail     │
 │         │                                                            │         │
-│         │      ┌──────────────────────────────────────┐             │         │
-│    ┌────┴────┐ │                                      │        ┌────┴────┐    │
-│    │  470µF  │ │     ┌────────────────────┐          │        │  47µF   │    │
-│    │  6.3V   │ │     │    AMS1117-3.3     │          │        │  6.3V   │    │
-│    │ Polymer │ │     │    or AP2112K-3.3  │          │        │ Tant.   │    │
-│    └────┬────┘ │     │                    │          │        └────┬────┘    │
-│         │      │     │  VIN         VOUT  │──────────┴─────────────┤         │
-│         │      └────►│                    │                        │         │
-│         │            │        GND         │                   ┌────┴────┐    │
-│         │            └─────────┬──────────┘                   │  100nF  │    │
-│         │                      │                              │ Ceramic │    │
-│         │                      │                              └────┬────┘    │
-│        GND                    GND                                 GND         │
+│         │                                                            │         │
+│    ┌────┴────┐     ┌────────────────────────────┐              ┌────┴────┐    │
+│    │  22µF   │     │      TPS563200DDCR         │              │  22µF   │    │
+│    │  25V    │     │   Synchronous Buck 3A      │              │  10V    │    │
+│    │ Ceramic │     │                            │              │ Ceramic │    │
+│    │  (C3)   │     │  VIN              VOUT ────┼──[L1 4.7µH]──┤  (C4)   │    │
+│    └────┬────┘     │                            │              │         │    │
+│         │      ┌──►│  EN               SW ──────┘              └────┬────┘    │
+│         │      │   │                            │                    │         │
+│         │      │   │  FB ◄──────────────────────┼────────────────────┤         │
+│         │      │   │                            │              ┌────┴────┐    │
+│         │      │   │         GND                │              │  22µF   │    │
+│         │      │   └──────────┬─────────────────┘              │  10V    │    │
+│         │      │              │                                │ (C4A)   │    │
+│         └──────┘              │                                └────┬────┘    │
+│                               │                                     │         │
+│        GND                   GND                                   GND         │
 │                                                                                 │
-│    Regulator Selection:                                                        │
-│    ────────────────────                                                        │
-│    Selected: AP2112K-3.3 (SOT-23-5)                                           │
-│      - Dropout: 0.4V @ 600mA                                                  │
-│      - Max output: 600mA                                                       │
-│      - Quiescent: 55µA                                                         │
-│      - Low thermal dissipation                                                 │
+│    Regulator Selection (v2.22 Engineering Review Fix):                         │
+│    ───────────────────────────────────────────────────                         │
+│    Selected: TPS563200DDCR (SOT-23-6)                                         │
+│      - Topology: Synchronous Buck (integrated FETs)                           │
+│      - Efficiency: >90% (vs ~34% for LDO)                                     │
+│      - Max output: 3A continuous                                               │
+│      - Switching freq: 650kHz (allows small inductor)                         │
+│      - Thermal: Minimal self-heating even at full load                        │
+│                                                                                 │
+│    ✅ WHY BUCK INSTEAD OF LDO?                                                │
+│    ──────────────────────────────                                              │
+│    LDO Problem: P_dissipated = (5V - 3.3V) × I_load = 1.7V × I                │
+│    At 250mA: 0.425W dissipation → SOT-23-5 junction temp exceeds limits       │
+│    in hot espresso machine environment (60°C ambient + 106°C rise = 166°C)   │
+│                                                                                 │
+│    Buck Solution: >90% efficient, heat dissipation reduced by 10x             │
+│    Same footprint as SOT-23-5 LDO, minimal BOM change                         │
+│                                                                                 │
+│    External Components:                                                        │
+│    ───────────────────                                                         │
+│    L1: 4.7µH, 3A saturation, DCR <100mΩ (Murata LQH32CN4R7M23 or equiv)      │
+│    C3: 22µF 25V X5R Ceramic, 1206 (input)                                     │
+│    C4: 22µF 10V X5R Ceramic, 1206 (output)                                    │
+│    C4A: 22µF 10V X5R Ceramic, 1206 (output, parallel for ripple)             │
 │                                                                                 │
 │    Load Budget (External 3.3V Rail - U3):                                      │
 │    ──────────────────────────────────────                                      │
@@ -497,13 +520,69 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 │    NTC dividers: ~1mA brew (3.3kΩ), ~3mA steam (1.2kΩ)                       │
 │    MAX3485 RS485: ~1mA                                                         │
 │    TLV3201 comparator: ~1mA                                                    │
-│    Total: ~10mA typical                                                        │
+│    LM4040 reference: ~2mA                                                      │
+│    Total: ~10mA typical, 100mA max headroom                                   │
 │                                                                                 │
 │    ⚠️ IMPORTANT: This 3.3V rail is for SENSORS ONLY                          │
 │    The Pico 2's internal regulator provides 3.3V for the RP2350.             │
 │    Do NOT connect this rail to the Pico's 3V3 pin!                           │
 │                                                                                 │
 │    ESP32: Power from 5V rail (J15 Pin 1) - has its own LDO.                  │
+│                                                                                 │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Precision ADC Voltage Reference (v2.22 Addition)
+
+**Purpose:** Provides stable, low-drift reference for NTC temperature measurements.
+Using 3.3V rail directly as ADC reference couples LDO/buck thermal drift into readings.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                      PRECISION ADC VOLTAGE REFERENCE                            │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│      3.3V Rail                                                                  │
+│         │                                                                       │
+│    ┌────┴────┐                                                                  │
+│    │   1kΩ   │  R7 - Bias resistor                                             │
+│    │   1%    │  I_bias = (3.3V - 3.0V) / 1kΩ = 0.3mA                          │
+│    └────┬────┘  (min 60µA for LM4040, we use 300µA for stability)             │
+│         │                                                                       │
+│         ├──────────────────────────────┬──────────────────► ADC_VREF (3.0V)   │
+│         │                              │                                        │
+│    ┌────┴────┐                    ┌────┴────┐                                  │
+│    │ LM4040  │                    │  22µF   │  C7 - Bulk cap                   │
+│    │  3.0V   │  U5               │  10V    │                                  │
+│    │ Shunt   │                    │ Ceramic │                                  │
+│    │  Ref    │                    └────┬────┘                                  │
+│    └────┬────┘                         │                                        │
+│         │                         ┌────┴────┐                                  │
+│        GND                        │  100nF  │  C7A - HF decoupling            │
+│                                   │ Ceramic │                                  │
+│                                   └────┬────┘                                  │
+│                                        │                                        │
+│                                       GND                                       │
+│                                                                                 │
+│    Reference Selection:                                                        │
+│    ───────────────────                                                         │
+│    LM4040DIM3-3.0 (SOT-23-3)                                                  │
+│      - Voltage: 3.000V ±0.5% (A-grade)                                        │
+│      - Tempco: 100ppm/°C max                                                  │
+│      - I_bias: 60µA to 15mA                                                   │
+│                                                                                 │
+│    ✅ WHY 3.0V INSTEAD OF 3.3V?                                               │
+│    ────────────────────────────                                                │
+│    • 3.0V is below the 3.3V rail, ensuring headroom for shunt operation       │
+│    • Standard precision reference value with good availability                │
+│    • ADC full-scale at 3.0V still provides excellent resolution               │
+│                                                                                 │
+│    Connection to NTC Pull-ups:                                                 │
+│    ──────────────────────────                                                  │
+│    R1 (Brew NTC) and R2 (Steam NTC) connect to ADC_VREF instead of 3.3V      │
+│    This eliminates supply voltage variations from temperature readings        │
+│                                                                                 │
+│    Test Point: TP2 provides access to ADC_VREF for calibration verification  │
 │                                                                                 │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -647,7 +726,8 @@ All relays use identical driver circuits with integrated indicator LEDs.
 │    Component Specifications:                                                   │
 │    ─────────────────────────                                                   │
 │    Q: MMBT2222A (SOT-23) - NPN transistor, Ic(max)=600mA, Vce(sat)<0.4V       │
-│    1N4007: Flyback diode, 1A, 1000V (DO-41 or MINIMELF)                       │
+│    UF4007: Fast flyback diode, 1A, 1000V, 75ns recovery (DO-41)               │
+│           ⚠️ v2.22: Upgraded from 1N4007 for faster relay contact opening    │
 │    LED: Green 0805, Vf=2.0V, If=6mA                                           │
 │    R20+n: 1kΩ 5% 0805 (base resistor)                                         │
 │    R30+n: 470Ω 5% 0805 (LED resistor - brighter than 1kΩ)                     │
@@ -655,8 +735,9 @@ All relays use identical driver circuits with integrated indicator LEDs.
 │                                                                                 │
 │    RELAY SELECTION (Optimized by load):                                       │
 │    ────────────────────────────────────                                       │
-│    K1 (LED): Panasonic APAN3105 - 3A @ 250V AC, 5V coil, slim 5mm width      │
-│              IEC61010 rated (reinforced insulation), ~40mA coil               │
+│    K1 (Mains Indicator): Panasonic APAN3105 - 3A @ 250V AC, 5V coil, slim 5mm│
+│              ⚠️ v2.22 CLARIFICATION: Switches mains indicator lamp            │
+│              on machine front panel (~100mA load). 3A relay is plenty.       │
 │    K2 (Pump): Omron G5LE-1A4 DC5 - 16A @ 250V AC, 5V coil, standard size     │
 │              DO NOT downsize - motor inrush needs robust contacts             │
 │    K3 (Solenoid): Panasonic APAN3105 - 3A @ 250V AC, 5V coil, slim 5mm       │
@@ -1962,15 +2043,44 @@ The control PCB provides a universal interface for connecting external power met
 │    │  1  │ 3V3   │ Power Out │ +3.3V     │ For 3.3V logic modules           │ │
 │    │  2  │ 5V    │ Power Out │ +5V       │ For 5V modules (PZEM, JSY)       │ │
 │    │  3  │ GND   │ Ground    │ GND       │ System ground                    │ │
-│    │  4  │ RX    │ Input     │ GPIO7     │ Data from meter (via 33Ω)        │ │
+│    │  4  │ RX    │ Input     │ GPIO7     │ Data from meter (via level shift)│ │
 │    │  5  │ TX    │ Output    │ GPIO6     │ Data to meter (via 33Ω)          │ │
 │    │  6  │ DE/RE │ Output    │ GPIO20    │ RS485 direction (TTL: NC)        │ │
+│                                                                                 │
+│    ⚠️ v2.22 CRITICAL FIX: 5V→3.3V LEVEL SHIFTING (PZEM RX LINE)              │
+│    ─────────────────────────────────────────────────────────────               │
+│    PZEM-004T and similar meters output 5V TTL. RP2350 is NOT 5V tolerant!    │
+│    Without level shifting, 5V signals will damage GPIO7 over time.           │
+│                                                                                 │
+│    SOLUTION: Resistive voltage divider on RX input                            │
+│                                                                                 │
+│         J17 Pin 4 (RX from meter - 5V)                                        │
+│              │                                                                 │
+│         ┌────┴────┐                                                           │
+│         │  2.2kΩ  │  R45 (upper divider)                                      │
+│         │   1%    │                                                           │
+│         └────┬────┘                                                           │
+│              │                                                                 │
+│              ├──────────[33Ω R45B]───────────► GPIO7 (PZEM_RX)               │
+│              │                                                                 │
+│         ┌────┴────┐                                                           │
+│         │  3.3kΩ  │  R45A (lower divider)                                     │
+│         │   1%    │                                                           │
+│         └────┬────┘                                                           │
+│              │                                                                 │
+│             GND                                                                │
+│                                                                                 │
+│    DIVIDER CALCULATION:                                                        │
+│    V_out = V_in × R_lower / (R_upper + R_lower)                               │
+│    V_out = 5V × 3.3kΩ / (2.2kΩ + 3.3kΩ) = 5V × 0.6 = 3.0V  ✓               │
+│                                                                                 │
+│    This safely converts 5V signals to ~3.0V (within RP2350's 3.3V range)     │
 │                                                                                 │
 │    TTL UART MODE (PZEM, JSY):                                                  │
 │    ──────────────────────────                                                  │
 │    • Connect Pin 2 (5V), Pin 3 (GND), Pin 4 (RX), Pin 5 (TX)                  │
 │    • Leave Pin 6 (DE/RE) unconnected                                          │
-│    • Direct connection to meter's UART pins                                   │
+│    • RX line automatically level-shifted via on-board resistor divider       │
 │                                                                                 │
 │    RS485 MODE (Eastron, Industrial):                                          │
 │    ──────────────────────────────────                                          │
@@ -2970,25 +3080,26 @@ GPIO22 is available on **J15 Pin 8 (SPARE)** for future expansion:
 
 ## 14.1 Integrated Circuits
 
-| Qty | Ref | Description           | Part Number     | Package  | Notes                                      |
-| --- | --- | --------------------- | --------------- | -------- | ------------------------------------------ |
-| 1   | U1  | Raspberry Pi Pico 2   | SC0942          | Module   | Or Pico 2 W (SC1632) for onboard WiFi      |
-| 1   | U2  | AC/DC Converter 5V 3A | HLK-15M05C      | Module   | Isolated, 15W/3A (alt: Mean Well IRM-20-5) |
-| 1   | U3  | 3.3V LDO Regulator    | AP2112K-3.3TRG1 | SOT-23-5 | 600mA                                      |
-| 1   | U4  | Thermocouple Amp      | MAX31855KASA+   | SOIC-8   | K-type                                     |
-| 1   | U6  | Rail-to-Rail Op-Amp   | OPA342UA        | SOIC-8   | Level probe oscillator (alt: OPA207)       |
-| 1   | U7  | Precision Comparator  | TLV3201AIDBVR   | SOT-23-5 | Level probe detector                       |
-| 1   | U8  | RS485 Transceiver     | MAX3485ESA+     | SOIC-8   | For industrial meters (alt: SP3485EN-L/TR) |
+| Qty | Ref | Description              | Part Number    | Package  | Notes                                        |
+| --- | --- | ------------------------ | -------------- | -------- | -------------------------------------------- |
+| 1   | U1  | Raspberry Pi Pico 2      | SC0942         | Module   | Or Pico 2 W (SC1632) for onboard WiFi        |
+| 1   | U2  | AC/DC Converter 5V 3A    | HLK-15M05C     | Module   | Isolated, 15W/3A (alt: Mean Well IRM-20-5)   |
+| 1   | U3  | 3.3V Sync Buck Converter | TPS563200DDCR  | SOT-23-6 | 3A, >90% eff. ⚠️ v2.22: Replaces AP2112K LDO |
+| 1   | U4  | Thermocouple Amp         | MAX31855KASA+  | SOIC-8   | K-type                                       |
+| 1   | U5  | Precision Voltage Ref    | LM4040DIM3-3.0 | SOT-23-3 | 3.0V shunt ref for ADC ⚠️ v2.22: NEW         |
+| 1   | U6  | Rail-to-Rail Op-Amp      | OPA342UA       | SOIC-8   | Level probe oscillator (alt: OPA207)         |
+| 1   | U7  | Precision Comparator     | TLV3201AIDBVR  | SOT-23-5 | Level probe detector                         |
+| 1   | U8  | RS485 Transceiver        | MAX3485ESA+    | SOIC-8   | For industrial meters (alt: SP3485EN-L/TR)   |
 
 ## 14.2 Transistors and Diodes
 
-| Qty | Ref     | Description    | Part Number | Package | Notes                       |
-| --- | ------- | -------------- | ----------- | ------- | --------------------------- |
-| 5   | Q1-Q5   | NPN Transistor | MMBT2222A   | SOT-23  | Relay (3) + SSR (2) drivers |
-| 3   | D1-D3   | Flyback Diode  | 1N4007      | DO-41   | K1, K2, K3 coil protection  |
-| 6   | D10-D15 | ESD Protection | PESD5V0S1BL | SOD-323 | Sensor inputs               |
-| 1   | D16     | Schottky Clamp | BAT54S      | SOT-23  | Pressure ADC overvoltage    |
-| 1   | D20     | TVS Diode      | SMBJ5.0A    | SMB     | 5V rail protection          |
+| Qty | Ref     | Description        | Part Number | Package | Notes                                           |
+| --- | ------- | ------------------ | ----------- | ------- | ----------------------------------------------- |
+| 5   | Q1-Q5   | NPN Transistor     | MMBT2222A   | SOT-23  | Relay (3) + SSR (2) drivers                     |
+| 3   | D1-D3   | Fast Flyback Diode | UF4007      | DO-41   | ⚠️ v2.22: Fast recovery (75ns) for snappy relay |
+| 6   | D10-D15 | ESD Protection     | PESD5V0S1BL | SOD-323 | Sensor inputs                                   |
+| 1   | D16     | Schottky Clamp     | BAT54S      | SOT-23  | Pressure ADC overvoltage                        |
+| 1   | D20     | TVS Diode          | SMBJ5.0A    | SMB     | 5V rail protection                              |
 
 ## 14.3 Passive Components - Resistors
 
@@ -3006,7 +3117,11 @@ GPIO22 is available on **J15 Pin 8 (SPARE)** for future expansion:
 | 3   | R30-R32 | 470Ω  | 5%        | 0805    | Relay Indicator LEDs (K1, K2, K3)              |
 | 2   | R34-R35 | 330Ω  | 5%        | 0805    | SSR Indicator LEDs (logic-side)                |
 | 4   | R40-R43 | 33Ω   | 5%        | 0805    | UART series (ESP32/Service)                    |
-| 2   | R44-R45 | 33Ω   | 5%        | 0805    | UART series (PZEM)                             |
+| 1   | R44     | 33Ω   | 5%        | 0805    | PZEM TX series                                 |
+| 1   | R45     | 2.2kΩ | 1%        | 0805    | ⚠️ v2.22: PZEM RX level shifter (upper)        |
+| 1   | R45A    | 3.3kΩ | 1%        | 0805    | ⚠️ v2.22: PZEM RX level shifter (lower)        |
+| 1   | R45B    | 33Ω   | 5%        | 0805    | PZEM RX series (after divider)                 |
+| 1   | R7      | 1kΩ   | 1%        | 0805    | ⚠️ v2.22: LM4040 bias resistor                 |
 | 2   | R46-R47 | 4.7kΩ | 5%        | 0805    | I2C pull-ups (SDA, SCL)                        |
 | 1   | R48     | 330Ω  | 5%        | 0805    | Status LED                                     |
 | 1   | R49     | 100Ω  | 5%        | 0805    | Buzzer                                         |
@@ -3035,9 +3150,12 @@ GPIO22 is available on **J15 Pin 8 (SPARE)** for future expansion:
 | Qty | Ref     | Value    | Voltage | Package      | Notes                                                        |
 | --- | ------- | -------- | ------- | ------------ | ------------------------------------------------------------ |
 | 1   | C1      | 100nF X2 | 275V AC | Radial       | Mains EMI filter                                             |
-| 1   | C2      | 470µF    | 6.3V    | Radial 6.3mm | 5V bulk, **Polymer** (low ESR, long life in hot environment) |
-| 1   | C4      | 47µF     | 10V     | 1206 Ceramic | 3.3V output                                                  |
-| 1   | C5      | 22µF     | 10V     | 1206 Ceramic | 3.3V analog                                                  |
+| 1   | C2      | 100µF    | 16V     | Radial 6.3mm | 5V bulk, **Polymer** (low ESR, long life in hot environment) |
+| 1   | C3      | 22µF     | 25V     | 1206 Ceramic | ⚠️ v2.22: Buck input cap (X5R)                               |
+| 2   | C4,C4A  | 22µF     | 10V     | 1206 Ceramic | ⚠️ v2.22: Buck output caps (X5R, parallel)                   |
+| 1   | C5      | 100nF    | 25V     | 0805 Ceramic | 3.3V decoupling                                              |
+| 1   | C7      | 22µF     | 10V     | 1206 Ceramic | ⚠️ v2.22: ADC reference bulk cap                             |
+| 1   | C7A     | 100nF    | 25V     | 0805 Ceramic | ⚠️ v2.22: ADC reference HF decoupling                        |
 | 12  | C10-C21 | 100nF    | 25V     | 0805         | Decoupling (general)                                         |
 | 1   | C60     | 100nF    | 25V     | 0805         | OPA342 VCC decoupling                                        |
 | 2   | C61-C62 | 100nF    | 25V     | 0805         | Level probe Wien bridge timing                               |
@@ -3048,17 +3166,23 @@ GPIO22 is available on **J15 Pin 8 (SPARE)** for future expansion:
 | 1   | C40     | 10nF     | 50V     | 0805         | Thermocouple filter                                          |
 | 1   | C70     | 100nF    | 25V     | 0805         | RS485 transceiver (U8) decoupling                            |
 
+## 14.4a Inductors (v2.22 Addition - Buck Converter)
+
+| Qty | Ref | Value | Saturation | DCR    | Package | Notes                                |
+| --- | --- | ----- | ---------- | ------ | ------- | ------------------------------------ |
+| 1   | L1  | 4.7µH | 3A min     | <100mΩ | 1210    | Buck inductor (Murata LQH32CN4R7M23) |
+
 ## 14.5 Electromechanical
 
-| Qty | Ref     | Description          | Part Number             | Notes                             |
-| --- | ------- | -------------------- | ----------------------- | --------------------------------- |
-| 2   | K1,K3   | Relay 5V 3A SPST-NO  | Panasonic APAN3105      | Slim 5mm, IEC61010, LED/Solenoid  |
-| 1   | K2      | Relay 5V 16A SPST-NO | Omron G5LE-1A4 DC5      | Standard size, Pump motor         |
-| 1   | F1      | Fuse 10A + Holder    | 0218010.MXP + 01000056Z | 5×20mm slow, PCB mount with cover |
-| 1   | RV1     | Varistor 275V        | S14K275                 | 14mm disc, mains surge protection |
-| 2   | RV2-RV3 | Varistor 275V        | S10K275                 | 10mm disc, K2/K3 arc suppression  |
-| 2   | SW1-SW2 | Tactile Switch       | EVQP7A01P               | SMD 6×6mm                         |
-| 1   | BZ1     | Passive Buzzer       | CEM-1203(42)            | 12mm                              |
+| Qty | Ref     | Description          | Part Number             | Notes                                    |
+| --- | ------- | -------------------- | ----------------------- | ---------------------------------------- |
+| 2   | K1,K3   | Relay 5V 3A SPST-NO  | Panasonic APAN3105      | Slim 5mm, K1=Indicator lamp, K3=Solenoid |
+| 1   | K2      | Relay 5V 16A SPST-NO | Omron G5LE-1A4 DC5      | Standard size, Pump motor                |
+| 1   | F1      | Fuse 10A + Holder    | 0218010.MXP + 01000056Z | 5×20mm slow, PCB mount with cover        |
+| 1   | RV1     | Varistor 275V        | S14K275                 | 14mm disc, mains surge protection        |
+| 2   | RV2-RV3 | Varistor 275V        | S10K275                 | 10mm disc, K2/K3 arc suppression         |
+| 2   | SW1-SW2 | Tactile Switch       | EVQP7A01P               | SMD 6×6mm                                |
+| 1   | BZ1     | Passive Buzzer       | CEM-1203(42)            | 12mm                                     |
 
 ## 14.6 LEDs
 

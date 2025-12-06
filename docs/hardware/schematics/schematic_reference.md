@@ -4,7 +4,7 @@
 
 **Board Size:** 130mm × 80mm (2-layer, 2oz copper)  
 **Enclosure:** 150mm × 100mm mounting area  
-**Revision:** Matches ECM_Control_Board_Specification_v2.md (v2.21)
+**Revision:** Matches ECM_Control_Board_Specification_v2.md (v2.22)
 
 ---
 
@@ -98,50 +98,101 @@
     C2:  470µF 6.3V Polymer (low ESR, long life in hot environment)
 ```
 
-## 1.3 5V to 3.3V LDO Regulator
+## 1.3 5V to 3.3V Synchronous Buck Converter (v2.22 Update)
+
+**⚠️ v2.22 CHANGE:** Replaced LDO (AP2112K) with synchronous buck converter (TPS563200)
+to eliminate thermal risk identified in engineering review.
 
 ```
-                                3.3V LDO REGULATOR
+                            3.3V SYNCHRONOUS BUCK CONVERTER
     ════════════════════════════════════════════════════════════════════════════
 
-                            U3: AP2112K-3.3TRG1
-                           ┌──────────────────┐
-                           │                  │
-    +5V ─────┬─────────────┤ VIN        VOUT  ├───────┬───────────────────► +3.3V
-             │             │                  │       │
-         C3  │             │       GND        │   C4  │   C5
-       ┌─────┴─────┐       │        │         │ ┌─────┴─────┐ ┌─────┐
-       │   100µF   │       └────────┼─────────┘ │   47µF    │ │100nF│
-       │   16V     │                │           │   10V     │ │ 25V │
-       │   Alum.   │                │           │  Ceramic  │ │     │
-       └─────┬─────┘                │           │   1206    │ └──┬──┘
-             │                      │           └─────┬─────┘    │
-            ─┴─                    ─┴─               ─┴─        ─┴─
-            GND                    GND               GND        GND
+                            U3: TPS563200DDCR
+                           ┌──────────────────────┐
+                           │                      │
+    +5V ─────┬─────────────┤ VIN            SW    ├────┬────[L1 4.7µH]────┬──► +3.3V
+             │             │                      │    │                   │
+         C3  │             │ EN              FB   ├────┼───────────────────┤
+       ┌─────┴─────┐       │        │             │    │                   │
+       │   22µF    │       │        ▼             │    │              ┌────┴────┐
+       │   25V     │       │       GND            │    │              │  22µF   │
+       │ Ceramic   │       └──────────────────────┘    │              │  10V    │
+       │  (X5R)    │                                   │              │  (C4)   │
+       └─────┬─────┘                                   │              └────┬────┘
+             │                                         │                   │
+            ─┴─                                        │              ┌────┴────┐
+            GND                                        │              │  22µF   │
+                                                       │              │  10V    │
+                                                       │              │  (C4A)  │
+                                                       │              └────┬────┘
+                                                      ─┴─                 ─┴─
+                                                      GND                 GND
 
-
-                        Ferrite Bead for Analog Section
-                        ───────────────────────────────
-
-    +3.3V ──────────┬───[FB1: 600Ω @ 100MHz]───┬──────────────────► +3.3V_ANALOG
-                    │                          │
-                C6  │                      C7  │
-              ┌─────┴─────┐              ┌─────┴─────┐
-              │   100nF   │              │   22µF    │
-              │    25V    │              │   10V     │
-              │  Ceramic  │              │  Ceramic  │
-              └─────┬─────┘              └─────┬─────┘
-                   ─┴─                        ─┴─
-                   GND                        GND
+    ✅ WHY BUCK INSTEAD OF LDO? (Engineering Review Fix)
+    ─────────────────────────────────────────────────────
+    LDO Problem: P = (5V - 3.3V) × I = 1.7V × I
+    At 250mA in hot environment: junction temp exceeds 125°C max
+    
+    Buck Solution: >90% efficient, minimal self-heating
+    Same footprint, better thermal reliability
 
     Component Values:
     ─────────────────
-    U3:  Diodes Inc. AP2112K-3.3TRG1, 600mA, SOT-23-5
-    C4:  47µF 10V Ceramic, 1206 (X5R or X7R)
-    C5:  100nF 25V Ceramic, 0805
+    U3:  TI TPS563200DDCR, 3A sync buck, SOT-23-6
+    L1:  4.7µH, 3A saturation, DCR<100mΩ (Murata LQH32CN4R7M23)
+    C3:  22µF 25V X5R Ceramic, 1206 (input)
+    C4:  22µF 10V X5R Ceramic, 1206 (output)
+    C4A: 22µF 10V X5R Ceramic, 1206 (output, parallel for ripple)
+```
+
+## 1.4 Precision ADC Voltage Reference (v2.22 Addition)
+
+**Purpose:** Provides stable reference for NTC measurements, eliminating supply drift errors.
+
+```
+                            PRECISION ADC VOLTAGE REFERENCE
+    ════════════════════════════════════════════════════════════════════════════
+
+    +3.3V
+       │
+    ┌──┴──┐
+    │ 1kΩ │  R7 - Bias resistor
+    │ 1%  │  I = (3.3V - 3.0V) / 1kΩ = 0.3mA
+    └──┬──┘
+       │
+       ├────────────────────────┬────────────────────────────► ADC_VREF (3.0V)
+       │                        │                                    │
+    ┌──┴──┐                ┌────┴────┐                          ┌────┴────┐
+    │LM4040│               │  22µF   │  C7                      │  100nF  │ C7A
+    │ 3.0V │  U5           │  10V    │                          │  25V    │
+    │ Ref  │               │ Ceramic │                          │ Ceramic │
+    └──┬──┘                └────┬────┘                          └────┬────┘
+       │                        │                                    │
+      ─┴─                      ─┴─                                  ─┴─
+      GND                      GND                                  GND
+
+
+                        Ferrite Bead for ADC Reference
+                        ───────────────────────────────
+
+    +3.3V ──────────────[FB1: 600Ω @ 100MHz]──────────► to R7 (above)
+
+    This isolates the precision reference from digital switching noise.
+
+    Component Values:
+    ─────────────────
+    U5:  TI LM4040DIM3-3.0, 3.0V shunt ref, SOT-23-3
+    R7:  1kΩ 1%, 0805 (bias resistor)
     FB1: Murata BLM18PG601SN1D, 600Ω @ 100MHz, 0603
-    C6:  100nF 25V Ceramic, 0805
-    C7:  22µF 10V Ceramic, 1206
+    C7:  22µF 10V X5R Ceramic, 1206 (bulk)
+    C7A: 100nF 25V Ceramic, 0805 (HF decoupling)
+
+    Connection to NTC Pull-ups:
+    ──────────────────────────
+    R1 (Brew NTC) and R2 (Steam NTC) connect to ADC_VREF (3.0V)
+    instead of 3.3V rail. This eliminates supply variations.
+
+    Test Point: TP2 provides access to ADC_VREF for verification.
 ```
 
 ---
@@ -302,11 +353,15 @@
     Component Values:
     ─────────────────
     K1, K3: Panasonic APAN3105 (5V coil, 3A contacts, slim 5mm, IEC61010)
-            • K1 (LED): ~100mA load, 3A relay is plenty
-            • K3 (Solenoid): ~0.5A load, 3A relay is plenty
+            • K1 (Indicator Lamp): ~100mA load, 3A relay is plenty
+              ⚠️ v2.22 CLARIFICATION: Switches mains indicator lamp (low current)
+            • K3 (Solenoid): ~0.5A load, 3A rating is plenty
     K2:     Omron G5LE-1A4 DC5 (5V coil, 16A contacts, standard size)
             • Pump motor needs robust contacts for inrush current
-    D1-D3:  1N4007 (1A, 1000V) or LL4007 MINIMELF
+    D1-D3:  UF4007 (1A, 1000V, 75ns fast recovery) - DO-41
+            ⚠️ v2.22 UPGRADE: Fast recovery for snappier relay contact opening
+            • Standard 1N4007 causes slow coil decay → "lazy" contact opening
+            • UF4007 faster recovery reduces arc time at relay contacts
     Q1-Q3:  MMBT2222A (SOT-23)
     LED1-3: Green 0805, Vf~2.0V
     R20-22: 1kΩ 5% 0805 (transistor base)
@@ -1239,17 +1294,45 @@
     Pin 1: 3V3    → Power for 3.3V logic modules
     Pin 2: 5V     → Power for 5V modules (PZEM, JSY)
     Pin 3: GND    → System ground
-    Pin 4: RX     → GPIO7 (from meter TX, via 33Ω R44)
-    Pin 5: TX     → GPIO6 (to meter RX, via 33Ω R45)
+    Pin 4: RX     → GPIO7 (from meter TX, via level shifter)
+    Pin 5: TX     → GPIO6 (to meter RX, via 33Ω R44)
     Pin 6: DE/RE  → GPIO20 (RS485 direction control)
+
+
+    ⚠️ v2.22 CRITICAL FIX: 5V→3.3V LEVEL SHIFTING (PZEM RX LINE)
+    ─────────────────────────────────────────────────────────────
+    PZEM-004T outputs 5V TTL. RP2350 GPIO is NOT 5V tolerant!
+    Without level shifting, 5V signals cause GPIO damage over time.
+
+    SOLUTION: Resistive voltage divider on J17-4 (RX input):
+
+         J17 Pin 4 (5V from PZEM TX)
+              │
+         ┌────┴────┐
+         │  2.2kΩ  │  R45 (upper)
+         │   1%    │
+         └────┬────┘
+              │
+              ├──────[33Ω R45B]─────────────► GPIO7 (PZEM_RX)
+              │
+         ┌────┴────┐
+         │  3.3kΩ  │  R45A (lower)
+         │   1%    │
+         └────┬────┘
+              │
+             GND
+
+    V_out = 5V × 3.3k / (2.2k + 3.3k) = 5V × 0.6 = 3.0V ✓
 
 
     COMPONENT VALUES:
     ─────────────────
     U8:     MAX3485ESA+ or SP3485EN-L/TR (SOIC-8 or SOT-23-8)
     C70:    100nF 25V Ceramic, 0805 (U8 decoupling)
-    R44:    33Ω 5%, 0805 (RX series protection)
-    R45:    33Ω 5%, 0805 (TX series protection)
+    R44:    33Ω 5%, 0805 (TX series protection)
+    R45:    2.2kΩ 1%, 0805 (⚠️ v2.22: RX level shift upper)
+    R45A:   3.3kΩ 1%, 0805 (⚠️ v2.22: RX level shift lower)
+    R45B:   33Ω 5%, 0805 (RX series after divider)
     R99:    120Ω 1%, 0805 (RS485 termination, via JP1)
     JP1:    Solder jumper for termination (default: open)
     J17:    JST-XH 6-pin header (B6B-XH-A)
@@ -1259,7 +1342,7 @@
     ────────────────────────────────────────
     • U8 can be bypassed or GPIO6/7 routed directly to J17-4/5
     • GPIO20 (DE/RE) not connected or held LOW
-    • Direct 3.3V/5V logic levels between Pico and meter
+    • RX line level-shifted via on-board resistor divider (safe for RP2350)
 
 
     RS485 MODE (Eastron, Industrial):

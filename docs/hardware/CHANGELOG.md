@@ -2,14 +2,103 @@
 
 ## Revision History
 
-| Rev    | Date     | Description                                            |
-| ------ | -------- | ------------------------------------------------------ |
-| 2.21.1 | Dec 2025 | **CURRENT** - Pico 2 compatibility fixes, power supply |
-| 2.21   | Dec 2025 | External power metering, multi-machine NTC support     |
-| 2.20   | Dec 2025 | Unified 22-pos screw terminal (J26)                    |
-| 2.19   | Dec 2025 | Removed spare relay K4                                 |
-| 2.17   | Nov 2025 | Brew-by-weight support (J15 8-pin)                     |
-| 2.16   | Nov 2025 | Production-ready specification                         |
+| Rev    | Date     | Description                                                       |
+| ------ | -------- | ----------------------------------------------------------------- |
+| 2.22   | Dec 2025 | **CURRENT** - Engineering review fixes (thermal, GPIO protection) |
+| 2.21.1 | Dec 2025 | Pico 2 compatibility fixes, power supply                          |
+| 2.21   | Dec 2025 | External power metering, multi-machine NTC support                |
+| 2.20   | Dec 2025 | Unified 22-pos screw terminal (J26)                               |
+| 2.19   | Dec 2025 | Removed spare relay K4                                            |
+| 2.17   | Nov 2025 | Brew-by-weight support (J15 8-pin)                                |
+| 2.16   | Nov 2025 | Production-ready specification                                    |
+
+---
+
+## v2.22 (December 2025)
+
+**Engineering Design Review Fixes - Thermal & GPIO Protection**
+
+This revision addresses critical issues identified in an independent engineering design qualification and reliability analysis of the RP2350-based control system.
+
+### 🔴 Critical Engineering Change Orders (ECOs)
+
+#### 1. Power Regulator: LDO → Synchronous Buck Converter
+
+| Component | Old (v2.21)      | New (v2.22)       | Reason                                      |
+| --------- | ---------------- | ----------------- | ------------------------------------------- |
+| **U3**    | AP2112K-3.3 LDO  | TPS563200DDCR     | LDO thermal risk in hot environment         |
+| **L1**    | (none)           | 4.7µH inductor    | Required for buck topology                  |
+| **C3**    | 100µF Alum       | 22µF Ceramic X5R  | Buck input cap                              |
+| **C4**    | 47µF Ceramic     | 22µF Ceramic X5R  | Buck output cap                             |
+| **C4A**   | (none)           | 22µF Ceramic X5R  | Parallel output cap for low ripple          |
+
+**Problem:** SOT-23-5 LDO dissipates P = (5V - 3.3V) × I = 1.7W × I. At 250mA load in 60°C ambient, junction temperature exceeds 125°C maximum rating, causing thermal shutdown.
+
+**Solution:** Synchronous buck converter at >90% efficiency reduces heat by 10×. Same footprint complexity, vastly improved thermal reliability.
+
+#### 2. PZEM Interface: 5V→3.3V Level Shifting
+
+| Component | Old (v2.21) | New (v2.22)              | Reason                                 |
+| --------- | ----------- | ------------------------ | -------------------------------------- |
+| **R45**   | 33Ω series  | 2.2kΩ (upper divider)    | RP2350 GPIO is NOT 5V tolerant         |
+| **R45A**  | (none)      | 3.3kΩ (lower divider)    | Creates voltage divider                |
+| **R45B**  | (none)      | 33Ω (series after div)   | ESD protection after divider           |
+
+**Problem:** PZEM-004T outputs 5V TTL signals. RP2350 internal protection diodes conduct at ~3.6V, stressing silicon and causing long-term GPIO degradation or latch-up.
+
+**Solution:** Resistive divider: V_out = 5V × 3.3k / (2.2k + 3.3k) = 3.0V (safe for 3.3V GPIO).
+
+#### 3. Relay K1 Function Clarification
+
+| Aspect          | Old (v2.21)               | New (v2.22)                              |
+| --------------- | ------------------------- | ---------------------------------------- |
+| **Description** | "Water LED relay"         | "Mains indicator lamp relay"             |
+| **Load Type**   | Ambiguous                 | Mains indicator lamp (~100mA)            |
+| **Relay**       | APAN3105 (3A slim)        | APAN3105 (3A slim) - unchanged           |
+
+**Clarification:** K1 switches a mains-powered indicator lamp on the machine front panel (~100mA load). The 3A slim relay (APAN3105) is appropriate for this low-current application. The relay is required because the indicator is mains-level, but the current draw is minimal.
+
+### 🟡 Reliability Enhancements
+
+#### 4. Fast Flyback Diodes
+
+| Component | Old (v2.21) | New (v2.22) | Reason                                    |
+| --------- | ----------- | ----------- | ----------------------------------------- |
+| **D1-D3** | 1N4007      | UF4007      | Fast recovery (75ns) for snappy contacts  |
+
+**Improvement:** Standard 1N4007 has slow reverse recovery, causing relay coil current to decay slowly ("lazy" contact opening). UF4007 fast recovery diode dissipates stored energy faster, resulting in snappier relay contact separation and reduced arcing on mains-side contacts.
+
+#### 5. Precision ADC Voltage Reference
+
+| Component | Old (v2.21)                | New (v2.22)                 | Reason                          |
+| --------- | -------------------------- | --------------------------- | ------------------------------- |
+| **U5**    | (none)                     | LM4040DIM3-3.0              | Precision 3.0V shunt reference  |
+| **R7**    | (none)                     | 1kΩ 1% (bias)               | Sets reference operating point  |
+| **C7**    | 22µF on 3.3V_A             | 22µF on ADC_VREF            | Bulk cap for reference          |
+| **C7A**   | (none)                     | 100nF (HF decoupling)       | Reference noise filtering       |
+| **FB1**   | 3.3V → 3.3V_A              | 3.3V → ADC_VREF (via R7)    | Isolates reference from noise   |
+| **R1,R2** | Pull-up to 3.3V_A          | Pull-up to ADC_VREF         | Uses precision reference        |
+| **TP2**   | (none)                     | ADC_VREF test point         | Calibration verification        |
+
+**Improvement:** Using the 3.3V rail as ADC reference couples regulator thermal drift into temperature measurements. The LM4040 provides a stable 3.0V ±0.5% reference with 100ppm/°C tempco, significantly improving temperature measurement accuracy and stability.
+
+### Component Summary (v2.22 Changes)
+
+| Category       | Added                                              | Changed                              | Removed |
+| -------------- | -------------------------------------------------- | ------------------------------------ | ------- |
+| **ICs**        | U5 (LM4040DIM3-3.0)                                | U3 (AP2112K → TPS563200)             | -       |
+| **Inductors**  | L1 (4.7µH)                                         | -                                    | -       |
+| **Resistors**  | R7, R45A, R45B                                     | R45 (33Ω → 2.2kΩ)                    | -       |
+| **Capacitors** | C4A, C7A                                           | C3 (100µF → 22µF), C4, C7            | -       |
+| **Diodes**     | -                                                  | D1-D3 (1N4007 → UF4007)              | -       |
+| **Relays**     | -                                                  | K1 description clarified             | -       |
+| **Test Points**| TP2 (ADC_VREF)                                     | -                                    | -       |
+
+### Design Verdict
+
+**Status:** Approved for production (pending verification of changes)
+
+The engineering review identified this design as fundamentally sound with excellent practices in several areas (Wien bridge level sensor, snubber networks). With the implementation of these thermal and logic-level protections, the design is qualified as a high-reliability platform suitable for commercial/prosumer applications.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Custom control PCB for ECM Synchronika dual-boiler espresso machine.
 
-**Current Version:** 2.21 (December 2025)
+**Current Version:** 2.22 (December 2025)
 
 ---
 

@@ -192,7 +192,7 @@ Verify the transistor driver can reliably switch relay coils from a 3.3V GPIO si
             └────┬────┘                               ┌────┴────┐
                  │                                    │   LED   │
             ┌────┴────┐                               │  Green  │
-            │ 1N4007  │ ← Flyback diode               └────┬────┘
+            │ UF4007  │ ← Fast flyback diode               └────┬────┘
             └────┬────┘                                    │
                  │                                         │
                  └─────────────────────┬───────────────────┤
@@ -761,7 +761,8 @@ while True:
 | ---- | ------------------------- | --------------------- | ----------------- | -------- | ---- |
 | 1    | Apply 5V @ 500mA limit    | Supply current        | <100mA            | \_\_\_mA |      |
 | 2    | Verify 5V rail            | Voltage at VSYS       | 5.0V ±5%          | \_\_\_V  |      |
-| 3    | Verify 3.3V LDO output    | Voltage at 3V3        | 3.3V ±3%          | \_\_\_V  |      |
+| 3    | Verify 3.3V buck output   | Voltage at 3V3        | 3.3V ±3%          | \_\_\_V  |      |
+| 3a   | Verify ADC reference      | Voltage at TP2        | 3.0V ±0.5%        | \_\_\_V  |      |
 | 4    | Check for hot components  | Touch test (careful!) | All cool          |          |      |
 | 5    | Connect Pico module       | Observe USB LED       | Pico LED flashes  |          |      |
 | 6    | Verify USB enumeration    | Computer detects      | "RPI-RP2" or Pico |          |      |
@@ -1086,7 +1087,7 @@ Connect all sensors but do NOT connect mains loads. **All sensors connect to uni
 | Shunt overheating | 5W rating (20× margin) |          |
 | Relay coil heat   | Spacing adequate       |          |
 | AC/DC module heat | Ventilation space      |          |
-| LDO overheating   | Thermal vias present   |          |
+| Buck regulator    | Minimal heat (>90% eff)|          |
 
 ## Signal Integrity
 
