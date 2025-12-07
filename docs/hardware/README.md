@@ -8,15 +8,41 @@ Custom control PCB for ECM Synchronika dual-boiler espresso machine.
 
 ## 📋 Document Index
 
-| Document                                                                 | Description                                                         |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| [**Specification.md**](Specification.md)                                 | Complete PCB design specification (BOM, GPIO, circuits, connectors) |
-| [**Schematic_Reference.md**](schematics/Schematic_Reference.md)          | Detailed circuit schematics and component values                    |
-| [**Component Reference Guide**](schematics/Component_Reference_Guide.md) | Component numbering scheme and cross-reference tables               |
-| [**netlist.csv**](schematics/netlist.csv)                                | Machine-readable component list and net connections                 |
-| [**Test_Procedures.md**](Test_Procedures.md)                             | Manufacturing test procedures and validation                        |
-| [**ESP32_Wiring.md**](ESP32_Wiring.md)                                   | ESP32 display module wiring guide                                   |
-| [**CHANGELOG.md**](CHANGELOG.md)                                         | Version history and design changes                                  |
+### Main Specification
+
+| Document | Description |
+|----------|-------------|
+| [**Specification.md**](Specification.md) | **Start here** - Overview and navigation to all sections |
+
+### Detailed Specifications (`spec/` folder)
+
+| Document | Description |
+|----------|-------------|
+| [Overview](spec/01-Overview.md) | System architecture, design goals, electrical specs |
+| [GPIO Allocation](spec/02-GPIO-Allocation.md) | Complete Pico 2 pin mapping, RP2350 errata |
+| [Power Supply](spec/03-Power-Supply.md) | AC/DC isolation, buck converter, ADC reference |
+| [Outputs](spec/04-Outputs.md) | Relay drivers, SSR triggers, indicator LEDs |
+| [Analog Inputs](spec/05-Analog-Inputs.md) | NTC thermistors, pressure transducer |
+| [Connectors](spec/06-Connectors.md) | J1-J26 pinouts, wiring diagrams |
+| [BOM](spec/07-BOM.md) | Complete bill of materials |
+| [PCB Layout](spec/08-PCB-Layout.md) | Layout guidelines, trace widths, zones |
+| [Safety](spec/09-Safety.md) | Protection circuits, compliance |
+
+### Schematics & Reference
+
+| Document | Description |
+|----------|-------------|
+| [Schematic Reference](schematics/Schematic_Reference.md) | Detailed ASCII circuit schematics |
+| [Component Reference](schematics/Component_Reference_Guide.md) | Component numbering and cross-reference |
+| [netlist.csv](schematics/netlist.csv) | Machine-readable net connections |
+
+### Testing & Support
+
+| Document | Description |
+|----------|-------------|
+| [Test Procedures](Test_Procedures.md) | Manufacturing test and validation |
+| [ESP32 Wiring](ESP32_Wiring.md) | Display module integration |
+| [CHANGELOG](CHANGELOG.md) | Version history and design changes |
 
 ---
 
@@ -80,7 +106,7 @@ Plug & play replacement for the factory GICAR control board and PID controller:
 
 ### PCB Components (on board)
 
-See [Specification.md Section 14](Specification.md#14-bill-of-materials) for complete BOM.
+See [BOM](spec/07-BOM.md) for complete bill of materials.
 
 ### User-Supplied (external)
 
