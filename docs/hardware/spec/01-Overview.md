@@ -77,13 +77,14 @@ This specification defines a custom control PCB to replace the factory GICAR con
 
 ### Input Power
 
-| Parameter       | Specification                            |
-| --------------- | ---------------------------------------- |
-| Input Voltage   | 100-240V AC ±10%                         |
-| Frequency       | 50/60 Hz                                 |
-| Maximum Current | 16A (total machine load through relays)  |
-| Power Factor    | >0.9 (machine dependent)                 |
-| Inrush Current  | Limited by machine's existing protection |
+| Parameter            | Specification                            |
+| -------------------- | ---------------------------------------- |
+| Input Voltage        | 100-240V AC ±10%                         |
+| Frequency            | 50/60 Hz                                 |
+| Maximum Current      | 16A (total machine load through relays)  |
+| Power Factor         | >0.9 (machine dependent)                 |
+| Inrush Current       | Limited by machine's existing protection |
+| Transient Tolerance  | ±1kV differential, ±2kV common-mode (IEC 61000-4-5), protected by MOV (S14K275) |
 
 ### Output Power Rails
 

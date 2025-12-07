@@ -175,6 +175,68 @@ If your debug board has test points (like TX1, RX1, TX2, RX2, PBZ, etc.), you ca
 
 ⚠️ **Important:** ESP32 modules have onboard 3.3V LDO. Do NOT power ESP32 from Pico's 3.3V rail - use 5V from J15 Pin 1.
 
+---
+
+## USB Debugging Safety
+
+### ⚠️ CRITICAL SAFETY WARNING
+
+**NEVER connect a USB cable to the ESP32 or Pico debug ports while the machine is powered from mains AC.**
+
+### Why This Is Dangerous
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         USB DEBUG GROUND LOOP HAZARD                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   Espresso Machine                        Your Computer                      │
+│   ┌─────────────────┐                     ┌─────────────────┐               │
+│   │                 │                     │                 │               │
+│   │   MAINS AC      │                     │   USB Port      │               │
+│   │   100-240V      │                     │   (5V, GND)     │               │
+│   │       │         │                     │       │         │               │
+│   │       ▼         │                     │       │         │               │
+│   │   Control PCB   │     USB Cable       │   Laptop GND    │               │
+│   │   GND ──────────┼─────────────────────┼──► tied to AC   │               │
+│   │                 │                     │      ground     │               │
+│   └─────────────────┘                     └─────────────────┘               │
+│                                                                              │
+│   ⚡ GROUND LOOP: Machine chassis → USB GND → Laptop → AC outlet ground     │
+│   ⚡ RISK: Voltage potential between grounds can damage equipment or cause  │
+│           electric shock if machine has a fault condition                    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Safe Debugging Practices
+
+| Scenario | Safe? | Notes |
+|----------|-------|-------|
+| USB debug while machine **unplugged** | ✅ Yes | Preferred method for firmware development |
+| USB debug while machine on **mains AC** | ❌ NO | Ground loop hazard, potential equipment damage |
+| USB debug with **isolation transformer** | ✅ Yes | Isolates machine from mains ground |
+| Wireless debug (WiFi/BLE) while on mains | ✅ Yes | No galvanic connection to PC |
+
+### Recommended Debug Workflow
+
+1. **Power off and unplug** the espresso machine from mains
+2. **Connect USB** to ESP32 or Pico debug port
+3. **Power the board** via USB only (5V from PC)
+4. **Flash firmware** and test basic functionality
+5. **Disconnect USB** before restoring mains power
+6. **Use WiFi/OTA** for debugging when machine is powered
+
+### Alternative: USB Isolator
+
+If you must debug while powered, use a **USB isolator** module:
+
+- **Recommended:** Adafruit USB Isolator (ADuM3160-based)
+- **Isolation:** 2500V RMS
+- **Speed:** USB 2.0 Full Speed (sufficient for serial debug)
+
+**Note:** USB isolators add latency and may not support all USB features. OTA updates are preferred for production debugging.
+
 ## Cable Assembly
 
 ### Recommended Cable

@@ -20,6 +20,14 @@ The Raspberry Pi Pico handles real-time machine control for the BrewOS coffee ma
 | [Power Metering](Power_Metering.md)                           | Hardware power meter integration |
 | [Versioning](Versioning.md)                                   | Version management               |
 
+## Safety
+
+| Document                            | Description                              |
+| ----------------------------------- | ---------------------------------------- |
+| [Class B Safety](Class_B_Safety.md) | IEC 60730/60335 Annex R compliance       |
+
+> **Note:** Class B self-test routines (RAM, Flash CRC, CPU, I/O, Clock) are implemented but **not certified**. See documentation for details.
+
 ## Features
 
 | Document                                         | Description        |
@@ -59,6 +67,7 @@ make
 docs/pico/
 ├── README.md                    # This file
 ├── Architecture.md              # System architecture
+├── Class_B_Safety.md            # IEC 60730/60335 Class B safety
 ├── Implementation_Plan.md       # Development roadmap
 ├── Debugging.md                 # Debug strategies
 ├── Requirements.md              # Functional requirements
