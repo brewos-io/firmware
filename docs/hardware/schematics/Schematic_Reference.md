@@ -279,38 +279,57 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
                │                │           │                │
                │     ┌──────────┤ GP0   GP28├────────────────┼─► ADC2 (Pressure)
                │     │          │           │                │
-    ESP32_TX◄──┼─────┤          │ GP1   GP27├────────────────┼─► ADC1 (Steam NTC)
+    ESP32_TX ◄─┼─────┤          │ GP1   GP27├────────────────┼─► ADC1 (Steam NTC)
                │     │          │           │                │
     ESP32_RX ──┼─────┤          │ GP2   GP26├────────────────┼─► ADC0 (Brew NTC)
                │     │          │           │                │
-               │     │          │ GP3   RUN ├────────────────┼── SW1 (Reset)
+   WATER_SW ◄──┼─────┤          │ GP3   RUN ├────────────────┼── SW1 (Reset)
                │     │          │           │                │
-               │     │          │ GP4  GP22 ├────────────────┼── (Spare)
+   TANK_LVL ◄──┼─────┤          │ GP4  GP22 ├────────────────┼── (Spare/Expansion)
                │     │          │           │                │
-               │     │          │ GP5  GP21 ├────────────────┼── (Spare)
+   LEVEL_PRB◄──┼─────┤          │ GP5  GP21 ├────────────────┼◄─ WEIGHT_STOP (ESP32)
                │     │          │           │                │
-               │     │          │ GP6  GP20 ├────────────────┼─► (spare)
+   BREW_SW ◄───┼─────┤          │ GP6  GP20 ├────────────────┼─► RS485 DE/RE
                │     │          │           │                │
-               │     │          │ GP7  GP19 ├────────────────┼─► BUZZER
+   METER_TX ──►┼─────┤          │ GP7  GP19 ├────────────────┼─► BUZZER (PWM)
                │     │          │           │                │
-               │     │          │ GP8  GP18 ├────────────────┼─► SPI_SCK
+   METER_RX ◄──┼─────┤          │ GP8  GP18 ├────────────────┼── SPI_SCK (Spare)
                │     │          │           │                │
-               │     │          │ GP9  GP17 ├────────────────┼─► SPI_CS
+   I2C_SDA ◄──►┼─────┤          │ GP9  GP17 ├────────────────┼── SPI_CS (Spare)
                │     │          │           │                │
-               │     │          │ GP10 GP16 ├────────────────┼─► SPI_MISO
+   I2C_SCL ───►┼─────┤          │ GP10 GP16 ├────────────────┼── SPI_MISO (Spare)
                │     │          │           │                │
-               │     │          │ GP11 GP15 ├────────────────┼─► STATUS_LED
+   RELAY_K1 ◄──┼─────┤          │ GP11 GP15 ├────────────────┼─► STATUS_LED
                │     │          │           │                │
-               │     │          │ GP12 GP14 ├────────────────┼─► SSR2_STEAM
+   RELAY_K2 ◄──┼─────┤          │ GP12 GP14 ├────────────────┼─► SSR2_STEAM
                │     │          │           │                │
-               │     │          │ GP13 BOOT ├────────────────┼── SW2 (Bootsel)
-               │                │           │                │
-               │                │ GND   GND │                │
+   RELAY_K3 ◄──┼─────┤          │ GP13 BOOT ├────────────────┼── SW2 (Bootsel)
+               │     │          │           │                │
+   SSR1_BREW◄──┼─────┤          │ GND   GND │                │
                │                │     │     │                │
                └────────────────┴─────┼─────┴────────────────┘
                                       │
                                      ─┴─
                                      GND
+
+    GPIO Pin Summary:
+    ─────────────────
+    LEFT SIDE (Active Functions)              RIGHT SIDE (Analog + Spare)
+    ────────────────────────────              ──────────────────────────
+    GP0  = UART0 TX → ESP32                   GP28 = ADC2 (Pressure 0.5-4.5V)
+    GP1  = UART0 RX ← ESP32                   GP27 = ADC1 (Steam NTC)
+    GP2  = Water Reservoir Switch             GP26 = ADC0 (Brew NTC)
+    GP3  = Tank Level Sensor                  RUN  = Reset button
+    GP4  = Steam Level (Comparator)           GP22 = Spare/Expansion
+    GP5  = Brew Handle Switch                 GP21 = WEIGHT_STOP (ESP32→Pico)
+    GP6  = Meter TX (UART1)                   GP20 = RS485 DE/RE
+    GP7  = Meter RX (UART1)                   GP19 = Buzzer (PWM)
+    GP8  = I2C0 SDA (Accessory)               GP18 = SPI_SCK (Spare)
+    GP9  = I2C0 SCL (Accessory)               GP17 = SPI_CS (Spare)
+    GP10 = Relay K1 (Lamp)                    GP16 = SPI_MISO (Spare)
+    GP11 = Relay K2 (Pump)                    GP15 = Status LED
+    GP12 = Relay K3 (Solenoid)                GP14 = SSR2 (Steam)
+    GP13 = SSR1 (Brew)                        BOOT = Bootsel button
 
     Decoupling Capacitors (place adjacent to Pico):
     ───────────────────────────────────────────────
