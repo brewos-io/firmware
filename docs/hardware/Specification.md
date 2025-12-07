@@ -40,13 +40,13 @@
 
 ### Key Specifications
 
-| Parameter     | Value                        |
-| ------------- | ---------------------------- |
-| Input Voltage | 100-240V AC, 50/60Hz         |
-| Output Rails  | 5V DC (3A), 3.3V DC (500mA)  |
-| Isolation     | 3000V AC (reinforced)        |
+| Parameter     | Value                             |
+| ------------- | --------------------------------- |
+| Input Voltage | 100-240V AC, 50/60Hz              |
+| Output Rails  | 5V DC (3A), 3.3V DC (500mA)       |
+| Isolation     | 3000V AC (reinforced)             |
 | PCB Size      | **80mm × 80mm** (target), 2-layer |
-| MCU           | Raspberry Pi Pico 2 (RP2350) |
+| MCU           | Raspberry Pi Pico 2 (RP2350)      |
 
 ### Interfaces
 
