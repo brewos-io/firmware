@@ -112,6 +112,7 @@ set(COMMON_SOURCES
     src/cleaning.c
     src/bootloader.c
     src/diagnostics.c         # Hardware diagnostics tests
+    src/class_b.c             # Class B safety self-tests (IEC 60730)
 )
 
 # -----------------------------------------------------------------------------
