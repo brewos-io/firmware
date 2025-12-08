@@ -32,6 +32,7 @@
 BrewOS is an open-source control system designed to replace factory controllers in espresso machines. It provides enhanced temperature control, real-time monitoring, and modern features while maintaining safety as the top priority.
 
 **Why BrewOS?**
+
 - 🎯 **Precise PID Control** - Sub-degree temperature stability for consistent shots
 - 📱 **WiFi Connected** - Monitor and control via web interface
 - 🔧 **Multi-Machine Support** - One firmware for dual boiler, single boiler, and HX machines
@@ -44,12 +45,14 @@ BrewOS is an open-source control system designed to replace factory controllers 
 ## Features
 
 ### Temperature Control
+
 - Dual independent PID loops for brew and steam boilers
 - Configurable heating strategies (parallel, sequential, smart stagger)
 - Group head temperature monitoring via thermocouple
 - Pre-infusion support with configurable timing
 
 ### Connectivity
+
 - Built-in WiFi access point for initial setup
 - Web-based dashboard for monitoring and control
 - Real-time WebSocket updates
@@ -58,6 +61,7 @@ BrewOS is an open-source control system designed to replace factory controllers 
 - **Push Notifications** - Receive alerts when your machine needs attention
 
 ### Safety
+
 - Hardware watchdog timer (2-second timeout)
 - Water level interlocks
 - Over-temperature protection (165°C max)
@@ -65,6 +69,7 @@ BrewOS is an open-source control system designed to replace factory controllers 
 - Extensive error logging
 
 ### Monitoring
+
 - Real-time temperature graphs
 - Pressure monitoring
 - Shot timer with statistics
@@ -77,12 +82,12 @@ BrewOS is an open-source control system designed to replace factory controllers 
 
 ![BrewOS System Architecture](docs/images/architecture.png)
 
-| Layer | Components | Purpose |
-|-------|------------|---------|
-| **Cloud** | Google OAuth, Node.js, SQLite | Remote access via WebSocket relay |
-| **ESP32-S3** | WiFi, Web Server, MQTT, BLE, LVGL | Connectivity & UI hub |
-| **Pico RP2040** | PID, Boiler, Pump, Valve control | Real-time machine control |
-| **Hardware** | SSRs, Sensors, Valves | Physical machine interface |
+| Layer           | Components                        | Purpose                           |
+| --------------- | --------------------------------- | --------------------------------- |
+| **Cloud**       | Google OAuth, Node.js, SQLite     | Remote access via WebSocket relay |
+| **ESP32-S3**    | WiFi, Web Server, MQTT, BLE, LVGL | Connectivity & UI hub             |
+| **Pico RP2040** | PID, Boiler, Pump, Valve control  | Real-time machine control         |
+| **Hardware**    | SSRs, Sensors, Valves             | Physical machine interface        |
 
 **Pico Dual-Core Design:**
 | Core | Responsibility | Timing |
@@ -98,12 +103,12 @@ BrewOS is an open-source control system designed to replace factory controllers 
 
 BrewOS supports multiple espresso machine architectures through compile-time configuration:
 
-| Machine Type | Status | Examples |
-|--------------|--------|----------|
-| **Dual Boiler** | ✅ Supported | ECM Synchronika, Profitec Pro 700, Lelit Bianca |
-| **Single Boiler** | ✅ Supported | ECM Barista, Profitec Pro 300, Rancilio Silvia |
+| Machine Type       | Status       | Examples                                         |
+| ------------------ | ------------ | ------------------------------------------------ |
+| **Dual Boiler**    | ✅ Supported | ECM Synchronika, Profitec Pro 700, Lelit Bianca  |
+| **Single Boiler**  | ✅ Supported | ECM Barista, Profitec Pro 300, Rancilio Silvia   |
 | **Heat Exchanger** | ✅ Supported | ECM Mechanika, Profitec Pro 500, E61 HX machines |
-| **Thermoblock** | 🔮 Planned | - |
+| **Thermoblock**    | 🔮 Planned   | -                                                |
 
 **👉 [Full Compatibility List](docs/Compatibility.md)** - See validated machines and expected compatible models.
 
@@ -111,12 +116,12 @@ BrewOS supports multiple espresso machine architectures through compile-time con
 
 The **ECM Synchronika** serves as the reference implementation with complete schematics and documentation:
 
-| Resource | Description |
-|----------|-------------|
-| [Schematic](docs/hardware/schematics/ECM_Schematic_Reference.md) | Complete circuit diagrams |
-| [Netlist](docs/hardware/schematics/ECM_Netlist.csv) | Component list for PCB |
-| [Wiring Guide](docs/hardware/ESP32_Display_Wiring.md) | Connection details |
-| [Compatibility](docs/Compatibility.md) | Validated & compatible machines |
+| Resource                                                         | Description                     |
+| ---------------------------------------------------------------- | ------------------------------- |
+| [Schematic](docs/hardware/schematics/ECM_Schematic_Reference.md) | Complete circuit diagrams       |
+| [Netlist](docs/hardware/schematics/ECM_Netlist.csv)              | Component list for PCB          |
+| [Wiring Guide](docs/hardware/ESP32_Display_Wiring.md)            | Connection details              |
+| [Compatibility](docs/Compatibility.md)                           | Validated & compatible machines |
 
 ---
 
@@ -160,12 +165,14 @@ pio run -t uploadfs
 ### Flashing
 
 **Pico (USB):**
+
 1. Hold BOOTSEL button
 2. Connect USB cable
 3. Release button - Pico mounts as drive
 4. Copy `brewos_*.uf2` to the drive
 
 **Pico (OTA via ESP32):**
+
 1. Connect to BrewOS-Setup WiFi
 2. Open http://192.168.4.1
 3. Upload firmware via web interface
@@ -176,54 +183,29 @@ See [SETUP.md](SETUP.md) for detailed instructions.
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| **Getting Started** | |
-| [Setup Guide](SETUP.md) | Development environment setup |
-| [System Architecture](docs/Architecture.md) | Full system overview with cloud |
-| **Pico Firmware** | |
-| [Architecture](docs/pico/Architecture.md) | Module structure, dual-core design |
-| [Requirements](docs/pico/Requirements.md) | Functional and safety requirements |
-| [Machine Configurations](docs/pico/Machine_Configurations.md) | Multi-machine support |
-| **ESP32 Firmware** | |
-| [State Management](docs/esp32/State_Management.md) | Settings, stats, shot history |
-| [MQTT Integration](docs/esp32/integrations/MQTT.md) | Home Assistant integration |
-| [BLE Scales](docs/esp32/integrations/BLE_Scales.md) | Bluetooth scale integration |
-| **Web & Cloud** | |
-| [Web Interface](docs/web/README.md) | React dashboard development |
-| [PWA & Push Notifications](docs/web/QUICK_START_PWA.md) | Quick start for PWA and push notifications |
-| [Cloud Service](docs/cloud/README.md) | Remote access architecture |
-| [WebSocket Protocol](docs/web/WebSocket_Protocol.md) | Message format reference |
-| **Shared** | |
-| [Communication Protocol](docs/shared/Communication_Protocol.md) | Binary protocol Pico ↔ ESP32 |
-| **Hardware** | |
-| [Specification](docs/hardware/Specification.md) | PCB design, component selection |
-| [Compatibility](docs/Compatibility.md) | Validated machines list |
-
----
-
-## Hardware Requirements
-
-### Microcontrollers
-- **Raspberry Pi Pico** (RP2040) - Real-time control
-- **ESP32-S3** - WiFi, display, user interface
-
-### Sensors
-- 2× NTC thermistors (brew & steam boilers)
-- 1× MAX31855 thermocouple (group head)
-- 1× Pressure transducer (0-16 bar)
-- 3× Water level probes
-
-### Actuators
-- 2× Solid State Relays (heater control)
-- 4× Mechanical relays (pump, solenoid, etc.)
-- 1× Piezo buzzer
-- 1× Status LED
-
-### Optional
-- PZEM-004T power meter
-- Flow meter
-- Scale integration
+| Document                                                        | Description                                |
+| --------------------------------------------------------------- | ------------------------------------------ |
+| **Getting Started**                                             |                                            |
+| [Setup Guide](SETUP.md)                                         | Development environment setup              |
+| [System Architecture](docs/Architecture.md)                     | Full system overview with cloud            |
+| **Pico Firmware**                                               |                                            |
+| [Architecture](docs/pico/Architecture.md)                       | Module structure, dual-core design         |
+| [Requirements](docs/pico/Requirements.md)                       | Functional and safety requirements         |
+| [Machine Configurations](docs/pico/Machine_Configurations.md)   | Multi-machine support                      |
+| **ESP32 Firmware**                                              |                                            |
+| [State Management](docs/esp32/State_Management.md)              | Settings, stats, shot history              |
+| [MQTT Integration](docs/esp32/integrations/MQTT.md)             | Home Assistant integration                 |
+| [BLE Scales](docs/esp32/integrations/BLE_Scales.md)             | Bluetooth scale integration                |
+| **Web & Cloud**                                                 |                                            |
+| [Web Interface](docs/web/README.md)                             | React dashboard development                |
+| [PWA & Push Notifications](docs/web/QUICK_START_PWA.md)         | Quick start for PWA and push notifications |
+| [Cloud Service](docs/cloud/README.md)                           | Remote access architecture                 |
+| [WebSocket Protocol](docs/web/WebSocket_Protocol.md)            | Message format reference                   |
+| **Shared**                                                      |                                            |
+| [Communication Protocol](docs/shared/Communication_Protocol.md) | Binary protocol Pico ↔ ESP32               |
+| **Hardware**                                                    |                                            |
+| [Specification](docs/hardware/Specification.md)                 | PCB design, component selection            |
+| [Compatibility](docs/Compatibility.md)                          | Validated machines list                    |
 
 ---
 
@@ -233,28 +215,28 @@ See [SETUP.md](SETUP.md) for detailed instructions.
 
 ### ✅ Validated
 
-| Brand | Model | Notes |
-|-------|-------|-------|
-| ECM | **Synchronika** | Reference machine |
+| Brand | Model           | Notes             |
+| ----- | --------------- | ----------------- |
+| ECM   | **Synchronika** | Reference machine |
 
 ### 🔷 Same Platform (Need Validation)
 
 These use the same GICAR board and should work - we need testers to confirm!
 
-| Brand | Models |
-|-------|--------|
-| **ECM** | Barista, Technika, Technika Profi, Mechanika, Mechanika Profi, Mechanika V Slim, Controvento |
-| **Profitec** | Pro 300, Pro 500, Pro 700 |
+| Brand        | Models                                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| **ECM**      | Barista, Technika, Technika Profi, Mechanika, Mechanika Profi, Mechanika V Slim, Controvento |
+| **Profitec** | Pro 300, Pro 500, Pro 700                                                                    |
 
 ### 🔲 Other Brands (Wanted)
 
-| Brand | Models |
-|-------|--------|
-| **Lelit** | MaraX, Bianca, Elizabeth |
-| **Rocket** | Appartamento, Mozzafiato, R58, R Nine One |
-| **Bezzera** | BZ10, BZ13, Duo, Matrix |
-| **La Marzocco** | Linea Mini, GS3 |
-| **Other** | Any E61 group head machine |
+| Brand           | Models                                    |
+| --------------- | ----------------------------------------- |
+| **Lelit**       | MaraX, Bianca, Elizabeth                  |
+| **Rocket**      | Appartamento, Mozzafiato, R58, R Nine One |
+| **Bezzera**     | BZ10, BZ13, Duo, Matrix                   |
+| **La Marzocco** | Linea Mini, GS3                           |
+| **Other**       | Any E61 group head machine                |
 
 **👉 [Become a Tester](TESTERS.md)** - See how you can help!
 
@@ -293,12 +275,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ### Development Priorities
 
-| Priority | Area | Description |
-|----------|------|-------------|
-| 🔴 Critical | Safety | Any safety improvements |
-| 🟠 High | Stability | Bug fixes, reliability |
-| 🟡 Medium | Features | New machine support, integrations |
-| 🟢 Normal | Enhancements | UI improvements, optimizations |
+| Priority    | Area         | Description                       |
+| ----------- | ------------ | --------------------------------- |
+| 🔴 Critical | Safety       | Any safety improvements           |
+| 🟠 High     | Stability    | Bug fixes, reliability            |
+| 🟡 Medium   | Features     | New machine support, integrations |
+| 🟢 Normal   | Enhancements | UI improvements, optimizations    |
 
 ---
 
@@ -315,6 +297,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 This project is licensed under the **Apache License 2.0 with Commons Clause** - see the [LICENSE](LICENSE) file for details.
 
 **What this means:**
+
 - ✅ You can use, modify, and distribute the software for personal use
 - ✅ You can use it for your own espresso machine
 - ✅ You can contribute improvements back to the project
