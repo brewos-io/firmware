@@ -4,14 +4,17 @@ The BrewOS web interface is a modern React application that provides a dashboard
 
 ## Features
 
-- **Dashboard** - Real-time status, temperatures, pressure, and power consumption
-- **Brewing** - Brew-by-weight settings and shot control
+- **Dashboard** - Real-time status, temperatures, pressure, power, and last shot summary
+- **Brewing Overlay** - Full-screen brewing experience with live shot timer, weight, and pressure graph
+- **Brewing Settings** - Pre-infusion timing, brew-by-weight configuration
 - **Scale** - BLE scale pairing and management
-- **Settings** - Temperature, WiFi, MQTT, and machine configuration
+- **Settings** - Temperature, WiFi, MQTT, regional preferences, and machine configuration
+- **Statistics** - Shot history, power consumption charts, energy costs
 - **System** - Firmware updates, logs, and diagnostics
 - **About** - Device information and resources
 - **Progressive Web App (PWA)** - Install on any device, works offline
 - **Push Notifications** - Receive alerts when your machine needs attention
+- **Home Assistant Integration** - MQTT auto-discovery, custom Lovelace card
 
 ## Tech Stack
 
@@ -38,18 +41,27 @@ src/web/
 │   │   ├── Gauge.tsx
 │   │   ├── Input.tsx
 │   │   ├── Layout.tsx
-│   │   └── Toggle.tsx
+│   │   ├── Toggle.tsx
+│   │   ├── BrewingModeOverlay.tsx    # Full-screen brewing view
+│   │   ├── ScaleStatusCard.tsx       # Shared scale status component
+│   │   └── dashboard/
+│   │       ├── LastShotCard.tsx      # Shot summary + session stats
+│   │       ├── PowerCard.tsx         # Power consumption with cost
+│   │       └── PressureCard.tsx      # Real-time pressure graph
 │   ├── pages/              # Page components
 │   │   ├── Dashboard.tsx
-│   │   ├── Brewing.tsx
+│   │   ├── Brewing.tsx     # Pre-infusion + BBW settings
 │   │   ├── Scale.tsx
-│   │   ├── Settings.tsx
+│   │   ├── Stats.tsx       # Statistics with charts
+│   │   ├── Settings.tsx    # Settings hub
 │   │   ├── System.tsx
 │   │   └── About.tsx
 │   ├── lib/
 │   │   ├── connection.ts   # WebSocket connection manager
+│   │   ├── demo-connection.ts  # Demo mode simulation
 │   │   ├── store.ts        # Zustand state store
 │   │   ├── types.ts        # TypeScript interfaces
+│   │   ├── currency.ts     # Currency utilities
 │   │   └── utils.ts        # Helper functions
 │   ├── styles/
 │   │   └── index.css       # Tailwind + custom styles
@@ -212,8 +224,9 @@ Storybook runs at http://localhost:6006 and provides:
 | Category | Components |
 |----------|------------|
 | **Core** | Button, Badge, Card, Input, Toggle, Gauge, Loading, Toast, Logo |
-| **Dashboard** | MachineStatusCard, TemperatureGauges, PowerCard |
-| **Settings** | SettingsSection, ThemeSettings |
+| **Dashboard** | MachineStatusCard, TemperatureGauges, PowerCard, LastShotCard, PressureCard |
+| **Brewing** | BrewingModeOverlay, ScaleStatusCard, PreinfusionSettings |
+| **Settings** | SettingsSection, ThemeSettings, RegionalSettings |
 | **Design System** | Theme Showcase, Color Palettes |
 
 ### Building Storybook

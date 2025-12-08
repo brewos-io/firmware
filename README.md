@@ -59,6 +59,8 @@ BrewOS is an open-source control system designed to replace factory controllers 
 - REST API for integration
 - **Progressive Web App (PWA)** - Install on any device, works offline
 - **Push Notifications** - Receive alerts when your machine needs attention
+- **Home Assistant Integration** - MQTT auto-discovery with 35+ entities
+- **Cloud Remote Access** - Control from anywhere via cloud relay
 
 ### Safety
 
@@ -194,7 +196,8 @@ See [SETUP.md](SETUP.md) for detailed instructions.
 | [Machine Configurations](docs/pico/Machine_Configurations.md)   | Multi-machine support                      |
 | **ESP32 Firmware**                                              |                                            |
 | [State Management](docs/esp32/State_Management.md)              | Settings, stats, shot history              |
-| [MQTT Integration](docs/esp32/integrations/MQTT.md)             | Home Assistant integration                 |
+| [MQTT Integration](docs/esp32/integrations/MQTT.md)             | MQTT protocol and auto-discovery           |
+| [Home Assistant](homeassistant/README.md)                       | Custom card, native integration, examples  |
 | [BLE Scales](docs/esp32/integrations/BLE_Scales.md)             | Bluetooth scale integration                |
 | **Web & Cloud**                                                 |                                            |
 | [Web Interface](docs/web/README.md)                             | React dashboard development                |

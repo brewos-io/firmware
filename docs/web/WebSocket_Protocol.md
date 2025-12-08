@@ -44,14 +44,22 @@ All messages are JSON objects with a `type` field:
     "state": "ready",
     "mode": "on",
     "isHeating": false,
-    "isBrewing": false
+    "isBrewing": false,
+    "heatingStrategy": 1
   },
   "temps": {
     "brew": { "current": 93.2, "setpoint": 93.5 },
     "steam": { "current": 145.0, "setpoint": 145.0 }
   },
   "pressure": 9.2,
-  "power": { "current": 50, "voltage": 220 }
+  "power": { "current": 50, "voltage": 220 },
+  "shot": {
+    "active": false,
+    "startTime": 0,
+    "duration": 0,
+    "weight": 0.0,
+    "flowRate": 0.0
+  }
 }
 ```
 
@@ -107,6 +115,30 @@ All messages are JSON objects with a `type` field:
   "flowRate": 2.1,
   "stable": true,
   "battery": 85
+}
+```
+
+**`device_info`** - Device information (sent on connection and periodically):
+```json
+{
+  "type": "device_info",
+  "version": "1.0.0",
+  "machineType": "dual_boiler",
+  "machineName": "My Coffee Machine",
+  "deviceId": "brewos_xxxxxxxxxxxx",
+  "hasPressureSensor": true,
+  "preinfusionEnabled": false,
+  "preinfusionOnMs": 2000,
+  "preinfusionPauseMs": 3000,
+  "preferences": {
+    "firstDayOfWeek": 0,
+    "use24HourTime": false,
+    "temperatureUnit": 0,
+    "electricityPrice": 0.15,
+    "currency": "USD",
+    "lastHeatingStrategy": 1,
+    "initialized": true
+  }
 }
 ```
 
@@ -182,11 +214,16 @@ All commands use the `command` type:
 
 | Command | Parameters | Description |
 |---------|------------|-------------|
-| `set_mode` | `mode: "standby" \| "on" \| "eco"` | Set machine mode |
+| `set_mode` | `mode: "standby" \| "on" \| "eco", strategy?: number` | Set machine mode |
 | `set_temp` | `boiler: "brew" \| "steam", temp: number` | Set temperature setpoint |
 | `set_power` | `voltage: number, maxCurrent: number` | Set power limits |
 | `set_bbw` | `enabled, targetWeight, doseWeight, stopOffset, autoTare` | Configure brew-by-weight |
+| `set_preinfusion` | `enabled, onTimeMs, pauseTimeMs` | Configure pre-infusion |
 | `set_eco` | `brewTemp: number, timeout: number` | Configure eco mode |
+| `set_heating_strategy` | `strategy: 0-3` | Set heating strategy |
+| `set_preferences` | `firstDayOfWeek, use24HourTime, temperatureUnit, electricityPrice, currency, lastHeatingStrategy` | Set user preferences |
+| `brew_start` | - | Start brewing |
+| `brew_stop` | - | Stop brewing |
 | `tare` | - | Tare the scale |
 | `scale_reset` | - | Reset scale reading |
 | `scale_scan` | - | Start scanning for scales |

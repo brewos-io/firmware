@@ -1,7 +1,7 @@
 # Web API Reference
 
 > **Status:** ✅ Implemented  
-> **Last Updated:** 2025-11-28  
+> **Last Updated:** 2025-12-08  
 > **Base URL:** `http://<device-ip>/api`
 
 ## Overview
@@ -37,6 +37,9 @@ The ESP32 provides a RESTful HTTP API for machine control, configuration, and mo
 | POST | `/api/time/sync` | Force NTP sync | ✅ |
 | GET | `/api/eco/settings` | Get eco mode settings | ✅ |
 | POST | `/api/eco/settings` | Set eco mode settings | ✅ |
+| GET | `/api/stats` | Get usage statistics | ✅ |
+| GET | `/api/stats/extended` | Stats with history | ✅ |
+| GET | `/api/preinfusion` | Get pre-infusion settings | ✅ |
 
 ---
 
@@ -781,26 +784,81 @@ Set eco mode configuration.
 
 ---
 
-## Planned Endpoints
+## Statistics Endpoints
 
-### Configuration
-```
-GET  /api/config/all            # Full configuration
-POST /api/config/pid            # Set PID parameters
-POST /api/config/preinfusion    # Pre-infusion settings
-POST /api/config/environmental  # Voltage/current config
-POST /api/config/schedule       # Power-on schedule
+### GET /api/stats
+
+Get full usage statistics.
+
+**Response:**
+```json
+{
+  "lifetime": {
+    "totalShots": 1234,
+    "totalKwh": 45.67,
+    "avgBrewTimeMs": 28500
+  },
+  "daily": {
+    "shotCount": 8,
+    "totalKwh": 1.23
+  },
+  "weekly": { ... },
+  "monthly": { ... },
+  "maintenance": {
+    "shotsSinceBackflush": 45
+  }
+}
 ```
 
-### Statistics & History
-```
-GET  /api/stats                 # Usage statistics
-GET  /api/shots                 # Recent shot history
-GET  /api/shots/{id}            # Specific shot details
-DELETE /api/shots               # Clear shot history
+### GET /api/stats/extended
+
+Get statistics with all history data (brew history, power samples, daily summaries).
+
+---
+
+## Pre-Infusion Endpoints
+
+### GET /api/preinfusion
+
+Get pre-infusion settings.
+
+**Response:**
+```json
+{
+  "enabled": true,
+  "onTimeMs": 2000,
+  "pauseTimeMs": 3000
+}
 ```
 
-### Cloud Integration
+### POST /api/preinfusion
+
+Set pre-infusion settings (sent via WebSocket command `set_preinfusion`).
+
+---
+
+## Preferences Endpoints
+
+### GET /api/preferences
+
+Get user preferences (included in device_info WebSocket message).
+
+### POST /api/preferences
+
+Set user preferences (sent via WebSocket command `set_preferences`).
+
+**Fields:**
+- `firstDayOfWeek`: 0=Sunday, 1=Monday
+- `use24HourTime`: boolean
+- `temperatureUnit`: 0=celsius, 1=fahrenheit
+- `electricityPrice`: float (price per kWh)
+- `currency`: string (USD, EUR, GBP, etc.)
+- `lastHeatingStrategy`: 0-3
+
+---
+
+## Cloud Integration
+
 ```
 GET  /api/cloud/status          # Cloud connection status
 POST /api/cloud/link            # Link to cloud account

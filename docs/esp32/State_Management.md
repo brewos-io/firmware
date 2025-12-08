@@ -33,12 +33,14 @@ User-configurable settings that persist across reboots.
 |---------|-------------------|-------------|
 | `temperature` | `brewSP`, `steamSP`, etc. | Temperature setpoints and offsets |
 | `brew` | `bbwEnabled`, `doseWt`, etc. | Brew-by-weight settings |
+| `preinfusion` | `piEnabled`, `piOnMs`, `piPauseMs` | Pre-infusion timing |
 | `power` | `voltage`, `maxCurr` | Mains voltage and current limits |
 | `network` | `wifiSsid`, `hostname` | WiFi configuration |
 | `mqtt` | `mqttBrk`, `mqttPort` | MQTT broker settings |
 | `cloud` | `cloudUrl`, `devId` | Cloud service configuration |
 | `scale` | `scaleAddr`, `scaleName` | Paired BLE scale |
 | `display` | `dispBri`, `dispTO` | Display preferences |
+| `preferences` | `prefFDoW`, `pref24H`, etc. | User preferences (units, currency) |
 
 **Memory Usage**: ~2KB in NVS
 
@@ -88,7 +90,25 @@ struct ShotRecord {
 **Max Records**: 50 (configurable via `MAX_SHOT_HISTORY`)
 **Memory Usage**: ~4KB in flash
 
-### 4. Runtime State (Volatile)
+### 4. User Preferences (Persisted to NVS)
+
+Display and regional preferences, synced with web UI.
+
+```cpp
+struct UserPreferences {
+    uint8_t firstDayOfWeek;    // 0=Sunday, 1=Monday
+    bool use24HourTime;        // 12h vs 24h clock
+    uint8_t temperatureUnit;   // 0=celsius, 1=fahrenheit
+    float electricityPrice;    // Price per kWh (for energy cost)
+    char currency[4];          // Currency code (USD, EUR, GBP, etc.)
+    uint8_t lastHeatingStrategy; // 0-3 (remembered for quick on)
+    bool initialized;          // True after first browser setup
+};
+```
+
+**Browser Sync**: If `initialized` is false, the ESP32 will accept initial preferences from the browser based on locale detection (timezone, country, etc.).
+
+### 5. Runtime State (Volatile)
 
 Current machine state, not persisted.
 

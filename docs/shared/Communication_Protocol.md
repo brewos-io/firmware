@@ -418,11 +418,38 @@ typedef struct __attribute__((packed)) {
 } cmd_config_t;
 
 // config_type values
+#define CONFIG_HEATING_STRATEGY  0x01   // Heating strategy (0-3)
+#define CONFIG_PREINFUSION       0x02   // Pre-infusion settings
 #define CONFIG_ENVIRONMENTAL     0x05   // Environmental electrical config (voltage, current limits)
-
-// Note: Other config types (CONFIG_HEATING_STRATEGY, CONFIG_PREINFUSION, CONFIG_STANDBY, CONFIG_TEMPS)
-// are defined in protocol_defs.h but not yet implemented. Use MSG_CMD_MODE and MSG_CMD_SET_TEMP instead.
 ```
+
+#### CONFIG_HEATING_STRATEGY (0x01)
+
+Set the heating strategy for dual-boiler machines.
+
+```c
+typedef struct __attribute__((packed)) {
+    uint8_t strategy;    // 0=BREW_ONLY, 1=SEQUENTIAL, 2=PARALLEL, 3=SMART_STAGGER
+} config_heating_strategy_t;  // 1 byte
+```
+
+#### CONFIG_PREINFUSION (0x02)
+
+Set pre-infusion parameters.
+
+```c
+typedef struct __attribute__((packed)) {
+    uint8_t  enabled;     // 0=disabled, 1=enabled
+    uint16_t on_ms;       // Pump ON time in milliseconds
+    uint16_t pause_ms;    // Soak/pause time in milliseconds
+} config_preinfusion_t;  // 5 bytes
+```
+
+**Usage:**
+
+- ESP32 sends `MSG_CMD_CONFIG` with `config_type = CONFIG_PREINFUSION`
+- Pico updates pre-infusion settings and persists to flash
+- Pico responds with `MSG_ACK`
 
 #### CONFIG_ENVIRONMENTAL (0x05)
 

@@ -1,8 +1,8 @@
-# Pico Firmware - Feature Status Table
+# BrewOS Feature Status Table
 
 **Last Updated:** December 2024  
 **Status:** Phase 6 - Integration & Testing  
-**Latest Update:** Comprehensive error handling implemented: error tracking, validation, and reporting for all components
+**Latest Update:** Home Assistant integration, user preferences, brewing overlay UI
 
 ---
 
@@ -368,25 +368,26 @@ make
 
 ## Documentation
 
-| Feature                       | Status | Location                                 | Notes                                          |
-| ----------------------------- | ------ | ---------------------------------------- | ---------------------------------------------- |
-| **Pico Architecture**         | ✅     | `docs/pico/Architecture.md`              | Complete system architecture                   |
-| **Pico Requirements**         | ✅     | `docs/pico/Requirements.md`              | Full requirements spec                         |
-| **Communication Protocol**    | ✅     | `docs/shared/Communication_Protocol.md`  | Complete protocol spec                         |
-| **Pico Implementation Plan**  | ✅     | `docs/pico/Implementation_Plan.md`       | Pico development status                        |
-| **ESP32 Implementation Plan** | ✅     | `docs/esp32/Implementation_Plan.md`      | ESP32 development status                       |
-| **MQTT Integration**          | ✅     | `docs/esp32/integrations/MQTT.md`        | Home Assistant integration                     |
-| **Web API**                   | ✅     | `docs/esp32/integrations/Web_API.md`     | REST API documentation                         |
-| **Water Management Docs**     | ✅     | `docs/pico/features/Water_Management.md` | Water system documentation                     |
-| **Shot Timer Guide**          | ✅     | `docs/pico/features/Shot_Timer.md`       | Shot timer implementation                      |
-| **Cleaning Mode Docs**        | ✅     | `docs/pico/features/Cleaning_Mode.md`    | Cleaning mode documentation                    |
-| **Statistics Docs**           | ✅     | `docs/esp32/features/Statistics.md`      | Statistics and analytics documentation (ESP32) |
-| **Error Handling Docs**       | ✅     | `docs/pico/features/Error_Handling.md`   | Error handling and recovery documentation      |
-| **Setup Guide**               | ✅     | `SETUP.md`                               | Development environment setup and OTA updates  |
-| **Bootloader Implementation** | ✅     | `src/pico/src/bootloader.c`              | Serial bootloader for OTA firmware updates     |
-| **Code Comments**             | ✅     | All source files                         | Inline documentation                           |
-| **API Documentation**         | ✅     | Header files                             | Function documentation                         |
-| **Test Procedures**           | ⚠️     | N/A                                      | Hardware test procedures pending               |
+| Feature                        | Status | Location                                 | Notes                                          |
+| ------------------------------ | ------ | ---------------------------------------- | ---------------------------------------------- |
+| **Pico Architecture**          | ✅     | `docs/pico/Architecture.md`              | Complete system architecture                   |
+| **Pico Requirements**          | ✅     | `docs/pico/Requirements.md`              | Full requirements spec                         |
+| **Communication Protocol**     | ✅     | `docs/shared/Communication_Protocol.md`  | Complete protocol spec                         |
+| **Pico Implementation Plan**   | ✅     | `docs/pico/Implementation_Plan.md`       | Pico development status                        |
+| **ESP32 Implementation Plan**  | ✅     | `docs/esp32/Implementation_Plan.md`      | ESP32 development status                       |
+| **MQTT Integration**           | ✅     | `docs/esp32/integrations/MQTT.md`        | MQTT protocol, commands, HA auto-discovery     |
+| **Home Assistant Integration** | ✅     | `homeassistant/README.md`                | Custom card, native integration, automations   |
+| **Web API**                    | ✅     | `docs/esp32/integrations/Web_API.md`     | REST API documentation                         |
+| **Water Management Docs**      | ✅     | `docs/pico/features/Water_Management.md` | Water system documentation                     |
+| **Shot Timer Guide**           | ✅     | `docs/pico/features/Shot_Timer.md`       | Shot timer implementation                      |
+| **Cleaning Mode Docs**         | ✅     | `docs/pico/features/Cleaning_Mode.md`    | Cleaning mode documentation                    |
+| **Statistics Docs**            | ✅     | `docs/esp32/features/Statistics.md`      | Statistics and analytics documentation (ESP32) |
+| **Error Handling Docs**        | ✅     | `docs/pico/features/Error_Handling.md`   | Error handling and recovery documentation      |
+| **Setup Guide**                | ✅     | `SETUP.md`                               | Development environment setup and OTA updates  |
+| **Bootloader Implementation**  | ✅     | `src/pico/src/bootloader.c`              | Serial bootloader for OTA firmware updates     |
+| **Code Comments**              | ✅     | All source files                         | Inline documentation                           |
+| **API Documentation**          | ✅     | Header files                             | Function documentation                         |
+| **Test Procedures**            | ⚠️     | N/A                                      | Hardware test procedures pending               |
 
 ---
 
@@ -479,7 +480,7 @@ make
 | -------------------------- | ------ | ------------------------- | ------------------------------------ |
 | **WiFi Manager**           | ✅     | `wifi_manager.cpp`        | AP mode setup, STA mode connection   |
 | **Web Server**             | ✅     | `web_server.cpp`          | REST API, WebSocket, LittleFS        |
-| **MQTT Client**            | ✅     | `mqtt_client.cpp`         | Home Assistant integration           |
+| **MQTT Client**            | ✅     | `mqtt_client.cpp`         | HA auto-discovery, 35+ entities      |
 | **BLE Scale Manager**      | ✅     | `scale/scale_manager.cpp` | Acaia, Felicita, Lunar scales        |
 | **Brew-by-Weight**         | ✅     | `brew_by_weight.cpp`      | Automatic weight-based stopping      |
 | **Display/UI**             | ✅     | `display/`, `ui/`         | LVGL-based round display             |
@@ -489,6 +490,24 @@ make
 | **Cloud Integration**      | ✅     | `cloud/`                  | Remote monitoring and control        |
 | **OTA Updates**            | ✅     | `web_server.cpp`          | ESP32 and Pico firmware updates      |
 | **First Run Wizard**       | ✅     | Web UI                    | Guided setup flow                    |
+| **Power Meter Manager**    | ✅     | `power_meter/`            | MQTT smart plugs, hardware meters    |
+| **User Preferences**       | ✅     | `state/state_manager.cpp` | Currency, units, heating strategy    |
+
+### MQTT / Home Assistant
+
+| Feature                    | Status | Notes                                         |
+| -------------------------- | ------ | --------------------------------------------- |
+| **MQTT Client**            | ✅     | PubSubClient, auto-reconnect, LWT             |
+| **HA Auto-Discovery**      | ✅     | 35+ entities automatically appear in HA       |
+| **Sensors (17)**           | ✅     | Temps, pressure, scale, shot, power, stats    |
+| **Binary Sensors (7)**     | ✅     | Brewing, heating, ready, alarms, connectivity |
+| **Switch (1)**             | ✅     | Power on/off                                  |
+| **Buttons (5)**            | ✅     | Start/stop brew, tare, eco mode               |
+| **Numbers (3)**            | ✅     | Temp targets, BBW target weight               |
+| **Selects (2)**            | ✅     | Machine mode, heating strategy                |
+| **Commands**               | ✅     | set_mode, set_temp, brew_start/stop, etc.     |
+| **Power Meter Publishing** | ✅     | voltage, current, power, energy, PF           |
+| **Statistics Publishing**  | ✅     | shots_today, total_shots, kwh_today           |
 
 ### Schedule & Auto Power-Off
 
@@ -504,14 +523,33 @@ make
 | **REST API**            | ✅     | `/api/schedules/*` endpoints              |
 | **WebSocket Commands**  | ✅     | Real-time schedule management             |
 
+### Web UI Features
+
+| Feature                   | Status | Notes                                           |
+| ------------------------- | ------ | ----------------------------------------------- |
+| **Dashboard**             | ✅     | Machine status, temps, power, last shot summary |
+| **Brewing Mode Overlay**  | ✅     | Full-screen brewing with timer, weight, graph   |
+| **Pre-Infusion Settings** | ✅     | ON time, pause time, visual timeline            |
+| **Brew-by-Weight UI**     | ✅     | Target weight, dose, stop offset                |
+| **Statistics Page**       | ✅     | Charts, history, energy costs                   |
+| **Regional Settings**     | ✅     | Currency, units, first day of week              |
+| **Scale Status Card**     | ✅     | Shared component for scale display              |
+| **Power Card**            | ✅     | Current draw, today's cost, status indicator    |
+| **Last Shot Card**        | ✅     | Session stats, shots today, avg brew time       |
+| **Pressure Graph**        | ✅     | Real-time pressure during brewing               |
+| **Demo Mode**             | ✅     | Full simulation without hardware                |
+| **Theme System**          | ✅     | 12 themes (7 light, 5 dark)                     |
+| **PWA Support**           | ✅     | Installable, offline capable                    |
+| **Push Notifications**    | ✅     | Temperature alerts, maintenance reminders       |
+
 ---
 
-## Statistics
+## Summary
 
-- **Total Features:** ~175
-- **Completed:** ~150 (86%)
-- **Partial:** ~8 (5%)
-- **Not Implemented:** ~17 (9%)
+- **Total Features:** ~200
+- **Completed:** ~180 (90%)
+- **Partial:** ~8 (4%)
+- **Not Implemented:** ~12 (6%)
 
 ---
 
