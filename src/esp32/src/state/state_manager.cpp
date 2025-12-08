@@ -170,7 +170,8 @@ void StateManager::loadSettings() {
     _settings.preferences.electricityPrice = _prefs.getFloat("prefElecP", 0.15f);
     _prefs.getString("prefCurr", _settings.preferences.currency, sizeof(_settings.preferences.currency));
     if (strlen(_settings.preferences.currency) == 0) {
-        strcpy(_settings.preferences.currency, "USD");
+        strncpy(_settings.preferences.currency, "USD", sizeof(_settings.preferences.currency) - 1);
+        _settings.preferences.currency[sizeof(_settings.preferences.currency) - 1] = '\0';
     }
     _settings.preferences.lastHeatingStrategy = _prefs.getUChar("prefHeatS", 1);
     _settings.preferences.initialized = _prefs.getBool("prefInit", false);

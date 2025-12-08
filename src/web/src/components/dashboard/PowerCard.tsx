@@ -1,26 +1,14 @@
 import { memo, useMemo } from "react";
 import { Card, CardHeader, CardTitle } from "@/components/Card";
 import { useStore } from "@/lib/store";
+import { getCurrencySymbol } from "@/lib/currency";
 import { Zap, TrendingUp, Gauge, Activity } from "lucide-react";
-import type { Currency } from "@/lib/types";
 
 interface PowerCardProps {
   current: number;
   todayKwh: number;
   voltage: number;
 }
-
-// Currency symbols map
-const CURRENCY_SYMBOLS: Record<Currency, string> = {
-  USD: '$',
-  EUR: '€',
-  GBP: '£',
-  AUD: 'A$',
-  CAD: 'C$',
-  JPY: '¥',
-  CHF: 'Fr',
-  ILS: '₪',
-};
 
 export const PowerCard = memo(function PowerCard({ current, todayKwh, voltage }: PowerCardProps) {
   const totalKwh = useStore((s) => s.power.totalKwh);
@@ -38,7 +26,7 @@ export const PowerCard = memo(function PowerCard({ current, todayKwh, voltage }:
   }, [current, isHeating, isBrewing]);
 
   // Get currency symbol
-  const currencySymbol = CURRENCY_SYMBOLS[currency] || '$';
+  const currencySymbol = getCurrencySymbol(currency);
 
   // Estimated cost today using user's configured price
   const todayCost = (todayKwh * electricityPrice).toFixed(2);

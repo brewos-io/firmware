@@ -471,17 +471,7 @@ function TipRow({ title, description, frequency }: TipRowProps) {
   );
 }
 
-// Currency symbols map
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$',
-  EUR: '€',
-  GBP: '£',
-  AUD: 'A$',
-  CAD: 'C$',
-  JPY: '¥',
-  CHF: 'Fr',
-  ILS: '₪',
-};
+import { getCurrencySymbol } from "@/lib/currency";
 
 interface PowerTabProps {
   stats: Statistics;
@@ -491,7 +481,7 @@ interface PowerTabProps {
 
 function PowerTab({ stats, powerHistory, dailyHistory }: PowerTabProps) {
   const { electricityPrice, currency } = useStore((s) => s.preferences);
-  const currencySymbol = CURRENCY_SYMBOLS[currency] || '$';
+  const currencySymbol = getCurrencySymbol(currency);
   
   // Calculate costs
   const todayCost = (stats.daily?.totalKwh ?? 0) * electricityPrice;

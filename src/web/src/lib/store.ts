@@ -352,7 +352,27 @@ const detectBrowserPreferences = (): Partial<UserPreferences> => {
   // Detect first day of week from locale (US, Canada, Japan = Sunday; most others = Monday)
   const sundayCountries = ['US', 'CA', 'JP', 'AU', 'NZ', 'IL', 'PH', 'TW'];
   const locale = navigator.language || 'en-US';
-  const country = locale.split('-')[1]?.toUpperCase() || 'US';
+  
+  // Use Intl.Locale if available for robust region extraction
+  let country = 'US';
+  if (typeof Intl !== 'undefined' && typeof Intl.Locale === 'function') {
+    try {
+      const intlLocale = new Intl.Locale(locale);
+      if (intlLocale.region) {
+        country = intlLocale.region.toUpperCase();
+      }
+    } catch {
+      // Fallback to manual parsing below
+    }
+  }
+  // Fallback: handle both hyphen and underscore, and locales without country code
+  if (country === 'US' && locale !== 'en-US') {
+    const parts = locale.split(/[-_]/);
+    if (parts.length > 1 && parts[1].length === 2) {
+      country = parts[1].toUpperCase();
+    }
+  }
+  
   detected.firstDayOfWeek = sundayCountries.includes(country) ? 'sunday' : 'monday';
   
   // Detect temperature unit (US, Bahamas, Cayman, Liberia, Palau = Fahrenheit)
