@@ -274,7 +274,7 @@ export function Brewing() {
       <Card>
         <CardHeader
           action={
-            <Toggle 
+            <Toggle
               checked={formState.enabled}
               onChange={(enabled) => setFormState({ ...formState, enabled })}
               label="Enable"
