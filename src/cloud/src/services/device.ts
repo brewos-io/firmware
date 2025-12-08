@@ -548,6 +548,62 @@ export function cleanupExpiredTokens(): number {
 }
 
 /**
+ * Cleanup orphaned devices
+ *
+ * Deletes devices that:
+ * 1. Have no users in user_devices table (orphaned)
+ * 2. AND haven't been seen in the specified number of days (stale)
+ *
+ * This handles scenarios like:
+ * - All users removed a device from their accounts
+ * - ESP32 chip was replaced (new device ID, old one orphaned)
+ * - Device was paired but never connected
+ *
+ * The staleness check prevents deleting a device that was just
+ * removed by all users but might be re-paired soon.
+ */
+export function cleanupOrphanedDevices(staleDays: number = 30): number {
+  const db = getDb();
+
+  // Find orphaned devices: no entries in user_devices AND stale (not seen recently)
+  // A device is considered stale if:
+  // - last_seen_at is NULL (never connected), OR
+  // - last_seen_at is older than staleDays
+  const orphanedDevices = db.exec(
+    `SELECT d.id FROM devices d
+     LEFT JOIN user_devices ud ON d.id = ud.device_id
+     WHERE ud.device_id IS NULL
+       AND (d.last_seen_at IS NULL OR d.last_seen_at < datetime('now', ?))`,
+    [`-${staleDays} days`]
+  );
+
+  if (orphanedDevices.length === 0 || orphanedDevices[0].values.length === 0) {
+    return 0;
+  }
+
+  const deviceIds = orphanedDevices[0].values.map((row) => row[0] as string);
+
+  // Delete related records first (foreign key cascades may not work with sql.js)
+  for (const deviceId of deviceIds) {
+    // Delete any lingering claim tokens
+    db.run(`DELETE FROM device_claim_tokens WHERE device_id = ?`, [deviceId]);
+    // Delete any lingering share tokens
+    db.run(`DELETE FROM device_share_tokens WHERE device_id = ?`, [deviceId]);
+    // Delete the device
+    db.run(`DELETE FROM devices WHERE id = ?`, [deviceId]);
+  }
+
+  if (deviceIds.length > 0) {
+    saveDatabase();
+    console.log(
+      `[Cleanup] Deleted ${deviceIds.length} orphaned devices: ${deviceIds.join(", ")}`
+    );
+  }
+
+  return deviceIds.length;
+}
+
+/**
  * Generate a share token for a device
  * Used by device owners to share access with others
  */
