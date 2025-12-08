@@ -725,12 +725,19 @@ void MQTTClient::onMessage(char* topicName, byte* payload, unsigned int length) 
             LOG_I("MQTT: Set eco config: enabled=%d, temp=%.1f°C, timeout=%dmin", 
                   enabled, brewTemp, timeout);
         }
-        else if (cmd == "enter_eco" || cmd == "exit_eco") {
-            // Enter/exit eco mode: {"cmd":"enter_eco"} or {"cmd":"exit_eco"}
+        else if (cmd == "enter_eco") {
+            // Enter eco mode: {"cmd":"enter_eco"}
             if (_commandCallback) {
                 _commandCallback(cmd.c_str(), doc);
             }
-            LOG_I("MQTT: %s", cmd.c_str());
+            LOG_I("MQTT: enter_eco");
+        }
+        else if (cmd == "exit_eco") {
+            // Exit eco mode: {"cmd":"exit_eco"}
+            if (_commandCallback) {
+                _commandCallback(cmd.c_str(), doc);
+            }
+            LOG_I("MQTT: exit_eco");
         }
         else if (cmd == "brew_start") {
             // Start brewing: {"cmd":"brew_start"}

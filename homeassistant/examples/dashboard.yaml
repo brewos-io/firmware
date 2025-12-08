@@ -20,15 +20,17 @@ views:
       - type: entities
         title: Machine Status
         entities:
-          - entity: switch.brewos_power
+          - entity: switch.brewos_power_switch
             name: Power
-          - entity: select.brewos_mode
+          - entity: select.brewos_mode_select
             name: Mode
+          - entity: select.brewos_heating_strategy
+            name: Heating Strategy
           - entity: binary_sensor.brewos_ready
             name: Ready
-          - entity: binary_sensor.brewos_brewing
+          - entity: binary_sensor.brewos_is_brewing
             name: Brewing
-          - entity: binary_sensor.brewos_heating
+          - entity: binary_sensor.brewos_is_heating
             name: Heating
           - entity: binary_sensor.brewos_water_low
             name: Water Low
@@ -61,9 +63,9 @@ views:
       - type: entities
         title: Temperature Control
         entities:
-          - entity: number.brewos_brew_setpoint
+          - entity: number.brewos_brew_temp_target
             name: Brew Target
-          - entity: number.brewos_steam_setpoint
+          - entity: number.brewos_steam_temp_target
             name: Steam Target
 
       # Pressure Graph
@@ -93,7 +95,7 @@ views:
             name: Scale Connected
           - entity: sensor.brewos_scale_weight
             name: Current Weight
-          - entity: number.brewos_target_weight
+          - entity: number.brewos_bbw_target
             name: Target Weight
           - entity: sensor.brewos_flow_rate
             name: Flow Rate
@@ -133,7 +135,7 @@ views:
             name: Voltage
           - entity: sensor.brewos_current
             name: Current
-          - entity: sensor.brewos_kwh_today
+          - entity: sensor.brewos_energy_today
             name: Energy Today
 
       # Statistics Summary
@@ -144,7 +146,7 @@ views:
             name: Today
           - entity: sensor.brewos_total_shots
             name: Total
-          - entity: sensor.brewos_kwh_today
+          - entity: sensor.brewos_energy_today
             name: kWh Today
 
       # Connection Status
@@ -190,4 +192,3 @@ views:
       - type: energy-distribution
         title: Energy
         link_dashboard: true
-

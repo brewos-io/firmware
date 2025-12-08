@@ -28,7 +28,7 @@
         option: sequential
     - service: switch.turn_on
       target:
-        entity_id: switch.brewos_power
+        entity_id: switch.brewos_power_switch
 
 # Notify when machine is ready
 - id: brewos_ready_notification
@@ -64,7 +64,7 @@
   description: "Turn off machine after 1 hour of inactivity"
   trigger:
     - platform: state
-      entity_id: binary_sensor.brewos_brewing
+      entity_id: binary_sensor.brewos_is_brewing
       to: "off"
       for:
         hours: 1
@@ -73,12 +73,12 @@
       entity_id: switch.brewos_power
       state: "on"
     - condition: state
-      entity_id: binary_sensor.brewos_brewing
+      entity_id: binary_sensor.brewos_is_brewing
       state: "off"
   action:
     - service: switch.turn_off
       target:
-        entity_id: switch.brewos_power
+        entity_id: switch.brewos_power_switch
     - service: notify.mobile_app_phone
       data:
         message: "☕ Espresso machine turned off after 1 hour idle"
@@ -113,7 +113,7 @@
   description: "Create logbook entry for each shot"
   trigger:
     - platform: state
-      entity_id: binary_sensor.brewos_brewing
+      entity_id: binary_sensor.brewos_is_brewing
       from: "on"
       to: "off"
   action:
@@ -226,7 +226,7 @@
         option: parallel
     - service: switch.turn_on
       target:
-        entity_id: switch.brewos_power
+        entity_id: switch.brewos_power_switch
 
 # =============================================================================
 # HEATING STRATEGY AUTOMATION

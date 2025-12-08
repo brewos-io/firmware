@@ -32,8 +32,7 @@ from .coordinator import BrewOSCoordinator
 @dataclass(frozen=True)
 class BrewOSSensorEntityDescription(SensorEntityDescription):
     """Describes BrewOS sensor entity."""
-
-    value_fn: callable = lambda data: data.get(key)
+    pass
 
 
 SENSOR_DESCRIPTIONS: tuple[BrewOSSensorEntityDescription, ...] = (

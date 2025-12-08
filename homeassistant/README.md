@@ -91,7 +91,7 @@ A full Home Assistant custom component providing sensors, controls, and services
 | `sensor.brewos_target_weight`  | BBW target weight        | g     |
 | `sensor.brewos_shots_today`    | Daily shot count         | shots |
 | `sensor.brewos_total_shots`    | Lifetime shot count      | shots |
-| `sensor.brewos_kwh_today`      | Daily energy consumption | kWh   |
+| `sensor.brewos_energy_today`   | Daily energy consumption | kWh   |
 | `sensor.brewos_power`          | Current power draw       | W     |
 | `sensor.brewos_voltage`        | Line voltage             | V     |
 | `sensor.brewos_current`        | Current draw             | A     |
@@ -113,7 +113,7 @@ A full Home Assistant custom component providing sensors, controls, and services
 
 | Entity ID                         | Type   | Description                   |
 | --------------------------------- | ------ | ----------------------------- |
-| `switch.brewos_power`             | Switch | Machine power on/off          |
+| `switch.brewos_power_switch`      | Switch | Machine power on/off          |
 | `button.brewos_start_brew`        | Button | Start brewing                 |
 | `button.brewos_stop_brew`         | Button | Stop brewing                  |
 | `button.brewos_tare_scale`        | Button | Tare scale                    |

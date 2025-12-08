@@ -453,11 +453,6 @@ class BrewOSCard extends HTMLElement {
     return strategies[value] || value || 'Sequential';
   }
 
-  getSelectEntity(suffix) {
-    const prefix = this.config.entity_prefix || 'brewos';
-    return `select.${prefix}_${suffix}`;
-  }
-
   isPowered() {
     const switchState = this.getEntityValue(this.getSwitchEntity('power_switch'));
     return switchState === 'on';
