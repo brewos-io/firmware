@@ -1887,25 +1887,36 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     doc["type"] = "status";
     
     // Timestamps - track machine on time and last shot
-    static uint32_t machineOnTimestamp = 0;
-    static uint32_t lastShotTimestamp = 0;
+    // Use Unix timestamps (milliseconds) for client compatibility
+    static uint64_t machineOnTimestamp = 0;
+    static uint64_t lastShotTimestamp = 0;
     static bool wasOn = false;
     
     // Machine is "on" when in active states (heating through cooldown)
     bool isOn = state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_COOLDOWN;
     
-    // Track when machine turns on
+    // Track when machine turns on (Unix timestamp in milliseconds)
     if (isOn && !wasOn) {
-        machineOnTimestamp = millis();
+        time_t now = time(nullptr);
+        // Only set timestamp if NTP is synced (time > year 2020)
+        if (now > 1577836800) {
+            machineOnTimestamp = (uint64_t)now * 1000ULL;
+        } else {
+            machineOnTimestamp = 0;  // Time not synced yet
+        }
     } else if (!isOn) {
         machineOnTimestamp = 0;
     }
     wasOn = isOn;
     
-    // Track last shot timestamp
+    // Track last shot timestamp (Unix timestamp in milliseconds)
     static bool wasBrewing = false;
     if (wasBrewing && !state.is_brewing) {
-        lastShotTimestamp = millis();
+        time_t now = time(nullptr);
+        // Only set timestamp if NTP is synced (time > year 2020)
+        if (now > 1577836800) {
+            lastShotTimestamp = (uint64_t)now * 1000ULL;
+        }
     }
     wasBrewing = state.is_brewing;
     
@@ -1939,14 +1950,14 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     machine["isBrewing"] = state.is_brewing;
     machine["heatingStrategy"] = state.heating_strategy;
     
-    // Timestamps
+    // Timestamps (Unix milliseconds for JavaScript compatibility)
     if (machineOnTimestamp > 0) {
-        machine["machineOnTimestamp"] = machineOnTimestamp;
+        machine["machineOnTimestamp"] = (double)machineOnTimestamp;  // Cast to double for JSON
     } else {
         machine["machineOnTimestamp"] = (char*)nullptr;
     }
     if (lastShotTimestamp > 0) {
-        machine["lastShotTimestamp"] = lastShotTimestamp;
+        machine["lastShotTimestamp"] = (double)lastShotTimestamp;  // Cast to double for JSON
     } else {
         machine["lastShotTimestamp"] = (char*)nullptr;
     }
@@ -2005,6 +2016,33 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     }
     
     power["maxCurrent"] = State.settings().power.maxCurrent;
+    
+    // =========================================================================
+    // Stats Section - Key metrics for dashboard
+    // =========================================================================
+    JsonObject stats = doc["stats"].to<JsonObject>();
+    
+    // Get current statistics
+    BrewOS::FullStatistics fullStats;
+    Stats.getFullStatistics(fullStats);
+    
+    // Daily stats
+    JsonObject daily = stats["daily"].to<JsonObject>();
+    BrewOS::PeriodStats dailyStats;
+    Stats.getDailyStats(dailyStats);
+    daily["shotCount"] = dailyStats.shotCount;
+    daily["avgBrewTimeMs"] = dailyStats.avgBrewTimeMs;
+    daily["totalKwh"] = dailyStats.totalKwh;
+    
+    // Lifetime stats
+    JsonObject lifetime = stats["lifetime"].to<JsonObject>();
+    lifetime["totalShots"] = fullStats.lifetime.totalShots;
+    lifetime["avgBrewTimeMs"] = fullStats.lifetime.avgBrewTimeMs;
+    lifetime["totalKwh"] = fullStats.lifetime.totalKwh;
+    
+    // Session stats
+    stats["sessionShots"] = fullStats.sessionShots;
+    stats["shotsToday"] = dailyStats.shotCount;
     
     // =========================================================================
     // Cleaning Section

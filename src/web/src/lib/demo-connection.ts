@@ -1125,6 +1125,21 @@ export class DemoConnection implements IConnection {
         freeHeap: 175000 + Math.floor(Math.random() * 10000),
         uptime: Date.now(),
       },
+      // Stats section (real-time updates)
+      stats: {
+        shotsToday: this.shotsToday,
+        sessionShots: this.shotsToday, // In demo, session = today
+        daily: {
+          shotCount: this.shotsToday,
+          avgBrewTimeMs: 28500, // ~28.5 seconds average
+          totalKwh: 0.8 + this.shotsToday * 0.05,
+        },
+        lifetime: {
+          totalShots: this.totalShots,
+          avgBrewTimeMs: 28500,
+          totalKwh: 89.3,
+        },
+      },
     });
   }
 

@@ -388,6 +388,7 @@ export const useStore = create<BrewOSState>()(
           const mqttData = data.mqtt as Record<string, unknown> | undefined;
           const esp32Data = data.esp32 as Record<string, unknown> | undefined;
           const shotData = data.shot as Record<string, unknown> | undefined;
+          const statsData = data.stats as Record<string, unknown> | undefined;
 
           set((state) => ({
             // Machine state
@@ -542,6 +543,49 @@ export const useStore = create<BrewOSState>()(
                     (esp32Data.freeHeap as number) ?? state.esp32.freeHeap,
                 }
               : state.esp32,
+            // Stats from status message (real-time updates)
+            stats: statsData
+              ? {
+                  ...state.stats,
+                  shotsToday:
+                    (statsData.shotsToday as number) ?? state.stats.shotsToday,
+                  sessionShots:
+                    (statsData.sessionShots as number) ??
+                    state.stats.sessionShots,
+                  daily: statsData.daily
+                    ? {
+                        ...state.stats.daily,
+                        shotCount:
+                          ((statsData.daily as Record<string, unknown>)
+                            .shotCount as number) ?? state.stats.daily.shotCount,
+                        avgBrewTimeMs:
+                          ((statsData.daily as Record<string, unknown>)
+                            .avgBrewTimeMs as number) ??
+                          state.stats.daily.avgBrewTimeMs,
+                        totalKwh:
+                          ((statsData.daily as Record<string, unknown>)
+                            .totalKwh as number) ?? state.stats.daily.totalKwh,
+                      }
+                    : state.stats.daily,
+                  lifetime: statsData.lifetime
+                    ? {
+                        ...state.stats.lifetime,
+                        totalShots:
+                          ((statsData.lifetime as Record<string, unknown>)
+                            .totalShots as number) ??
+                          state.stats.lifetime.totalShots,
+                        avgBrewTimeMs:
+                          ((statsData.lifetime as Record<string, unknown>)
+                            .avgBrewTimeMs as number) ??
+                          state.stats.lifetime.avgBrewTimeMs,
+                        totalKwh:
+                          ((statsData.lifetime as Record<string, unknown>)
+                            .totalKwh as number) ??
+                          state.stats.lifetime.totalKwh,
+                      }
+                    : state.stats.lifetime,
+                }
+              : state.stats,
           }));
           break;
         }
