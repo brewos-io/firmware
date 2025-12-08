@@ -373,7 +373,7 @@ Located on the Machines page (`/machines`), accessible via the Share button on e
 Handles both pairing methods based on the `share` query parameter:
 
 | Parameter     | Displayed Title     | Message                                                  |
-| ------------- | ------------------- | -------------------------------------------------------- |
+||-----------|-------------------|--------------------------------------------------------|
 | `share=true`  | "Add Shared Device" | "Someone shared access to their BrewOS machine with you" |
 | (not present) | "Pair Device"       | "Add this BrewOS device to your account"                 |
 
