@@ -149,7 +149,7 @@ export function HeatingStrategyModal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, selectedStrategy, onClose, onSelect]);
+  }, [isOpen, selectedStrategy, onClose, onSelect, sendCommand]);
 
   if (!isOpen) return null;
 
