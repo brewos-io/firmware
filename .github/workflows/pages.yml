@@ -1,5 +1,5 @@
 # Deploy website to GitHub Pages
-name: Deploy to GitHub Pages
+name: "Main → Deploy Website to GitHub Pages"
 
 on:
   # Runs on pushes to main branch

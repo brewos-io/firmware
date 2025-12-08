@@ -1,5 +1,5 @@
 # Build and lint web UI and cloud service
-name: Build Web
+name: "PR: Web UI & Cloud Service Build"
 
 on:
   # Only run on PRs - push builds handled by deploy.yml and build_firmware.yml

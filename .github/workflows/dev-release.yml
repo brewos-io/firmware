@@ -1,6 +1,6 @@
 # Build and publish dev firmware on every push to main
 # Creates/updates a rolling "dev-latest" prerelease for development testing
-name: Dev Release
+name: "Main → Dev Firmware Release"
 
 on:
   push:

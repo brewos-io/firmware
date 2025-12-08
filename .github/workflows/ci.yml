@@ -1,6 +1,6 @@
 # Unified CI workflow for PRs
 # This workflow runs on all PRs and is the single required status check
-name: CI
+name: "PR: Continuous Integration"
 
 on:
   pull_request:

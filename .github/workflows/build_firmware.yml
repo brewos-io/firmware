@@ -1,6 +1,6 @@
 # Build and test firmware on PRs
 # Note: Push to main is handled by dev-release.yml which creates the dev release
-name: Build Firmware
+name: "PR: Pico Firmware Build & Test"
 
 on:
   pull_request:

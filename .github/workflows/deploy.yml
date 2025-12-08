@@ -1,6 +1,6 @@
 # Deploy to STAGING on push to main
 # Production deploys happen via release.yml when a version tag is pushed
-name: Deploy Staging
+name: "Main → Deploy to Staging"
 
 on:
   push:
