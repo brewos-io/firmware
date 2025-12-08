@@ -13,28 +13,42 @@ import {
   formatTemperatureWithUnit,
 } from "@/lib/temperature";
 
-// Default eco temperature in Celsius
-const DEFAULT_ECO_TEMP_CELSIUS = 80;
+// Default eco mode values
+const DEFAULT_ECO_TEMP = 80;
 const DEFAULT_ECO_TIMEOUT = 30;
 
 export function EcoModeSettings() {
   const temperatureUnit = useStore((s) => s.preferences.temperatureUnit);
+  const ecoMode = useStore((s) => s.ecoMode);
   const { sendCommand } = useCommand();
 
   const [savingEco, setSavingEco] = useState(false);
   const [editingEco, setEditingEco] = useState(false);
 
+  // Get values with fallbacks
+  const ecoBrewTemp = ecoMode?.ecoBrewTemp ?? DEFAULT_ECO_TEMP;
+  const autoOffTimeout = ecoMode?.autoOffTimeout ?? DEFAULT_ECO_TIMEOUT;
+
   // Store the actual value in Celsius (source of truth)
-  const ecoTempCelsiusRef = useRef(DEFAULT_ECO_TEMP_CELSIUS);
+  const ecoTempCelsiusRef = useRef(ecoBrewTemp);
 
   // Display value in current unit
   const [ecoBrewTempDisplay, setEcoBrewTempDisplay] = useState(() =>
-    convertFromCelsius(DEFAULT_ECO_TEMP_CELSIUS, temperatureUnit)
+    convertFromCelsius(ecoBrewTemp, temperatureUnit)
   );
-  const [ecoTimeout, setEcoTimeout] = useState(DEFAULT_ECO_TIMEOUT);
+  const [ecoTimeout, setEcoTimeout] = useState(autoOffTimeout);
 
   // Track previous unit to detect changes
   const prevUnitRef = useRef(temperatureUnit);
+
+  // Update local state when store values change (e.g., on device_info received)
+  useEffect(() => {
+    if (!editingEco) {
+      ecoTempCelsiusRef.current = ecoBrewTemp;
+      setEcoBrewTempDisplay(convertFromCelsius(ecoBrewTemp, temperatureUnit));
+      setEcoTimeout(autoOffTimeout);
+    }
+  }, [ecoBrewTemp, autoOffTimeout, editingEco, temperatureUnit]);
 
   // Update display when unit changes (convert existing value to new unit)
   useEffect(() => {

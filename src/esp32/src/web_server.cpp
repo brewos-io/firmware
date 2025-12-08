@@ -825,6 +825,61 @@ void WebServer::setupRoutes() {
         request->send(200, "application/json", response);
     });
     
+    // Push notification preferences endpoint (GET)
+    _server.on("/api/push/preferences", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        auto& notifSettings = State.settings().notifications;
+        
+        JsonDocument doc;
+        doc["machineReady"] = notifSettings.machineReady;
+        doc["waterEmpty"] = notifSettings.waterEmpty;
+        doc["descaleDue"] = notifSettings.descaleDue;
+        doc["serviceDue"] = notifSettings.serviceDue;
+        doc["backflushDue"] = notifSettings.backflushDue;
+        doc["machineError"] = notifSettings.machineError;
+        doc["picoOffline"] = notifSettings.picoOffline;
+        doc["scheduleTriggered"] = notifSettings.scheduleTriggered;
+        doc["brewComplete"] = notifSettings.brewComplete;
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+    
+    // Push notification preferences endpoint (POST)
+    _server.on(
+        "/api/push/preferences",
+        HTTP_POST,
+        [](AsyncWebServerRequest* request) {},
+        nullptr,
+        [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+            if (index + len == total) {
+                JsonDocument doc;
+                DeserializationError error = deserializeJson(doc, data, len);
+                
+                if (error) {
+                    request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                    return;
+                }
+                
+                auto& notifSettings = State.settings().notifications;
+                
+                if (!doc["machineReady"].isNull()) notifSettings.machineReady = doc["machineReady"];
+                if (!doc["waterEmpty"].isNull()) notifSettings.waterEmpty = doc["waterEmpty"];
+                if (!doc["descaleDue"].isNull()) notifSettings.descaleDue = doc["descaleDue"];
+                if (!doc["serviceDue"].isNull()) notifSettings.serviceDue = doc["serviceDue"];
+                if (!doc["backflushDue"].isNull()) notifSettings.backflushDue = doc["backflushDue"];
+                if (!doc["machineError"].isNull()) notifSettings.machineError = doc["machineError"];
+                if (!doc["picoOffline"].isNull()) notifSettings.picoOffline = doc["picoOffline"];
+                if (!doc["scheduleTriggered"].isNull()) notifSettings.scheduleTriggered = doc["scheduleTriggered"];
+                if (!doc["brewComplete"].isNull()) notifSettings.brewComplete = doc["brewComplete"];
+                
+                State.saveNotificationSettings();
+                
+                request->send(200, "application/json", "{\"success\":true}");
+            }
+        }
+    );
+    
     // Pairing API endpoints
     _server.on("/api/pairing/qr", HTTP_GET, [this](AsyncWebServerRequest* request) {
         // Check if cloud is enabled
@@ -1654,18 +1709,32 @@ void WebServer::processCommand(JsonDocument& doc) {
                 startGitHubOTA(version);
             }
         }
-        // Machine info (stored in network hostname for now)
+        // Machine info
         else if (cmd == "set_machine_info" || cmd == "set_device_info") {
+            auto& machineInfo = State.settings().machineInfo;
             auto& networkSettings = State.settings().network;
             
             if (!doc["name"].isNull()) {
+                strncpy(machineInfo.deviceName, doc["name"].as<const char*>(), sizeof(machineInfo.deviceName) - 1);
+                // Also update hostname for mDNS
                 strncpy(networkSettings.hostname, doc["name"].as<const char*>(), sizeof(networkSettings.hostname) - 1);
             }
-            // Note: model and machineType would need a dedicated struct in Settings
-            // For now, we just store the device name in hostname
+            if (!doc["brand"].isNull()) {
+                strncpy(machineInfo.machineBrand, doc["brand"].as<const char*>(), sizeof(machineInfo.machineBrand) - 1);
+            }
+            if (!doc["model"].isNull()) {
+                strncpy(machineInfo.machineModel, doc["model"].as<const char*>(), sizeof(machineInfo.machineModel) - 1);
+            }
+            if (!doc["machineType"].isNull()) {
+                strncpy(machineInfo.machineType, doc["machineType"].as<const char*>(), sizeof(machineInfo.machineType) - 1);
+            }
             
+            State.saveMachineInfoSettings();
             State.saveNetworkSettings();
-            broadcastLog("Device info updated: " + String(networkSettings.hostname), "info");
+            
+            // Broadcast device info update
+            broadcastDeviceInfo();
+            broadcastLog("Device info updated: " + String(machineInfo.deviceName), "info");
         }
         // Maintenance records
         else if (cmd == "record_maintenance") {
@@ -1933,15 +2002,25 @@ void WebServer::broadcastDeviceInfo() {
     doc["type"] = "device_info";
     
     // Get device info from state manager
-    const auto& networkSettings = State.settings().network;
-    doc["deviceId"] = State.settings().cloud.deviceId;
-    doc["deviceName"] = networkSettings.hostname;
-    doc["machineBrand"] = "";  // TODO: Add to settings when available
-    doc["machineModel"] = "";  // TODO: Add to settings when available
+    const auto& machineInfo = State.settings().machineInfo;
+    const auto& cloudSettings = State.settings().cloud;
+    const auto& powerSettings = State.settings().power;
+    const auto& tempSettings = State.settings().temperature;
     
-    // Machine type from Pico boot message or settings
-    doc["machineType"] = "dual_boiler";  // TODO: Get from state
+    doc["deviceId"] = cloudSettings.deviceId;
+    doc["deviceName"] = machineInfo.deviceName;
+    doc["machineBrand"] = machineInfo.machineBrand;
+    doc["machineModel"] = machineInfo.machineModel;
+    doc["machineType"] = machineInfo.machineType;
     doc["firmwareVersion"] = ESP32_VERSION;
+    
+    // Include power settings
+    doc["mainsVoltage"] = powerSettings.mainsVoltage;
+    doc["maxCurrent"] = powerSettings.maxCurrent;
+    
+    // Include eco mode settings
+    doc["ecoBrewTemp"] = tempSettings.ecoBrewTemp;
+    doc["ecoTimeoutMinutes"] = tempSettings.ecoTimeoutMinutes;
     
     String json;
     serializeJson(doc, json);

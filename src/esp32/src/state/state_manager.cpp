@@ -133,6 +133,29 @@ void StateManager::loadSettings() {
     _settings.display.showWeight = _prefs.getBool("showWt", true);
     _settings.display.showPressure = _prefs.getBool("showPres", true);
     
+    // Machine Info
+    _prefs.getString("devName", _settings.machineInfo.deviceName, sizeof(_settings.machineInfo.deviceName));
+    if (strlen(_settings.machineInfo.deviceName) == 0) {
+        strcpy(_settings.machineInfo.deviceName, "BrewOS");
+    }
+    _prefs.getString("mcBrand", _settings.machineInfo.machineBrand, sizeof(_settings.machineInfo.machineBrand));
+    _prefs.getString("mcModel", _settings.machineInfo.machineModel, sizeof(_settings.machineInfo.machineModel));
+    _prefs.getString("mcType", _settings.machineInfo.machineType, sizeof(_settings.machineInfo.machineType));
+    if (strlen(_settings.machineInfo.machineType) == 0) {
+        strcpy(_settings.machineInfo.machineType, "dual_boiler");
+    }
+    
+    // Notification Preferences
+    _settings.notifications.machineReady = _prefs.getBool("notifReady", true);
+    _settings.notifications.waterEmpty = _prefs.getBool("notifWater", true);
+    _settings.notifications.descaleDue = _prefs.getBool("notifDescale", true);
+    _settings.notifications.serviceDue = _prefs.getBool("notifService", true);
+    _settings.notifications.backflushDue = _prefs.getBool("notifBackflush", true);
+    _settings.notifications.machineError = _prefs.getBool("notifError", true);
+    _settings.notifications.picoOffline = _prefs.getBool("notifPico", true);
+    _settings.notifications.scheduleTriggered = _prefs.getBool("notifSched", true);
+    _settings.notifications.brewComplete = _prefs.getBool("notifBrew", false);
+    
     _prefs.end();
 }
 
@@ -145,6 +168,8 @@ void StateManager::saveSettings() {
     saveCloudSettings();
     saveScaleSettings();
     saveDisplaySettings();
+    saveMachineInfoSettings();
+    saveNotificationSettings();
 }
 
 void StateManager::saveTemperatureSettings() {
@@ -242,6 +267,31 @@ void StateManager::saveDisplaySettings() {
     _prefs.putBool("showTimer", _settings.display.showShotTimer);
     _prefs.putBool("showWt", _settings.display.showWeight);
     _prefs.putBool("showPres", _settings.display.showPressure);
+    _prefs.end();
+    notifySettingsChanged();
+}
+
+void StateManager::saveMachineInfoSettings() {
+    _prefs.begin(NVS_SETTINGS, false);
+    _prefs.putString("devName", _settings.machineInfo.deviceName);
+    _prefs.putString("mcBrand", _settings.machineInfo.machineBrand);
+    _prefs.putString("mcModel", _settings.machineInfo.machineModel);
+    _prefs.putString("mcType", _settings.machineInfo.machineType);
+    _prefs.end();
+    notifySettingsChanged();
+}
+
+void StateManager::saveNotificationSettings() {
+    _prefs.begin(NVS_SETTINGS, false);
+    _prefs.putBool("notifReady", _settings.notifications.machineReady);
+    _prefs.putBool("notifWater", _settings.notifications.waterEmpty);
+    _prefs.putBool("notifDescale", _settings.notifications.descaleDue);
+    _prefs.putBool("notifService", _settings.notifications.serviceDue);
+    _prefs.putBool("notifBackflush", _settings.notifications.backflushDue);
+    _prefs.putBool("notifError", _settings.notifications.machineError);
+    _prefs.putBool("notifPico", _settings.notifications.picoOffline);
+    _prefs.putBool("notifSched", _settings.notifications.scheduleTriggered);
+    _prefs.putBool("notifBrew", _settings.notifications.brewComplete);
     _prefs.end();
     notifySettingsChanged();
 }
@@ -607,6 +657,12 @@ bool StateManager::applySettings(const char* section, const JsonObject& obj) {
     } else if (strcmp(section, "display") == 0) {
         _settings.display.fromJson(obj);
         saveDisplaySettings();
+    } else if (strcmp(section, "machineInfo") == 0) {
+        _settings.machineInfo.fromJson(obj);
+        saveMachineInfoSettings();
+    } else if (strcmp(section, "notifications") == 0) {
+        _settings.notifications.fromJson(obj);
+        saveNotificationSettings();
     } else {
         return false;
     }

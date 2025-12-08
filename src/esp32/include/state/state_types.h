@@ -98,6 +98,31 @@ struct ScaleSettings {
     bool fromJson(JsonObjectConst obj);
 };
 
+struct MachineInfoSettings {
+    char deviceName[32] = "BrewOS";    // User-friendly device name
+    char machineBrand[32] = {0};       // e.g., "ECM", "La Marzocco"
+    char machineModel[32] = {0};       // e.g., "Synchronika", "Linea Mini"
+    char machineType[20] = "dual_boiler";  // dual_boiler, single_boiler, heat_exchanger
+    
+    void toJson(JsonObject& obj) const;
+    bool fromJson(JsonObjectConst obj);
+};
+
+struct NotificationSettings {
+    bool machineReady = true;
+    bool waterEmpty = true;
+    bool descaleDue = true;
+    bool serviceDue = true;
+    bool backflushDue = true;
+    bool machineError = true;
+    bool picoOffline = true;
+    bool scheduleTriggered = true;
+    bool brewComplete = false;
+    
+    void toJson(JsonObject& obj) const;
+    bool fromJson(JsonObjectConst obj);
+};
+
 struct DisplaySettings {
     uint8_t brightness = 200;          // 0-255
     uint8_t screenTimeout = 30;        // Seconds, 0=never
@@ -193,6 +218,8 @@ struct Settings {
     ScaleSettings scale;
     DisplaySettings display;
     ScheduleSettings schedule;
+    MachineInfoSettings machineInfo;
+    NotificationSettings notifications;
     
     void toJson(JsonDocument& doc) const;
     bool fromJson(const JsonDocument& doc);
