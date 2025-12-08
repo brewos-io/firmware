@@ -198,6 +198,54 @@ bool DisplaySettings::fromJson(JsonObjectConst obj) {
 }
 
 // =============================================================================
+// MachineInfoSettings
+// =============================================================================
+
+void MachineInfoSettings::toJson(JsonObject& obj) const {
+    obj["deviceName"] = deviceName;
+    obj["machineBrand"] = machineBrand;
+    obj["machineModel"] = machineModel;
+    obj["machineType"] = machineType;
+}
+
+bool MachineInfoSettings::fromJson(JsonObjectConst obj) {
+    if (obj["deviceName"].is<const char*>()) strncpy(deviceName, obj["deviceName"] | "BrewOS", sizeof(deviceName) - 1);
+    if (obj["machineBrand"].is<const char*>()) strncpy(machineBrand, obj["machineBrand"] | "", sizeof(machineBrand) - 1);
+    if (obj["machineModel"].is<const char*>()) strncpy(machineModel, obj["machineModel"] | "", sizeof(machineModel) - 1);
+    if (obj["machineType"].is<const char*>()) strncpy(machineType, obj["machineType"] | "dual_boiler", sizeof(machineType) - 1);
+    return true;
+}
+
+// =============================================================================
+// NotificationSettings
+// =============================================================================
+
+void NotificationSettings::toJson(JsonObject& obj) const {
+    obj["machineReady"] = machineReady;
+    obj["waterEmpty"] = waterEmpty;
+    obj["descaleDue"] = descaleDue;
+    obj["serviceDue"] = serviceDue;
+    obj["backflushDue"] = backflushDue;
+    obj["machineError"] = machineError;
+    obj["picoOffline"] = picoOffline;
+    obj["scheduleTriggered"] = scheduleTriggered;
+    obj["brewComplete"] = brewComplete;
+}
+
+bool NotificationSettings::fromJson(JsonObjectConst obj) {
+    if (obj["machineReady"].is<bool>()) machineReady = obj["machineReady"];
+    if (obj["waterEmpty"].is<bool>()) waterEmpty = obj["waterEmpty"];
+    if (obj["descaleDue"].is<bool>()) descaleDue = obj["descaleDue"];
+    if (obj["serviceDue"].is<bool>()) serviceDue = obj["serviceDue"];
+    if (obj["backflushDue"].is<bool>()) backflushDue = obj["backflushDue"];
+    if (obj["machineError"].is<bool>()) machineError = obj["machineError"];
+    if (obj["picoOffline"].is<bool>()) picoOffline = obj["picoOffline"];
+    if (obj["scheduleTriggered"].is<bool>()) scheduleTriggered = obj["scheduleTriggered"];
+    if (obj["brewComplete"].is<bool>()) brewComplete = obj["brewComplete"];
+    return true;
+}
+
+// =============================================================================
 // Settings (combined)
 // =============================================================================
 
@@ -228,6 +276,12 @@ void Settings::toJson(JsonDocument& doc) const {
     
     JsonObject displayObj = doc["display"].to<JsonObject>();
     display.toJson(displayObj);
+    
+    JsonObject machineInfoObj = doc["machineInfo"].to<JsonObject>();
+    machineInfo.toJson(machineInfoObj);
+    
+    JsonObject notificationsObj = doc["notifications"].to<JsonObject>();
+    notifications.toJson(notificationsObj);
 }
 
 bool Settings::fromJson(const JsonDocument& doc) {
@@ -284,6 +338,18 @@ bool Settings::fromJson(const JsonDocument& doc) {
     if (displayVar.is<JsonObjectConst>()) {
         JsonObjectConst obj = displayVar.as<JsonObjectConst>();
         display.fromJson(obj);
+    }
+    
+    JsonVariantConst machineInfoVar = doc["machineInfo"];
+    if (machineInfoVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = machineInfoVar.as<JsonObjectConst>();
+        machineInfo.fromJson(obj);
+    }
+    
+    JsonVariantConst notificationsVar = doc["notifications"];
+    if (notificationsVar.is<JsonObjectConst>()) {
+        JsonObjectConst obj = notificationsVar.as<JsonObjectConst>();
+        notifications.fromJson(obj);
     }
     
     return true;

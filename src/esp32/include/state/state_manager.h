@@ -45,6 +45,8 @@ public:
     void saveScaleSettings();
     void saveDisplaySettings();
     void saveScheduleSettings();
+    void saveMachineInfoSettings();
+    void saveNotificationSettings();
     
     // Reset settings to defaults
     void resetSettings();

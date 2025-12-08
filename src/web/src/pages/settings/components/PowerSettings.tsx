@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { useCommand } from "@/lib/useCommand";
 import { Card, CardHeader, CardTitle } from "@/components/Card";
@@ -13,13 +13,23 @@ export function PowerSettings() {
 
   // Track original values to detect changes
   const originalVoltageRef = useRef(power.voltage);
-  const originalMaxCurrentRef = useRef(13);
+  const originalMaxCurrentRef = useRef(power.maxCurrent);
 
   const [voltage, setVoltage] = useState(power.voltage);
-  const [maxCurrent, setMaxCurrent] = useState(13);
+  const [maxCurrent, setMaxCurrent] = useState(power.maxCurrent);
   const [savingPower, setSavingPower] = useState(false);
   const [showPowerWarning, setShowPowerWarning] = useState(false);
   const [editingPower, setEditingPower] = useState(false);
+
+  // Update local state when store values change (e.g., on device_info received)
+  useEffect(() => {
+    if (!editingPower) {
+      setVoltage(power.voltage);
+      setMaxCurrent(power.maxCurrent);
+      originalVoltageRef.current = power.voltage;
+      originalMaxCurrentRef.current = power.maxCurrent;
+    }
+  }, [power.voltage, power.maxCurrent, editingPower]);
 
   // Check if power settings have changed
   const hasPowerSettingsChanged =

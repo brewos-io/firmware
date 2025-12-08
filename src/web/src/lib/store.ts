@@ -60,6 +60,9 @@ interface BrewOSState {
   bbw: BBWSettings;
   shot: ShotStatus;
 
+  // Eco mode settings
+  ecoMode: EcoModeSettings;
+
   // Network
   wifi: WiFiStatus;
   mqtt: MQTTStatus;
@@ -120,6 +123,16 @@ const defaultPower: PowerStatus = {
   maxCurrent: 13, // Default to 13A (UK standard)
   todayKwh: 0,
   totalKwh: 0,
+};
+
+interface EcoModeSettings {
+  ecoBrewTemp: number;
+  autoOffTimeout: number;
+}
+
+const defaultEcoMode: EcoModeSettings = {
+  ecoBrewTemp: 80, // °C
+  autoOffTimeout: 30, // minutes
 };
 
 const defaultCleaning: CleaningStatus = {
@@ -325,6 +338,7 @@ export const useStore = create<BrewOSState>()(
     scanResults: [],
     bbw: defaultBBW,
     shot: defaultShot,
+    ecoMode: defaultEcoMode,
     wifi: defaultWifi,
     mqtt: defaultMqtt,
     esp32: defaultEsp32,
@@ -806,6 +820,22 @@ export const useStore = create<BrewOSState>()(
               firmwareVersion:
                 (data.firmwareVersion as string) ||
                 state.device.firmwareVersion,
+            },
+            // Update power settings if provided
+            power: {
+              ...state.power,
+              voltage:
+                (data.mainsVoltage as number) ?? state.power.voltage,
+              maxCurrent:
+                (data.maxCurrent as number) ?? state.power.maxCurrent,
+            },
+            // Update eco mode settings if provided
+            ecoMode: {
+              ...(state.ecoMode ?? defaultEcoMode),
+              ecoBrewTemp:
+                (data.ecoBrewTemp as number) ?? state.ecoMode?.ecoBrewTemp ?? defaultEcoMode.ecoBrewTemp,
+              autoOffTimeout:
+                (data.ecoTimeoutMinutes as number) ?? state.ecoMode?.autoOffTimeout ?? defaultEcoMode.autoOffTimeout,
             },
           }));
           break;

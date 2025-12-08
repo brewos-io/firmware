@@ -72,6 +72,12 @@ export class DemoConnection implements IConnection {
       machineModel: "Synchronika",
       machineType: "dual_boiler",
       firmwareVersion: "1.0.0-demo",
+      // Power settings
+      mainsVoltage: 220,
+      maxCurrent: 13,
+      // Eco mode settings
+      ecoBrewTemp: 80,
+      ecoTimeoutMinutes: 30,
     });
 
     // Send initial unified status (machine, temps, scale, connections, etc.)
@@ -171,6 +177,10 @@ export class DemoConnection implements IConnection {
           machineModel: (data.model as string) || "Synchronika",
           machineType: (data.machineType as string) || "dual_boiler",
           firmwareVersion: "1.0.0-demo",
+          mainsVoltage: 220,
+          maxCurrent: 13,
+          ecoBrewTemp: 80,
+          ecoTimeoutMinutes: 30,
         });
         break;
       case "set_device_info":
@@ -183,6 +193,10 @@ export class DemoConnection implements IConnection {
           machineModel: (data.machineModel as string) || "Synchronika",
           machineType: (data.machineType as string) || "dual_boiler",
           firmwareVersion: "1.0.0-demo",
+          mainsVoltage: 220,
+          maxCurrent: 13,
+          ecoBrewTemp: 80,
+          ecoTimeoutMinutes: 30,
         });
         break;
       case "record_maintenance":
