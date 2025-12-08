@@ -48,7 +48,7 @@ void PairingManager::initDeviceKey() {
     String storedKey = prefs.getString(NVS_KEY_DEVICE_KEY, "");
     prefs.end();
     
-    if (storedKey.length() >= 32) {
+    if (storedKey.length() == 43) {
         // Use existing key
         _deviceKey = storedKey;
         Serial.println("[Pairing] Loaded existing device key from NVS");

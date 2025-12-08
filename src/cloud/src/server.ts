@@ -11,7 +11,10 @@ import authRouter from "./routes/auth.js";
 import devicesRouter from "./routes/devices.js";
 import pushRouter from "./routes/push.js";
 import { initDatabase } from "./lib/database.js";
-import { cleanupExpiredTokens } from "./services/device.js";
+import {
+  cleanupExpiredTokens,
+  cleanupOrphanedDevices,
+} from "./services/device.js";
 import {
   cleanupExpiredSessions,
   startBatchUpdateInterval,
@@ -33,7 +36,11 @@ if (!corsOrigin && process.env.NODE_ENV === "production") {
 }
 
 // Determine allowed origins based on environment
-const DEV_ORIGINS = ["http://localhost:5173", "http://localhost:3001", "http://127.0.0.1:5173"];
+const DEV_ORIGINS = [
+  "http://localhost:5173",
+  "http://localhost:3001",
+  "http://127.0.0.1:5173",
+];
 const getAllowedOrigins = (): string | string[] | false => {
   if (corsOrigin) return corsOrigin;
   if (process.env.NODE_ENV === "production") return false; // Reject all if not configured
@@ -62,7 +69,10 @@ app.use((_req, res, next) => {
   res.setHeader("X-XSS-Protection", "1; mode=block");
   // Strict transport security (HTTPS only) - only in production
   if (process.env.NODE_ENV === "production") {
-    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    res.setHeader(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains"
+    );
   }
   next();
 });
@@ -106,12 +116,14 @@ app.use(
   })
 );
 
-app.use(express.static(webDistPath, {
-  // Other static files: cache for 1 hour but always revalidate
-  maxAge: "1h",
-  etag: true,
-  lastModified: true,
-}));
+app.use(
+  express.static(webDistPath, {
+    // Other static files: cache for 1 hour but always revalidate
+    maxAge: "1h",
+    etag: true,
+    lastModified: true,
+  })
+);
 
 // Create HTTP server
 const server = createServer(app);
@@ -240,7 +252,7 @@ async function start() {
     // Start session cache batch update interval
     startBatchUpdateInterval();
 
-    // Cleanup expired tokens and sessions periodically
+    // Cleanup expired tokens and sessions periodically (every 1 hours)
     setInterval(() => {
       try {
         // Cleanup expired claim tokens
@@ -259,7 +271,20 @@ async function start() {
       } catch (error) {
         console.error("[Cleanup] Error:", error);
       }
-    }, 5 * 60 * 1000);
+    }, 60 * 60 * 1000);
+
+    // Cleanup orphaned devices periodically (every hour)
+    // Devices with no users AND not seen in 30 days are deleted
+    setInterval(() => {
+      try {
+        const deletedDevices = cleanupOrphanedDevices(30);
+        if (deletedDevices > 0) {
+          console.log(`[Cleanup] Deleted ${deletedDevices} orphaned devices`);
+        }
+      } catch (error) {
+        console.error("[Cleanup] Orphaned devices error:", error);
+      }
+    }, 60 * 60 * 1000);
 
     // Start server
     server.listen(port, () => {
