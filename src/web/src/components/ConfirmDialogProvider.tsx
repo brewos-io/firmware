@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -26,29 +27,27 @@ const ConfirmDialogContext = createContext<ConfirmDialogContextType | null>(
 export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [options, setOptions] = useState<ConfirmOptions | null>(null);
-  const [resolvePromise, setResolvePromise] = useState<
-    ((value: boolean) => void) | null
-  >(null);
+  const resolveRef = useRef<((value: boolean) => void) | null>(null);
 
   const confirm = useCallback((opts: ConfirmOptions): Promise<boolean> => {
     return new Promise((resolve) => {
       setOptions(opts);
-      setResolvePromise(() => resolve);
+      resolveRef.current = resolve;
       setIsOpen(true);
     });
   }, []);
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
-    resolvePromise?.(false);
-    setResolvePromise(null);
-  }, [resolvePromise]);
+    resolveRef.current?.(false);
+    resolveRef.current = null;
+  }, []);
 
   const handleConfirm = useCallback(() => {
     setIsOpen(false);
-    resolvePromise?.(true);
-    setResolvePromise(null);
-  }, [resolvePromise]);
+    resolveRef.current?.(true);
+    resolveRef.current = null;
+  }, []);
 
   return (
     <ConfirmDialogContext.Provider value={{ confirm }}>
