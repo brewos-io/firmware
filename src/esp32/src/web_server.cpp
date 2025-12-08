@@ -1929,13 +1929,17 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     bool isOn = state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_COOLDOWN;
     
     // Track when machine turns on (Unix timestamp in milliseconds)
+    // Bounds: year 2020 (1577836800) to year 2100 (4102444800) for overflow protection
+    constexpr time_t MIN_VALID_TIME = 1577836800;  // Jan 1, 2020
+    constexpr time_t MAX_VALID_TIME = 4102444800;  // Jan 1, 2100
+    
     if (isOn && !wasOn) {
         time_t now = time(nullptr);
-        // Only set timestamp if NTP is synced (time > year 2020)
-        if (now > 1577836800) {
+        // Only set timestamp if NTP is synced and within reasonable bounds
+        if (now > MIN_VALID_TIME && now < MAX_VALID_TIME) {
             machineOnTimestamp = (uint64_t)now * 1000ULL;
         } else {
-            machineOnTimestamp = 0;  // Time not synced yet
+            machineOnTimestamp = 0;  // Time not synced or out of bounds
         }
     } else if (!isOn) {
         machineOnTimestamp = 0;
@@ -1946,8 +1950,8 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     static bool wasBrewing = false;
     if (wasBrewing && !state.is_brewing) {
         time_t now = time(nullptr);
-        // Only set timestamp if NTP is synced (time > year 2020)
-        if (now > 1577836800) {
+        // Only set timestamp if NTP is synced and within reasonable bounds
+        if (now > MIN_VALID_TIME && now < MAX_VALID_TIME) {
             lastShotTimestamp = (uint64_t)now * 1000ULL;
         }
     }
