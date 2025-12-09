@@ -47,7 +47,7 @@ export function ScanStep({
   }) => (
     <div
       className={
-        size === "compact" ? "w-full aspect-square" : "max-w-[200px] xs:max-w-xs mx-auto"
+        size === "compact" ? "w-full aspect-square max-w-xs mx-auto" : "max-w-[200px] xs:max-w-xs mx-auto"
       }
     >
       <div
@@ -60,15 +60,11 @@ export function ScanStep({
           <QrCode
             className={`${
               size === "compact"
-                ? "w-10 h-10 mb-1"
+                ? "w-12 h-12 mb-2"
                 : "w-10 h-10 xs:w-16 xs:h-16 mb-2 xs:mb-3"
             } mx-auto opacity-40`}
           />
-          <p
-            className={`${
-              size === "compact" ? "text-xs" : "text-xs xs:text-sm"
-            } font-medium`}
-          >
+          <p className="text-xs xs:text-sm font-medium">
             Camera view
           </p>
         </div>
