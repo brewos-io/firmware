@@ -43,7 +43,7 @@ export function Login() {
 
   if (!isGoogleAuthConfigured) {
     return (
-      <div className={`bg-gradient-to-br from-coffee-800 to-coffee-900 flex items-center justify-center p-4 ${isMobileLandscape ? 'min-h-screen min-h-[100dvh] overflow-y-auto' : 'full-page'}`}>
+      <div className={`bg-gradient-to-br from-coffee-800 to-coffee-900 flex items-center justify-center p-4 ${isMobileLandscape ? 'min-h-[100dvh] overflow-y-auto' : 'full-page'}`}>
         <div className={`w-full max-w-md text-center rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 login-card-enter ${isMobileLandscape ? 'p-4' : 'p-8'}`}>
           <div className={`flex justify-center ${isMobileLandscape ? 'mb-3' : 'mb-6'}`}>
             <LogoIcon size={isMobileLandscape ? "lg" : "xl"} />
