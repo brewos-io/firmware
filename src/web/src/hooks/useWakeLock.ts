@@ -94,7 +94,7 @@ export function useWakeLock(autoActivate = false): WakeLockState {
     // Cleanup on unmount
     return () => {
       if (wakeLockRef.current) {
-        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current.release().catch((err) => console.warn('[WakeLock] Cleanup failed:', err));
         wakeLockRef.current = null;
       }
     };
