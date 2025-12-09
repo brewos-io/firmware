@@ -22,16 +22,14 @@ void PicoUART::begin() {
     
     // Initialize control pins
     pinMode(PICO_RUN_PIN, OUTPUT);
-    pinMode(PICO_BOOTSEL_PIN, OUTPUT);
     pinMode(WEIGHT_STOP_PIN, OUTPUT);
     
     // Default states - Pico running normally
     digitalWrite(PICO_RUN_PIN, LOW);       // LOW = Pico running
-    digitalWrite(PICO_BOOTSEL_PIN, LOW);   // LOW = normal boot
     digitalWrite(WEIGHT_STOP_PIN, LOW);    // LOW = no weight stop signal
     
     LOG_I("Pico UART initialized. TX=%d, RX=%d", PICO_UART_TX_PIN, PICO_UART_RX_PIN);
-    LOG_I("Pico control pins. RUN=%d, BOOTSEL=%d", PICO_RUN_PIN, PICO_BOOTSEL_PIN);
+    LOG_I("Pico RUN pin: GPIO%d", PICO_RUN_PIN);
 }
 
 void PicoUART::loop() {
@@ -183,22 +181,26 @@ bool PicoUART::requestConfig() {
 }
 
 bool PicoUART::enterBootloader() {
-    LOG_I("Putting Pico into bootloader mode...");
+    // ⚠️ HARDWARE BOOTLOADER IS NOT AVAILABLE
+    // The Pico's BOOTSEL button connects to QSPI_SS which is NOT exposed on the 40-pin header.
+    // There is no way to enter the USB bootloader remotely.
+    //
+    // For OTA updates, use: sendCommand(MSG_CMD_BOOTLOADER, nullptr, 0)
+    // This triggers the SOFTWARE bootloader in the Pico firmware.
+    //
+    // For recovery (bricked Pico), user must physically:
+    // 1. Hold BOOTSEL button on Pico
+    // 2. Press RUN button (or power cycle)
+    // 3. Release BOOTSEL - Pico appears as USB drive "RPI-RP2"
+    // 4. Drag-drop .uf2 firmware file
     
-    // Sequence: Hold BOOTSEL, pulse RUN, release BOOTSEL
-    holdBootsel(true);
-    delay(10);
+    LOG_W("enterBootloader() - Hardware bootloader not available!");
+    LOG_W("Pico BOOTSEL (QSPI_SS) is not on the 40-pin header.");
+    LOG_I("Use software bootloader: sendCommand(MSG_CMD_BOOTLOADER)");
     
-    // Pulse RUN (reset)
-    digitalWrite(PICO_RUN_PIN, HIGH);
-    delay(100);
-    digitalWrite(PICO_RUN_PIN, LOW);
-    delay(100);
-    
-    holdBootsel(false);
-    
-    LOG_I("Pico should be in bootloader mode");
-    return true;
+    // Just reset the Pico - won't enter USB bootloader, will boot normally
+    resetPico();
+    return false;
 }
 
 void PicoUART::resetPico() {
@@ -213,7 +215,10 @@ void PicoUART::resetPico() {
 }
 
 void PicoUART::holdBootsel(bool hold) {
-    digitalWrite(PICO_BOOTSEL_PIN, hold ? HIGH : LOW);
+    // ⚠️ THIS FUNCTION HAS NO EFFECT
+    // Pico's BOOTSEL (QSPI_SS) is not accessible from the 40-pin header.
+    // Function kept for API compatibility only.
+    (void)hold;  // Suppress unused parameter warning
 }
 
 void PicoUART::setWeightStop(bool active) {

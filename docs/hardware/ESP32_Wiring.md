@@ -8,29 +8,29 @@ This document explains how to connect an ESP32 display module (including debug/d
 
 The control PCB provides an 8-pin JST-XH connector (J15) for the ESP32 display module:
 
-| Pin | Signal | Direction | Voltage | Notes |
-|-----|--------|-----------|---------|-------|
-| 1 | 5V | Power Out | 5V DC | Power supply for ESP32 (300-500mA) |
-| 2 | GND | Ground | 0V | Common ground |
-| 3 | TX | Input | 3.3V | Pico TX → ESP32 RX (GPIO0) |
-| 4 | RX | Output | 3.3V | ESP32 TX → Pico RX (GPIO1) |
-| 5 | RUN | Output | 3.3V | ESP32 GPIO → Pico RUN pin (reset control) |
-| 6 | BOOT | Output | 3.3V | ESP32 GPIO → Pico BOOTSEL pin (bootloader entry) |
-| 7 | WEIGHT_STOP | Output | 3.3V | ESP32 GPIO → Pico GPIO21 (brew-by-weight signal) |
-| 8 | SPARE | I/O | 3.3V | Reserved for future expansion |
+| Pin | Signal      | Direction | Voltage | Notes                                        |
+| --- | ----------- | --------- | ------- | -------------------------------------------- |
+| 1   | 5V          | Power Out | 5V DC   | Power supply for ESP32 (300-500mA)           |
+| 2   | GND         | Ground    | 0V      | Common ground                                |
+| 3   | TX          | Input     | 3.3V    | Pico TX → ESP32 RX (GPIO0)                   |
+| 4   | RX          | Output    | 3.3V    | ESP32 TX → Pico RX (GPIO1)                   |
+| 5   | RUN         | Output    | 3.3V    | ESP32 GPIO8 → Pico RUN pin (reset control)   |
+| 6   | SPARE1      | I/O       | 3.3V    | ESP32 GPIO9 ↔ Pico GPIO16 (4.7kΩ pull-down)  |
+| 7   | WEIGHT_STOP | Output    | 3.3V    | ESP32 GPIO10 → Pico GPIO21 (4.7kΩ pull-down) |
+| 8   | SPARE2      | I/O       | 3.3V    | ESP32 GPIO22 ↔ Pico GPIO22 (4.7kΩ pull-down) |
 
 ## ESP32 GPIO Pin Assignment
 
 The ESP32 firmware uses the following GPIO pins (defined in `src/esp32/include/config.h`):
 
-| ESP32 GPIO | Function | J15 Pin | Pico Side |
-|------------|----------|---------|-----------|
-| GPIO17 | UART TX → Pico | Pin 3 | GPIO0 (RX) |
-| GPIO18 | UART RX ← Pico | Pin 4 | GPIO1 (TX) |
-| GPIO8 | RUN control | Pin 5 | Pico RUN pin |
-| GPIO9 | BOOTSEL control | Pin 6 | Pico BOOTSEL pin |
+| ESP32 GPIO | Function        | J15 Pin   | Pico Side  |
+| ---------- | --------------- | --------- | ---------- |
+| GPIO17     | UART TX → Pico  | Pin 3     | GPIO0 (RX) |
+| GPIO18     | UART RX ← Pico  | Pin 4     | GPIO1 (TX) |
+| GPIO8      | RUN control     | Pin 5     | Pico RUN   |
+| GPIO9      | SPARE1          | Pin 6     | GPIO16     |
 | **GPIO10** | **WEIGHT_STOP** | **Pin 7** | **GPIO21** |
-| GPIO22 | SPARE (future) | Pin 8 | GPIO22 |
+| GPIO22     | SPARE2          | Pin 8     | GPIO22     |
 
 ## Debug Board Compatibility
 
@@ -45,6 +45,7 @@ If you're using an ESP32 debug board (like the one shown in the image), you need
 ### Typical Debug Board Setup
 
 Most ESP32 debug boards have:
+
 - **Test points or headers** for GPIO access
 - **FPC connector** for display connection
 - **USB port** for programming/debugging
@@ -53,18 +54,21 @@ Most ESP32 debug boards have:
 
 1. **Create a cable** from your debug board to J15 (8-pin JST-XH connector)
 2. **Connect power first:**
+
    - Debug board 5V → J15 Pin 1 (5V)
    - Debug board GND → J15 Pin 2 (GND)
 
 3. **Connect UART:**
+
    - ESP32 GPIO17 (TX) → J15 Pin 3 (TX)
    - ESP32 GPIO18 (RX) → J15 Pin 4 (RX)
 
 4. **Connect control pins:**
+
    - ESP32 GPIO8 → J15 Pin 5 (RUN)
-   - ESP32 GPIO9 → J15 Pin 6 (BOOT)
 
 5. **Connect brew-by-weight:**
+
    - **ESP32 GPIO10 → J15 Pin 7 (WEIGHT_STOP)**
 
 6. **Optional (future):**
@@ -82,9 +86,9 @@ Most ESP32 debug boards have:
 │  │  GPIO17 ─────┼──► J15 Pin 3 (TX)                         │
 │  │  GPIO18 ◄────┼─── J15 Pin 4 (RX)                         │
 │  │  GPIO8  ─────┼──► J15 Pin 5 (RUN)                        │
-│  │  GPIO9  ─────┼──► J15 Pin 6 (BOOT)                       │
+│  │  GPIO9  ─────┼──► J15 Pin 6 (SPARE1)                     │
 │  │  GPIO10 ─────┼──► J15 Pin 7 (WEIGHT_STOP) ⭐             │
-│  │  GPIO22 ─────┼──► J15 Pin 8 (SPARE)                      │
+│  │  GPIO22 ─────┼──► J15 Pin 8 (SPARE2)                     │
 │  │  5V     ─────┼──► J15 Pin 1 (5V)                         │
 │  │  GND    ─────┼──► J15 Pin 2 (GND)                        │
 │  └──────────────┘                                           │
@@ -102,9 +106,9 @@ Most ESP32 debug boards have:
 │  Pin 3: TX  ──────────────────────────────────────────────┐ │
 │  Pin 4: RX  ──────────────────────────────────────────────┐ │
 │  Pin 5: RUN ──────────────────────────────────────────────┐ │
-│  Pin 6: BOOT ─────────────────────────────────────────────┐ │
+│  Pin 6: SPARE1 ──────────────────────────────────────────┐ │
 │  Pin 7: WEIGHT_STOP ──────────────────────────────────────┐ │
-│  Pin 8: SPARE ───────────────────────────────────────────┐ │
+│  Pin 8: SPARE2 ──────────────────────────────────────────┐ │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -118,10 +122,12 @@ The WEIGHT_STOP signal allows the ESP32 (connected to a Bluetooth scale) to sign
 ### Wiring
 
 **ESP32 Side:**
+
 - Use **GPIO10** (or any available GPIO - configure in `config.h`)
 - Wire to J15 Pin 7
 
 **Control PCB Side:**
+
 - J15 Pin 7 connects to Pico GPIO21
 - Pico has 10kΩ pull-down resistor (normally LOW)
 - When ESP32 sets GPIO10 HIGH, Pico GPIO21 reads HIGH
@@ -157,6 +163,7 @@ if (gpio_get(PCB_PINS.input_weight_stop)) {
 If your debug board has test points (like TX1, RX1, TX2, RX2, PBZ, etc.), you can:
 
 1. **Use test points for GPIO access:**
+
    - Solder wires to test points
    - Connect to J15 connector
    - Or use a breakout board
@@ -211,12 +218,12 @@ If your debug board has test points (like TX1, RX1, TX2, RX2, PBZ, etc.), you ca
 
 ### Safe Debugging Practices
 
-| Scenario | Safe? | Notes |
-|----------|-------|-------|
-| USB debug while machine **unplugged** | ✅ Yes | Preferred method for firmware development |
-| USB debug while machine on **mains AC** | ❌ NO | Ground loop hazard, potential equipment damage |
-| USB debug with **isolation transformer** | ✅ Yes | Isolates machine from mains ground |
-| Wireless debug (WiFi/BLE) while on mains | ✅ Yes | No galvanic connection to PC |
+| Scenario                                 | Safe?  | Notes                                          |
+| ---------------------------------------- | ------ | ---------------------------------------------- |
+| USB debug while machine **unplugged**    | ✅ Yes | Preferred method for firmware development      |
+| USB debug while machine on **mains AC**  | ❌ NO  | Ground loop hazard, potential equipment damage |
+| USB debug with **isolation transformer** | ✅ Yes | Isolates machine from mains ground             |
+| Wireless debug (WiFi/BLE) while on mains | ✅ Yes | No galvanic connection to PC                   |
 
 ### Recommended Debug Workflow
 
@@ -257,10 +264,10 @@ Pin 1 (5V)    ────────────────────►  5
 Pin 2 (GND)   ────────────────────►  GND
 Pin 3 (TX)    ────────────────────►  GPIO18 (RX)
 Pin 4 (RX)    ◄────────────────────  GPIO17 (TX)
-Pin 5 (RUN)   ────────────────────►  GPIO8
-Pin 6 (BOOT)  ────────────────────►  GPIO9
-Pin 7 (WGHT)  ────────────────────►  GPIO10 ⭐
-Pin 8 (SPARE) ────────────────────►  GPIO22 (optional)
+Pin 5 (RUN)    ────────────────────►  GPIO8
+Pin 6 (SPARE1) ────────────────────►  GPIO9 (optional)
+Pin 7 (WGHT)   ────────────────────►  GPIO10 ⭐
+Pin 8 (SPARE2) ────────────────────►  GPIO22 (optional)
 ```
 
 ## Troubleshooting
@@ -281,9 +288,11 @@ Pin 8 (SPARE) ────────────────────►  G
 
 ### OTA Updates Not Working
 
-1. **Check RUN pin:** ESP32 GPIO8 → J15 Pin 5 → Pico RUN
-2. **Check BOOTSEL pin:** ESP32 GPIO9 → J15 Pin 6 → Pico BOOTSEL
-3. **Verify open-drain:** ESP32 pins should be configured as open-drain outputs
+OTA updates use the **software bootloader** via UART.
+
+1. **Check UART connection:** Verify TX/RX are connected correctly
+2. **Check RUN pin:** ESP32 GPIO8 → J15 Pin 5 → Pico RUN (for reset after update)
+3. **Verify Pico firmware:** Software bootloader requires working Pico firmware
 
 ## Custom GPIO Assignment
 
@@ -295,6 +304,7 @@ If your debug board uses different GPIO pins, update `src/esp32/include/config.h
 ```
 
 Then wire:
+
 - ESP32 GPIO5 → J15 Pin 7 (WEIGHT_STOP)
 
 The Pico side doesn't need changes - it always reads from GPIO21.
@@ -310,7 +320,7 @@ The Pico side doesn't need changes - it always reads from GPIO21.
 ---
 
 **See Also:**
+
 - [Hardware Specification](Specification.md) - Complete J15 pinout details
 - [Communication Protocol](../shared/Communication_Protocol.md) - UART protocol details
 - [ESP32 Firmware Config](../../src/esp32/include/config.h) - GPIO pin definitions
-

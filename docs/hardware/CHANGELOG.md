@@ -2,19 +2,100 @@
 
 ## Revision History
 
-| Rev        | Date           | Description                                                                               |
-| ---------- | -------------- | ----------------------------------------------------------------------------------------- |
-| **2.24.2** | **Dec 7 2025** | **CURRENT** - 🔴 SAFETY FIXES: Wien gain corrected, MOV relocated, JP5 added              |
-| 2.24.1     | Dec 7 2025     | CRITICAL FIXES: Buck feedback, Wien gain (wrong value), VREF isolation (DO NOT FABRICATE) |
-| 2.24       | Dec 2025       | Critical VREF buffer, TC protection, ratiometric ADC (DO NOT FABRICATE)                   |
-| 2.23       | Dec 2025       | Design review action items (warnings, coating)                                            |
-| 2.22       | Dec 2025       | Engineering review fixes (thermal, GPIO protection)                                       |
-| 2.21.1     | Dec 2025       | Pico 2 compatibility fixes, power supply                                                  |
-| 2.21       | Dec 2025       | External power metering, multi-machine NTC support                                        |
-| 2.20       | Dec 2025       | Unified 22-pos screw terminal (J26)                                                       |
-| 2.19       | Dec 2025       | Removed spare relay K4                                                                    |
-| 2.17       | Nov 2025       | Brew-by-weight support (J15 8-pin)                                                        |
-| 2.16       | Nov 2025       | Production-ready specification                                                            |
+| Rev      | Date           | Description                                                                               |
+| -------- | -------------- | ----------------------------------------------------------------------------------------- |
+| **2.26** | **Dec 9 2025** | **CURRENT** - SPARE1/SPARE2 both connect ESP32↔Pico (GPIO16/22), added R74/R75 pull-downs |
+| 2.25     | Dec 9 2025     | J15 Pin 6 SPARE1, removed SW2/R72 (BOOTSEL not available on Pico header)                  |
+| 2.24.2   | Dec 7 2025     | 🔴 SAFETY FIXES: Wien gain corrected, MOV relocated, JP5 added                            |
+| 2.24.1   | Dec 7 2025     | CRITICAL FIXES: Buck feedback, Wien gain (wrong value), VREF isolation (DO NOT FABRICATE) |
+| 2.24     | Dec 2025       | Critical VREF buffer, TC protection, ratiometric ADC (DO NOT FABRICATE)                   |
+| 2.23     | Dec 2025       | Design review action items (warnings, coating)                                            |
+| 2.22     | Dec 2025       | Engineering review fixes (thermal, GPIO protection)                                       |
+| 2.21.1   | Dec 2025       | Pico 2 compatibility fixes, power supply                                                  |
+| 2.21     | Dec 2025       | External power metering, multi-machine NTC support                                        |
+| 2.20     | Dec 2025       | Unified 22-pos screw terminal (J26)                                                       |
+| 2.19     | Dec 2025       | Removed spare relay K4                                                                    |
+| 2.17     | Nov 2025       | Brew-by-weight support (J15 8-pin)                                                        |
+| 2.16     | Nov 2025       | Production-ready specification                                                            |
+
+---
+
+## v2.26 (December 9, 2025) - Spare GPIO Pull-downs
+
+**Both SPARE1 and SPARE2 now connect ESP32 to Pico with proper pull-down resistors**
+
+### Changes
+
+| Component          | Change                     | Reason                               |
+| ------------------ | -------------------------- | ------------------------------------ |
+| SPARE1 (J15 Pin 6) | ESP32 GPIO9 → Pico GPIO16  | Bidirectional spare I/O              |
+| SPARE2 (J15 Pin 8) | ESP32 GPIO22 → Pico GPIO22 | Bidirectional spare I/O              |
+| R74                | Added 4.7kΩ pull-down      | SPARE1 (GPIO16) RP2350 E9 mitigation |
+| R75                | Added 4.7kΩ pull-down      | SPARE2 (GPIO22) RP2350 E9 mitigation |
+
+### New Components
+
+| Ref | Value | Package | Function                  |
+| --- | ----- | ------- | ------------------------- |
+| R74 | 4.7kΩ | 0805    | SPARE1 pull-down (GPIO16) |
+| R75 | 4.7kΩ | 0805    | SPARE2 pull-down (GPIO22) |
+
+### J15 Connector Pinout (Final)
+
+| Pin | Signal      | ESP32 GPIO  | Pico GPIO  | Protection      |
+| --- | ----------- | ----------- | ---------- | --------------- |
+| 1   | 5V          | VIN         | VSYS       | -               |
+| 2   | GND         | GND         | GND        | -               |
+| 3   | TX          | GPIO17 (RX) | GPIO0 (TX) | 33Ω series      |
+| 4   | RX          | GPIO18 (TX) | GPIO1 (RX) | 33Ω series      |
+| 5   | RUN         | GPIO8       | RUN        | 10kΩ pull-up    |
+| 6   | SPARE1      | GPIO9       | GPIO16     | 4.7kΩ pull-down |
+| 7   | WEIGHT_STOP | GPIO10      | GPIO21     | 4.7kΩ pull-down |
+| 8   | SPARE2      | GPIO22      | GPIO22     | 4.7kΩ pull-down |
+
+---
+
+## v2.25 (December 9, 2025) - J15 SPARE1 Pin
+
+**J15 Pin 6 changed from BOOTSEL control to general-purpose GPIO (SPARE1)**
+
+### Background
+
+The Pico's BOOTSEL function is controlled by the QSPI_SS signal, which is NOT exposed on the 40-pin header. Remote BOOTSEL control from ESP32 was never functional without soldering to a test point on the Pico module.
+
+### Changes
+
+| Component | Change           | Reason                                    |
+| --------- | ---------------- | ----------------------------------------- |
+| J15 Pin 6 | BOOTSEL → SPARE1 | QSPI_SS not on Pico header                |
+| SW2       | Removed          | Cannot function without physical Pico mod |
+| R72       | Removed (DNP)    | No longer needed                          |
+| J15 Pin 8 | SPARE → SPARE2   | Renamed for consistency                   |
+
+### Component Removal
+
+| Ref | Description                  | Reason                                                                                   |
+| --- | ---------------------------- | ---------------------------------------------------------------------------------------- |
+| SW2 | Tactile 6×6mm BOOTSEL button | BOOTSEL requires direct connection to Pico QSPI_SS (TP6), not available on 40-pin header |
+| R72 | 10kΩ BOOTSEL pull-up         | No BOOTSEL signal on PCB                                                                 |
+
+### J15 Connector Pinout (Updated)
+
+| Pin | Signal      | Direction | Description                |
+| --- | ----------- | --------- | -------------------------- |
+| 1   | 5V          | →         | ESP32 VIN power            |
+| 2   | GND         | -         | Common ground              |
+| 3   | TX          | →         | Pico GPIO0 → ESP32 RX      |
+| 4   | RX          | ←         | ESP32 TX → Pico GPIO1      |
+| 5   | RUN         | ←         | ESP32 GPIO8 → Pico RUN     |
+| 6   | SPARE1      | -         | Available (ESP32 GPIO9)    |
+| 7   | WEIGHT_STOP | ←         | ESP32 GPIO10 → Pico GPIO21 |
+| 8   | SPARE2      | -         | Available (Pico GPIO22)    |
+
+### OTA/Recovery Strategy
+
+- **Normal OTA:** ESP32 triggers Pico software bootloader via UART command
+- **Recovery:** Physical access required - press BOOTSEL button on Pico module while resetting
 
 ---
 

@@ -285,7 +285,7 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
                │     │          │           │                │
    WATER_SW ◄──┼─────┤          │ GP3   RUN ├────────────────┼── SW1 (Reset)
                │     │          │           │                │
-   TANK_LVL ◄──┼─────┤          │ GP4  GP22 ├────────────────┼── (Spare/Expansion)
+   TANK_LVL ◄──┼─────┤          │ GP4  GP22 ├────────────────┼◄─► SPARE2 (ESP32 GPIO22)
                │     │          │           │                │
    LEVEL_PRB◄──┼─────┤          │ GP5  GP21 ├────────────────┼◄─ WEIGHT_STOP (ESP32)
                │     │          │           │                │
@@ -297,13 +297,13 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
                │     │          │           │                │
    I2C_SDA ◄──►┼─────┤          │ GP9  GP17 ├────────────────┼── SPI_CS (Spare)
                │     │          │           │                │
-   I2C_SCL ───►┼─────┤          │ GP10 GP16 ├────────────────┼── SPI_MISO (Spare)
+   I2C_SCL ───►┼─────┤          │ GP10 GP16 ├────────────────┼◄─► SPARE1 (ESP32 GPIO9)
                │     │          │           │                │
    RELAY_K1 ◄──┼─────┤          │ GP11 GP15 ├────────────────┼─► STATUS_LED
                │     │          │           │                │
    RELAY_K2 ◄──┼─────┤          │ GP12 GP14 ├────────────────┼─► SSR2_STEAM
                │     │          │           │                │
-   RELAY_K3 ◄──┼─────┤          │ GP13 BOOT ├────────────────┼── SW2 (Bootsel)
+   RELAY_K3 ◄──┼─────┤          │ GP13 BOOT ├────────────────┼── (Pico onboard)
                │     │          │           │                │
    SSR1_BREW◄──┼─────┤          │ GND   GND │                │
                │                │     │     │                │
@@ -314,22 +314,22 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
 
     GPIO Pin Summary:
     ─────────────────
-    LEFT SIDE (Active Functions)              RIGHT SIDE (Analog + Spare)
-    ────────────────────────────              ──────────────────────────
+    LEFT SIDE (Active Functions)              RIGHT SIDE (Analog + ESP32 I/O)
+    ────────────────────────────              ─────────────────────────────
     GP0  = UART0 TX → ESP32                   GP28 = ADC2 (Pressure 0.5-4.5V)
     GP1  = UART0 RX ← ESP32                   GP27 = ADC1 (Steam NTC)
     GP2  = Water Reservoir Switch             GP26 = ADC0 (Brew NTC)
-    GP3  = Tank Level Sensor                  RUN  = Reset button
-    GP4  = Steam Level (Comparator)           GP22 = Spare/Expansion
-    GP5  = Brew Handle Switch                 GP21 = WEIGHT_STOP (ESP32→Pico)
+    GP3  = Tank Level Sensor                  RUN  = Reset button (SW1)
+    GP4  = Steam Level (Comparator)           GP22 = SPARE2 ↔ ESP32 GPIO22 (J15-8)
+    GP5  = Brew Handle Switch                 GP21 = WEIGHT_STOP ← ESP32 GPIO10 (J15-7)
     GP6  = Meter TX (UART1)                   GP20 = RS485 DE/RE
     GP7  = Meter RX (UART1)                   GP19 = Buzzer (PWM)
-    GP8  = I2C0 SDA (Accessory)               GP18 = SPI_SCK (Spare)
-    GP9  = I2C0 SCL (Accessory)               GP17 = SPI_CS (Spare)
-    GP10 = Relay K1 (Lamp)                    GP16 = SPI_MISO (Spare)
+    GP8  = I2C0 SDA (Accessory)               GP18 = SPI_SCK (available)
+    GP9  = I2C0 SCL (Accessory)               GP17 = SPI_CS (available)
+    GP10 = Relay K1 (Lamp)                    GP16 = SPARE1 ↔ ESP32 GPIO9 (J15-6)
     GP11 = Relay K2 (Pump)                    GP15 = Status LED
     GP12 = Relay K3 (Solenoid)                GP14 = SSR2 (Steam)
-    GP13 = SSR1 (Brew)                        BOOT = Bootsel button
+    GP13 = SSR1 (Brew)                        BOOT = Bootsel button (onboard)
 
     Decoupling Capacitors (place adjacent to Pico):
     ───────────────────────────────────────────────
@@ -338,28 +338,28 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
     • 10µF ceramic near VSYS input (optional)
 ```
 
-## 2.2 Reset and Boot Buttons
+## 2.2 Reset Button
 
 ```
-                            RESET AND BOOT BUTTONS
+                            RESET BUTTON
     ════════════════════════════════════════════════════════════════════════════
 
-    RESET BUTTON (SW1)                      BOOT BUTTON (SW2)
-    ──────────────────                      ─────────────────
+    RESET BUTTON (SW1)
+    ──────────────────
 
-         +3.3V                                    BOOTSEL
-           │                                    (Pico TP6)
-      ┌────┴────┐                                   │
-      │  10kΩ   │  ◄── Internal on Pico            │
-      │  R70    │      (may not need external)     │
-      └────┬────┘                              ┌───┴───┐
-           │                                   │  SW2  │
-           ├──────────────► RUN Pin            │ BOOT  │  6x6mm SMD
-           │                (Pico)             │       │  Tactile
-       ┌───┴───┐                               └───┬───┘
-       │  SW1  │  6x6mm SMD                        │
-       │ RESET │  Tactile                         ─┴─
-       │       │  (EVQP7A01P)                     GND
+         +3.3V
+           │
+      ┌────┴────┐
+      │  10kΩ   │  ◄── Internal on Pico
+      │  R70    │      (may not need external)
+      └────┬────┘
+           │
+           ├──────────────► RUN Pin
+           │                (Pico)
+       ┌───┴───┐
+       │  SW1  │  6x6mm SMD
+       │ RESET │  Tactile
+       │       │  (EVQP7A01P)
        └───┬───┘
            │
           ─┴─
@@ -368,7 +368,6 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
     Operation:
     ──────────
     • Press SW1 → Reset Pico
-    • Hold SW2 + Press SW1 + Release SW1 + Release SW2 → Enter USB Bootloader
 ```
 
 ---
@@ -1013,7 +1012,7 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
     ════════════════════════════════════════════════════════════════════════
 
     ESP32 updates ITSELF via WiFi OTA (standard ESP-IDF).
-    ESP32 updates PICO via UART + RUN/BOOTSEL control below.
+    ESP32 updates PICO via UART software bootloader + RUN pin control.
     Pico has no WiFi - relies on ESP32 as firmware update gateway.
 
 
@@ -1037,24 +1036,15 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
     • ESP32 releases (high-Z) → Pico runs normally
 
 
-    PICO BOOTSEL Control (J15 Pin 6 → Pico BOOTSEL):
-    ─────────────────────────────────────────────────
+    SPARE1 Signal (J15 Pin 6 → Available):
+    ───────────────────────────────────────
 
-                                 +3.3V
-                                    │
-                               ┌────┴────┐
-                               │  10kΩ   │  R72
-                               │ Pull-up │  (BOOTSEL normally HIGH)
-                               └────┬────┘
-                                    │
-    Pico BOOTSEL ◄──────────────────┴────────────────── J15 Pin 6 (BOOT)
+    (No connection) ◄──────────────────────────────── J15 Pin 6 (SPARE1)
                                                               │
                                                               │
-                                                         ESP32 GPIO
-                                                      (Open-Drain Output)
+                                                         ESP32 GPIO9
 
-    • ESP32 holds LOW during reset → Pico enters USB bootloader
-    • ESP32 releases → Pico boots normally
+    • Available for future expansion
 
 
     WEIGHT_STOP Signal (J15 Pin 7 → GPIO21) - BREW BY WEIGHT:
@@ -1080,17 +1070,42 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
     • ESP32 sets Pin 7 LOW → Ready for next brew
 
 
-    SPARE Signal (J15 Pin 8 → GPIO22):
-    ───────────────────────────────────
+    SPARE1 Signal (J15 Pin 6 → GPIO16):
+    ────────────────────────────────────
 
-    GPIO22 ◄────────────────────────────────────────── J15 Pin 8 (SPARE)
-    (I/O)                                                    │
-                                                             │
-                                                        ESP32 GPIO
+                                    GND
+                                    │
+                               ┌────┴────┐
+                               │  4.7kΩ  │  R74
+                               │Pull-down│  (RP2350 E9 mitigation)
+                               └────┬────┘
+                                    │
+    GPIO16 ◄────────────────────────┴────────────────── J15 Pin 6 (SPARE1)
+    (I/O)                                                     │
+                                                              │
+                                                         ESP32 GPIO9
 
-    • Reserved for future expansion
-    • No pull-up/down installed (configure in firmware as needed)
-    • Suggested uses: Flow sensor, additional sensor, bidirectional signal
+    • General-purpose spare I/O between ESP32 and Pico
+    • 4.7kΩ pull-down ensures defined LOW state when unused
+
+
+    SPARE2 Signal (J15 Pin 8 → GPIO22):
+    ────────────────────────────────────
+
+                                    GND
+                                    │
+                               ┌────┴────┐
+                               │  4.7kΩ  │  R75
+                               │Pull-down│  (RP2350 E9 mitigation)
+                               └────┬────┘
+                                    │
+    GPIO22 ◄────────────────────────┴────────────────── J15 Pin 8 (SPARE2)
+    (I/O)                                                     │
+                                                              │
+                                                         ESP32 GPIO22
+
+    • General-purpose spare I/O between ESP32 and Pico
+    • 4.7kΩ pull-down ensures defined LOW state when unused
 
 
     OTA Update Sequence:
@@ -1105,11 +1120,10 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
 
     Recovery (if Pico firmware corrupted):
     ───────────────────────────────────────
-    1. ESP32 holds BOOTSEL LOW
-    2. ESP32 pulses RUN LOW then releases
-    3. Pico enters hardware bootloader
-    4. ESP32 releases BOOTSEL
-    5. ESP32 can reflash via custom UART protocol
+    1. Hold BOOTSEL button on Pico module
+    2. Press RUN button (or power cycle)
+    3. Release BOOTSEL - Pico appears as USB drive "RPI-RP2"
+    4. Drag-drop .uf2 firmware file to the USB drive
 
 
     J15 Pinout Summary (8-pin):
@@ -1118,16 +1132,18 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
     Pin 2: GND     → Common ground
     Pin 3: TX      → ESP32 RX (from Pico GPIO0)
     Pin 4: RX      ← ESP32 TX (to Pico GPIO1)
-    Pin 5: RUN     ← ESP32 GPIO (to Pico RUN pin)
-    Pin 6: BOOT    ← ESP32 GPIO (to Pico BOOTSEL)
-    Pin 7: WGHT    ← ESP32 GPIO (to Pico GPIO21) - Brew-by-weight stop signal
-    Pin 8: SPARE   ↔ ESP32 GPIO (to Pico GPIO22) - Reserved for future use
+    Pin 5: RUN     ← ESP32 GPIO8 (to Pico RUN pin)
+    Pin 6: SPARE1  ↔ ESP32 GPIO9 ↔ Pico GPIO16 (spare I/O)
+    Pin 7: WGHT    ← ESP32 GPIO10 (to Pico GPIO21) - Brew-by-weight stop signal
+    Pin 8: SPARE2  ↔ ESP32 GPIO22 ↔ Pico GPIO22 (spare I/O)
 
     Component Values:
     ─────────────────
     R40-41: 33Ω 5%, 0805 (UART series protection)
-    R71-72: 10kΩ 5%, 0805 (RUN/BOOTSEL pull-ups)
+    R71:    10kΩ 5%, 0805 (RUN pull-up)
     R73:    4.7kΩ 5%, 0805 (WEIGHT_STOP pull-down, RP2350 E9)
+    R74:    4.7kΩ 5%, 0805 (SPARE1 pull-down, RP2350 E9)
+    R75:    4.7kΩ 5%, 0805 (SPARE2 pull-down, RP2350 E9)
     C13:    100µF 10V, Electrolytic (ESP32 power decoupling)
 ```
 
@@ -1590,19 +1606,18 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
     GPIO13 → SSR1_DRIVE
     GPIO14 → SSR2_DRIVE
     GPIO15 → STATUS_LED
-    GPIO16 → SPARE (SPI0 MISO)
-    GPIO17 → SPARE (SPI0 CS)
-    GPIO18 → SPARE (SPI0 SCK)
+    GPIO16 → SPARE1 (J15-6, ↔ ESP32 GPIO9, 4.7kΩ pull-down)
+    GPIO17 → SPARE (SPI0 CS, available)
+    GPIO18 → SPARE (SPI0 SCK, available)
     GPIO19 → BUZZER
     GPIO20 → RS485_DE_RE (MAX3485 direction control, J17-6)
-    GPIO21 → WEIGHT_STOP (J15-7, ESP32 brew-by-weight signal)
-    GPIO22 → SPARE/EXPANSION (J15-8, available for future use)
+    GPIO21 → WEIGHT_STOP (J15-7, ← ESP32 GPIO10, 4.7kΩ pull-down)
+    GPIO22 → SPARE2 (J15-8, ↔ ESP32 GPIO22, 4.7kΩ pull-down)
     GPIO23-25 → INTERNAL (Pico 2 module - NOT on header)
     GPIO26 → ADC0_BREW_NTC (J26-8/9)
     GPIO27 → ADC1_STEAM_NTC (J26-10/11)
     GPIO28 → ADC2_PRESSURE (from J26-16 voltage divider)
     RUN    → SW1_RESET
-    BOOTSEL→ SW2_BOOT
 
     220V AC RELAY OUTPUTS (6.3mm Spade Terminals):
     ──────────────────────────────────────────────

@@ -151,13 +151,14 @@
 | R46  | 4.7kΩ | 5%        | I2C SDA pull-up              |
 | R47  | 4.7kΩ | 5%        | I2C SCL pull-up              |
 
-#### Control Signal Pull-ups (R71-R73)
+#### Control Signal Pull-ups (R71, R73)
 
 | Ref | Value | Tolerance | Function              |
 | --- | ----- | --------- | --------------------- |
 | R71 | 10kΩ  | 5%        | Pico RUN pull-up      |
-| R72 | 10kΩ  | 5%        | Pico BOOTSEL pull-up  |
 | R73 | 4.7kΩ | 5%        | WEIGHT_STOP pull-down |
+| R74 | 4.7kΩ | 5%        | SPARE1 pull-down      |
+| R75 | 4.7kΩ | 5%        | SPARE2 pull-down      |
 
 #### Level Probe Circuit (R81-R89)
 
@@ -283,12 +284,11 @@
 | RV2 | 275V   | 10mm | J3-NO to Neutral | Pump arc suppression  |
 | RV3 | 275V   | 10mm | J4-NO to Neutral | Solenoid arc suppress |
 
-#### Switches (SW1-SW2)
+#### Switches
 
-| Ref | Type          | Function       |
-| --- | ------------- | -------------- |
-| SW1 | Tactile 6×6mm | Reset button   |
-| SW2 | Tactile 6×6mm | Bootsel button |
+| Ref | Type          | Function               |
+| --- | ------------- | ---------------------- |
+| SW1 | Tactile 6×6mm | Reset button (RUN pin) |
 
 #### Other Components
 

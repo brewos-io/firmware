@@ -35,9 +35,9 @@
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
 │  │  EXPANSION GPIOs (Available for Future Features)                        │  │
-│  │  ├── GPIO16 ─── SPARE (SPI0 MISO)                                       │  │
 │  │  ├── GPIO17 ─── SPARE (SPI0 CS)                                         │  │
 │  │  └── GPIO18 ─── SPARE (SPI0 SCK)                                        │  │
+│  │  Note: GPIO16 is now SPARE1 (J15 Pin 6), see ESP32 CONTROL SIGNALS      │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
@@ -61,8 +61,10 @@
 │  │  UART0 - ESP32 DISPLAY MODULE (8-pin JST-XH)                            │  │
 │  │  ├── GPIO0 (UART0 TX) ─── ESP32 RX (33Ω series protection)             │  │
 │  │  ├── GPIO1 (UART0 RX) ─── ESP32 TX (33Ω series protection)             │  │
-│  │  ├── PICO RUN ◄──────── ESP32 GPIO (ESP32 resets Pico)                 │  │
-│  │  └── PICO BOOTSEL ◄──── ESP32 GPIO (ESP32 controls bootloader entry)   │  │
+│  │  ├── PICO RUN ◄──────── ESP32 GPIO8 (ESP32 resets Pico)                │  │
+│  │  ├── GPIO16 (SPARE1) ↔── ESP32 GPIO9 (J15 Pin 6, 4.7kΩ pull-down)     │  │
+│  │  ├── GPIO21 (WEIGHT_STOP) ◄─ ESP32 GPIO10 (J15 Pin 7, 4.7kΩ pull-down)│  │
+│  │  └── GPIO22 (SPARE2) ↔── ESP32 GPIO22 (J15 Pin 8, 4.7kΩ pull-down)    │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
@@ -94,15 +96,15 @@
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-│  │  ESP32 CONTROL SIGNALS (J15 Pins 7-8)                                   │  │
-│  │  ├── GPIO21 ── WEIGHT_STOP (ESP32→Pico signal for brew-by-weight)     │  │
-│  │  └── GPIO22 ── SPARE/EXPANSION (Available for future use)              │  │
+│  │  ESP32 CONTROL SIGNALS (J15 Pins 6-8) - All have 4.7kΩ pull-downs      │  │
+│  │  ├── GPIO16 ── SPARE1 ↔ ESP32 GPIO9 (J15 Pin 6)                       │  │
+│  │  ├── GPIO21 ── WEIGHT_STOP ← ESP32 GPIO10 (J15 Pin 7)                 │  │
+│  │  └── GPIO22 ── SPARE2 ↔ ESP32 GPIO22 (J15 Pin 8)                      │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
 │  │  HARDWARE CONTROL (Direct to Pico pins, not GPIO)                       │  │
-│  │  ├── RUN Pin ─── Reset Button (SMD tactile, to GND)                    │  │
-│  │  └── BOOTSEL ─── Boot Button (SMD tactile, directly to QSPI_SS)        │  │
+│  │  └── RUN Pin ─── Reset Button (SMD tactile, to GND)                    │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  GPIO UTILIZATION: 25/26 available (GPIO22 spare for expansion)               │
@@ -131,13 +133,13 @@
 | 13   | SSR1 Trigger + LED              | Output    | Digital | None          | -                                 |
 | 14   | SSR2 Trigger + LED              | Output    | Digital | None          | -                                 |
 | 15   | Status LED                      | Output    | Digital | None          | -                                 |
-| 16   | SPI0 MISO (Spare)               | Input     | Digital | None          | -                                 |
+| 16   | SPARE1 ↔ ESP32 GPIO9            | I/O       | Digital | Pull-down     | J15 Pin 6, 4.7kΩ (R74)            |
 | 17   | SPI0 CS (Spare)                 | Output    | Digital | None          | -                                 |
 | 18   | SPI0 SCK (Spare)                | Output    | Digital | None          | -                                 |
 | 19   | Buzzer PWM                      | Output    | PWM     | None          | -                                 |
 | 20   | RS485 DE/RE                     | Output    | Digital | Pull-down     | MAX3485 direction (TTL mode: NC)  |
 | 21   | WEIGHT_STOP (ESP32→Pico)        | Input     | Digital | Pull-down     | Brew-by-weight signal (J15 Pin 7) |
-| 22   | SPARE/EXPANSION                 | I/O       | Digital | None          | Available via J15 Pin 8           |
+| 22   | SPARE2 ↔ ESP32 GPIO22           | I/O       | Digital | Pull-down     | J15 Pin 8, 4.7kΩ (R75)            |
 | 26   | ADC0 - Brew NTC                 | Input     | Analog  | None          | RC filter                         |
 | 27   | ADC1 - Steam NTC                | Input     | Analog  | None          | RC filter                         |
 | 28   | ADC2 - Pressure                 | Input     | Analog  | None          | RC filter, divider                |
@@ -162,7 +164,9 @@ The RP2350 has a documented errata (E9) where GPIO inputs can latch in a high st
 | Input GPIO | Function          | Protection                                      | Notes                   |
 | ---------- | ----------------- | ----------------------------------------------- | ----------------------- |
 | GPIO2-5    | Switches          | Internal pull-up + external pull-down (R10-R13) | Ensures defined state   |
-| GPIO20-21  | RS485/WEIGHT_STOP | 10kΩ pull-down                                  | Prevents false triggers |
+| GPIO16     | SPARE1            | 4.7kΩ pull-down (R74)                           | ESP32↔Pico spare I/O    |
+| GPIO20-21  | RS485/WEIGHT_STOP | 4.7kΩ pull-down (R73)                           | Prevents false triggers |
+| GPIO22     | SPARE2            | 4.7kΩ pull-down (R75)                           | ESP32↔Pico spare I/O    |
 
 **All digital inputs have either internal pull-ups OR external pull-down resistors**, ensuring they cannot float and trigger the E9 errata condition.
 

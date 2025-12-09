@@ -56,13 +56,18 @@
 #define PICO_UART_TX_PIN        17              // ESP32 TX -> Pico RX (GPIO1)
 #define PICO_UART_RX_PIN        18              // ESP32 RX <- Pico TX (GPIO0)
 
-// Pico control pins for OTA
+// Pico control pins
 #define PICO_RUN_PIN            8               // Controls Pico RUN (reset) → J15 Pin 5
-#define PICO_BOOTSEL_PIN        9               // Controls Pico BOOTSEL → J15 Pin 6
+
+// J15 Pin 6 - SPARE1: ESP32 GPIO9 ↔ Pico GPIO16 (4.7kΩ pull-down on Pico side)
+#define SPARE1_PIN              9               // J15 Pin 6 - General purpose bidirectional I/O
 
 // Brew-by-weight signal
-#define WEIGHT_STOP_PIN         10              // ESP32 GPIO10 → J15 Pin 7 (WEIGHT_STOP) → Pico GPIO21
+#define WEIGHT_STOP_PIN         10              // ESP32 GPIO10 → J15 Pin 7 → Pico GPIO21 (4.7kΩ pull-down)
                                                 // Set HIGH when target weight reached, LOW otherwise
+
+// J15 Pin 8 - SPARE2: ESP32 GPIO22 ↔ Pico GPIO22 (4.7kΩ pull-down on Pico side)
+#define SPARE2_PIN              22              // J15 Pin 8 - General purpose bidirectional I/O
 
 // Buffer sizes
 #define PICO_RX_BUFFER_SIZE     256

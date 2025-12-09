@@ -542,9 +542,10 @@ Verify UART communication between Pico and ESP32 display module, and test the **
 > **Important Architecture Note:** In the production design:
 >
 > - **ESP32 controls Pico** (not the other way around) for OTA firmware updates
-> - ESP32 controls Pico's **RUN** pin (J15 Pin 5) and **BOOTSEL** pin (J15 Pin 6) directly
-> - GPIO21 is **WEIGHT_STOP** (input signal from ESP32 to stop brew when target weight reached)
-> - GPIO22 is **SPARE** for future expansion
+> - ESP32 controls Pico's **RUN** pin (J15 Pin 5) via GPIO8
+> - **SPARE1** (J15 Pin 6): ESP32 GPIO9 ↔ Pico GPIO16 (4.7kΩ pull-down)
+> - **WEIGHT_STOP** (J15 Pin 7): ESP32 GPIO10 → Pico GPIO21 (4.7kΩ pull-down)
+> - **SPARE2** (J15 Pin 8): ESP32 GPIO22 ↔ Pico GPIO22 (4.7kΩ pull-down)
 
 ### Required
 
@@ -554,16 +555,16 @@ Verify UART communication between Pico and ESP32 display module, and test the **
 
 ### J15 Connector Wiring (8-pin JST-XH)
 
-| J15 Pin | Function        | Pico Connection | ESP32 Connection  |
-| ------- | --------------- | --------------- | ----------------- |
-| 1       | 5V Power        | VSYS (5V)       | VIN               |
-| 2       | Ground          | GND             | GND               |
-| 3       | TX (Pico→ESP32) | GPIO0 (via 33Ω) | RX                |
-| 4       | RX (Pico←ESP32) | GPIO1 (via 33Ω) | TX                |
-| 5       | RUN             | Pico RUN pin    | GPIO (open-drain) |
-| 6       | BOOTSEL         | Pico BOOTSEL    | GPIO (open-drain) |
-| 7       | WEIGHT_STOP     | GPIO21 (input)  | GPIO (output)     |
-| 8       | SPARE           | GPIO22          | GPIO (optional)   |
+| J15 Pin | Function    | Pico Connection | ESP32 Connection | Protection      |
+| ------- | ----------- | --------------- | ---------------- | --------------- |
+| 1       | 5V Power    | VSYS (5V)       | VIN              | -               |
+| 2       | Ground      | GND             | GND              | -               |
+| 3       | TX          | GPIO0           | GPIO17 (RX)      | 33Ω series      |
+| 4       | RX          | GPIO1           | GPIO18 (TX)      | 33Ω series      |
+| 5       | RUN         | RUN pin         | GPIO8            | 10kΩ pull-up    |
+| 6       | SPARE1      | GPIO16          | GPIO9            | 4.7kΩ pull-down |
+| 7       | WEIGHT_STOP | GPIO21          | GPIO10           | 4.7kΩ pull-down |
+| 8       | SPARE2      | GPIO22          | GPIO22           | 4.7kΩ pull-down |
 
 ### Test Firmware - Pico Side (MicroPython)
 
@@ -607,7 +608,7 @@ print("ESP32 Interface Test")
 print("-" * 40)
 print("Commands: uart, weight, quit")
 print("")
-print("NOTE: ESP32 controls Pico RUN/BOOTSEL pins directly (not GPIO)")
+print("NOTE: ESP32 controls Pico RUN pin via GPIO8")
 
 while True:
     cmd = input("> ").strip().lower()
@@ -824,7 +825,7 @@ def main():
     print("=" * 50)
     print("ECM Control Board - GPIO Test")
     print("=" * 50)
-    print("Note: ESP32 controls Pico RUN/BOOTSEL via J15 pins 5/6")
+    print("Note: J15 pins 6-8 are ESP32↔Pico GPIO (SPARE1/WEIGHT_STOP/SPARE2)")
 
     while True:
         print("\nOptions:")
@@ -1066,11 +1067,11 @@ Connect all sensors but do NOT connect mains loads. **All sensors connect to uni
 
 ## Signal Integrity
 
-| Risk             | Mitigation                     | Verified |
-| ---------------- | ------------------------------ | -------- |
-| ADC noise        | Analog ground isolation        |          |
-| UART corruption  | Series resistors installed     |          |
-| ESD damage       | ESD clamps on external signals |          |
+| Risk            | Mitigation                     | Verified |
+| --------------- | ------------------------------ | -------- |
+| ADC noise       | Analog ground isolation        |          |
+| UART corruption | Series resistors installed     |          |
+| ESD damage      | ESD clamps on external signals |          |
 
 ---
 
