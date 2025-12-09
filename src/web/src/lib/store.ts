@@ -168,7 +168,7 @@ const defaultBBW: BBWSettings = {
 
 const defaultPreinfusion: PreinfusionSettings = {
   enabled: false,
-  onTimeMs: 3000,    // 3 seconds pump on
+  onTimeMs: 3000, // 3 seconds pump on
   pauseTimeMs: 5000, // 5 seconds soak
 };
 
@@ -340,23 +340,26 @@ const savePreferencesToStorage = (prefs: UserPreferences) => {
 // Detect browser locale for initial preferences setup
 const detectBrowserPreferences = (): Partial<UserPreferences> => {
   const detected: Partial<UserPreferences> = {};
-  
+
   // Detect 24-hour time preference from locale
   try {
     const date = new Date();
-    const formatted = date.toLocaleTimeString(navigator.language, { hour: 'numeric' });
-    detected.use24HourTime = !formatted.includes('AM') && !formatted.includes('PM');
+    const formatted = date.toLocaleTimeString(navigator.language, {
+      hour: "numeric",
+    });
+    detected.use24HourTime =
+      !formatted.includes("AM") && !formatted.includes("PM");
   } catch {
     detected.use24HourTime = false;
   }
-  
+
   // Detect first day of week from locale (US, Canada, Japan = Sunday; most others = Monday)
-  const sundayCountries = ['US', 'CA', 'JP', 'AU', 'NZ', 'IL', 'PH', 'TW'];
-  const locale = navigator.language || 'en-US';
-  
+  const sundayCountries = ["US", "CA", "JP", "AU", "NZ", "IL", "PH", "TW"];
+  const locale = navigator.language || "en-US";
+
   // Use Intl.Locale if available for robust region extraction
-  let country = 'US';
-  if (typeof Intl !== 'undefined' && typeof Intl.Locale === 'function') {
+  let country = "US";
+  if (typeof Intl !== "undefined" && typeof Intl.Locale === "function") {
     try {
       const intlLocale = new Intl.Locale(locale);
       if (intlLocale.region) {
@@ -367,27 +370,41 @@ const detectBrowserPreferences = (): Partial<UserPreferences> => {
     }
   }
   // Fallback: handle both hyphen and underscore, and locales without country code
-  if (country === 'US' && locale !== 'en-US') {
+  if (country === "US" && locale !== "en-US") {
     const parts = locale.split(/[-_]/);
     if (parts.length > 1 && parts[1].length === 2) {
       country = parts[1].toUpperCase();
     }
   }
-  
-  detected.firstDayOfWeek = sundayCountries.includes(country) ? 'sunday' : 'monday';
-  
+
+  detected.firstDayOfWeek = sundayCountries.includes(country)
+    ? "sunday"
+    : "monday";
+
   // Detect temperature unit (US, Bahamas, Cayman, Liberia, Palau = Fahrenheit)
-  const fahrenheitCountries = ['US', 'BS', 'KY', 'LR', 'PW'];
-  detected.temperatureUnit = fahrenheitCountries.includes(country) ? 'fahrenheit' : 'celsius';
-  
+  const fahrenheitCountries = ["US", "BS", "KY", "LR", "PW"];
+  detected.temperatureUnit = fahrenheitCountries.includes(country)
+    ? "fahrenheit"
+    : "celsius";
+
   // Detect currency from locale
-  const currencyMap: Record<string, UserPreferences['currency']> = {
-    'US': 'USD', 'CA': 'CAD', 'AU': 'AUD', 'GB': 'GBP', 'UK': 'GBP',
-    'DE': 'EUR', 'FR': 'EUR', 'ES': 'EUR', 'IT': 'EUR', 'NL': 'EUR',
-    'JP': 'JPY', 'CH': 'CHF', 'IL': 'ILS',
+  const currencyMap: Record<string, UserPreferences["currency"]> = {
+    US: "USD",
+    CA: "CAD",
+    AU: "AUD",
+    GB: "GBP",
+    UK: "GBP",
+    DE: "EUR",
+    FR: "EUR",
+    ES: "EUR",
+    IT: "EUR",
+    NL: "EUR",
+    JP: "JPY",
+    CH: "CHF",
+    IL: "ILS",
   };
-  detected.currency = currencyMap[country] || 'USD';
-  
+  detected.currency = currencyMap[country] || "USD";
+
   return detected;
 };
 
@@ -616,7 +633,8 @@ export const useStore = create<BrewOSState>()(
                         ...state.stats.daily,
                         shotCount:
                           ((statsData.daily as Record<string, unknown>)
-                            .shotCount as number) ?? state.stats.daily.shotCount,
+                            .shotCount as number) ??
+                          state.stats.daily.shotCount,
                         avgBrewTimeMs:
                           ((statsData.daily as Record<string, unknown>)
                             .avgBrewTimeMs as number) ??
@@ -747,7 +765,8 @@ export const useStore = create<BrewOSState>()(
           set((state) => ({
             bbw: {
               enabled: (data.enabled as boolean) ?? state.bbw.enabled,
-              targetWeight: (data.targetWeight as number) ?? state.bbw.targetWeight,
+              targetWeight:
+                (data.targetWeight as number) ?? state.bbw.targetWeight,
               doseWeight: (data.doseWeight as number) ?? state.bbw.doseWeight,
               stopOffset: (data.stopOffset as number) ?? state.bbw.stopOffset,
               autoTare: (data.autoTare as boolean) ?? state.bbw.autoTare,
@@ -760,7 +779,8 @@ export const useStore = create<BrewOSState>()(
             preinfusion: {
               enabled: (data.enabled as boolean) ?? state.preinfusion.enabled,
               onTimeMs: (data.onTimeMs as number) ?? state.preinfusion.onTimeMs,
-              pauseTimeMs: (data.pauseTimeMs as number) ?? state.preinfusion.pauseTimeMs,
+              pauseTimeMs:
+                (data.pauseTimeMs as number) ?? state.preinfusion.pauseTimeMs,
             },
           }));
           break;
@@ -951,9 +971,13 @@ export const useStore = create<BrewOSState>()(
 
         case "device_info": {
           // Process preferences from ESP32 if provided
-          const prefsData = data.preferences as Record<string, unknown> | undefined;
-          const prefsInitialized = prefsData?.initialized as boolean | undefined;
-          
+          const prefsData = data.preferences as
+            | Record<string, unknown>
+            | undefined;
+          const prefsInitialized = prefsData?.initialized as
+            | boolean
+            | undefined;
+
           set((state) => ({
             device: {
               deviceId: (data.deviceId as string) || state.device.deviceId,
@@ -977,10 +1001,8 @@ export const useStore = create<BrewOSState>()(
             // Update power settings if provided
             power: {
               ...state.power,
-              voltage:
-                (data.mainsVoltage as number) ?? state.power.voltage,
-              maxCurrent:
-                (data.maxCurrent as number) ?? state.power.maxCurrent,
+              voltage: (data.mainsVoltage as number) ?? state.power.voltage,
+              maxCurrent: (data.maxCurrent as number) ?? state.power.maxCurrent,
             },
             // Update eco mode settings if provided
             ecoMode: {
@@ -988,17 +1010,20 @@ export const useStore = create<BrewOSState>()(
               ecoBrewTemp:
                 (data.ecoBrewTemp as number) ?? state.ecoMode.ecoBrewTemp,
               autoOffTimeout:
-                (data.ecoTimeoutMinutes as number) ?? state.ecoMode.autoOffTimeout,
+                (data.ecoTimeoutMinutes as number) ??
+                state.ecoMode.autoOffTimeout,
             },
             // Update pre-infusion settings if provided
             preinfusion: {
               ...(state.preinfusion ?? defaultPreinfusion),
               enabled:
-                (data.preinfusionEnabled as boolean) ?? state.preinfusion.enabled,
+                (data.preinfusionEnabled as boolean) ??
+                state.preinfusion.enabled,
               onTimeMs:
                 (data.preinfusionOnMs as number) ?? state.preinfusion.onTimeMs,
               pauseTimeMs:
-                (data.preinfusionPauseMs as number) ?? state.preinfusion.pauseTimeMs,
+                (data.preinfusionPauseMs as number) ??
+                state.preinfusion.pauseTimeMs,
             },
             // Update preferences from ESP32 (synced across devices)
             preferences: prefsData
@@ -1007,62 +1032,75 @@ export const useStore = create<BrewOSState>()(
                     (prefsData.firstDayOfWeek as UserPreferences["firstDayOfWeek"]) ??
                     state.preferences.firstDayOfWeek,
                   use24HourTime:
-                    (prefsData.use24HourTime as boolean) ?? state.preferences.use24HourTime,
+                    (prefsData.use24HourTime as boolean) ??
+                    state.preferences.use24HourTime,
                   temperatureUnit:
                     (prefsData.temperatureUnit as UserPreferences["temperatureUnit"]) ??
                     state.preferences.temperatureUnit,
                   electricityPrice:
-                    (prefsData.electricityPrice as number) ?? state.preferences.electricityPrice,
+                    (prefsData.electricityPrice as number) ??
+                    state.preferences.electricityPrice,
                   currency:
-                    (prefsData.currency as UserPreferences["currency"]) ?? state.preferences.currency,
+                    (prefsData.currency as UserPreferences["currency"]) ??
+                    state.preferences.currency,
                   // showAppBadge is client-only, preserve from current state
                   showAppBadge: state.preferences.showAppBadge,
                 }
               : state.preferences,
           }));
-          
+
           // Also cache preferences locally
           if (prefsData) {
             const state = get();
             savePreferencesToStorage(state.preferences);
           }
-          
+
           // If preferences not initialized on ESP32, send browser-detected defaults
           // This is dispatched as a custom event to be handled by the connection manager
           if (prefsData && prefsInitialized === false) {
             const browserPrefs = detectBrowserPreferences();
-            window.dispatchEvent(new CustomEvent('brewos:init-preferences', { 
-              detail: { ...defaultPreferences, ...browserPrefs }
-            }));
+            window.dispatchEvent(
+              new CustomEvent("brewos:init-preferences", {
+                detail: { ...defaultPreferences, ...browserPrefs },
+              })
+            );
           }
           break;
         }
 
         case "power_meter_status": {
           const meterData = data as Record<string, unknown>;
-          const readingData = meterData.reading as Record<string, unknown> | null;
-          
+          const readingData = meterData.reading as Record<
+            string,
+            unknown
+          > | null;
+
           set((state) => ({
             power: {
               ...state.power,
               meter: {
-                source: (meterData.source as PowerMeterStatus["source"]) || "none",
+                source:
+                  (meterData.source as PowerMeterStatus["source"]) || "none",
                 connected: (meterData.connected as boolean) ?? false,
                 meterType: (meterData.meterType as string) || null,
                 lastUpdate: (meterData.lastUpdate as number) || null,
-                reading: readingData ? {
-                  voltage: (readingData.voltage as number) ?? 0,
-                  current: (readingData.current as number) ?? 0,
-                  power: (readingData.power as number) ?? 0,
-                  energy: (readingData.energy as number) ?? 0,
-                  frequency: (readingData.frequency as number) ?? 0,
-                  powerFactor: (readingData.powerFactor as number) ?? 0,
-                } : null,
+                reading: readingData
+                  ? {
+                      voltage: (readingData.voltage as number) ?? 0,
+                      current: (readingData.current as number) ?? 0,
+                      power: (readingData.power as number) ?? 0,
+                      energy: (readingData.energy as number) ?? 0,
+                      frequency: (readingData.frequency as number) ?? 0,
+                      powerFactor: (readingData.powerFactor as number) ?? 0,
+                    }
+                  : null,
                 error: (meterData.error as string) || null,
                 discovering: (meterData.discovering as boolean) ?? false,
-                discoveryProgress: (meterData.discoveryProgress as string) || undefined,
+                discoveryProgress:
+                  (meterData.discoveryProgress as string) || undefined,
                 discoveryStep: (meterData.discoveryStep as number) || undefined,
-                discoveryTotal: (meterData.discoveryTotal as number) || undefined,
+                discoveryTotal:
+                  (meterData.discoveryTotal as number) || undefined,
               },
             },
           }));
@@ -1143,7 +1181,7 @@ export const useStore = create<BrewOSState>()(
         savePreferencesToStorage(newPrefs);
         return { preferences: newPrefs };
       });
-      
+
       // Note: The actual save to ESP32 happens via sendCommand('set_preferences', ...)
       // This is handled in the UI components that call setPreference
     },
