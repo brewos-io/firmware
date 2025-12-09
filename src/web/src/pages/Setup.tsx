@@ -42,8 +42,8 @@ export function SetupView({
 }: SetupViewProps) {
   const isMobileLandscape = useMobileLandscape();
 
-  // Network list component (reused in both layouts)
-  const NetworkListSection = ({ compact = false }: { compact?: boolean }) => (
+  // Network list render function (reused in both layouts)
+  const renderNetworkList = ({ compact = false }: { compact?: boolean }) => (
     <div className={compact ? "" : "mb-3 xs:mb-4"}>
       <div className="flex items-center justify-between mb-1.5 xs:mb-2">
         <label className="text-xs font-semibold uppercase tracking-wider text-theme-muted">
