@@ -191,23 +191,23 @@ export function QRScanner({ onScan, onError, compact = false }: QRScannerProps) 
           </div>
         ) : (
           // Full error for portrait
-          <div className="mt-3 p-3 bg-error-soft border border-error rounded-xl">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <CameraOff className="w-4 h-4 text-error flex-shrink-0" />
-                <p className="text-xs sm:text-sm text-error truncate">{error}</p>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={startScanner}
-                className="flex-shrink-0"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Retry</span>
-              </Button>
+        <div className="mt-3 p-3 bg-error-soft border border-error rounded-xl">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <CameraOff className="w-4 h-4 text-error flex-shrink-0" />
+              <p className="text-xs sm:text-sm text-error truncate">{error}</p>
             </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={startScanner}
+              className="flex-shrink-0"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Retry</span>
+            </Button>
           </div>
+        </div>
         )
       )}
 

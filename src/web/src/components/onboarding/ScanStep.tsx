@@ -47,7 +47,7 @@ export function ScanStep({
   }) => (
     <div
       className={
-        size === "compact" ? "w-48 h-48" : "max-w-[200px] xs:max-w-xs mx-auto"
+        size === "compact" ? "w-full aspect-square" : "max-w-[200px] xs:max-w-xs mx-auto"
       }
     >
       <div
@@ -60,13 +60,13 @@ export function ScanStep({
           <QrCode
             className={`${
               size === "compact"
-                ? "w-12 h-12 mb-2"
+                ? "w-10 h-10 mb-1"
                 : "w-10 h-10 xs:w-16 xs:h-16 mb-2 xs:mb-3"
             } mx-auto opacity-40`}
           />
           <p
             className={`${
-              size === "compact" ? "text-sm" : "text-xs xs:text-sm"
+              size === "compact" ? "text-xs" : "text-xs xs:text-sm"
             } font-medium`}
           >
             Camera view
@@ -76,15 +76,28 @@ export function ScanStep({
     </div>
   );
 
-  // Mobile landscape: two-column layout
+  // Mobile landscape: two-column layout (same pattern as other wizard steps)
   if (isMobileLandscape) {
     return (
-      <div className="w-full px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="flex gap-8 items-center">
-          {/* Left column: QR Scanner */}
-          <div className="flex-1 flex flex-col items-center justify-center">
-            {/* Scanner - larger size for better visibility */}
-            <div className="w-60">
+      <div className="h-full flex flex-col animate-in fade-in duration-300">
+        {/* Header row */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center flex-shrink-0 border border-accent/20">
+            <QrCode className="w-6 h-6 text-accent" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-theme">Scan QR Code</h2>
+            <p className="text-sm text-theme-muted">
+              Point camera at your machine's display
+            </p>
+          </div>
+        </div>
+
+        {/* Two columns */}
+        <div className="flex-1 flex gap-6">
+          {/* Left: QR Scanner */}
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-44">
               {onScan ? (
                 <QRScanner
                   onScan={onScan}
@@ -97,33 +110,17 @@ export function ScanStep({
             </div>
           </div>
 
-          {/* Vertical divider */}
-          <div className="w-px self-stretch min-h-[180px] bg-theme/10 flex-shrink-0" />
-
-          {/* Right column: Header + info + buttons */}
-          <div className="flex-1 flex flex-col items-center justify-center">
-            {/* Header */}
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center mx-auto mb-3">
-                <QrCode className="w-6 h-6 text-accent" />
-              </div>
-              <h2 className="text-2xl font-bold text-theme mb-1">
-                Scan QR Code
-              </h2>
-              <p className="text-theme-muted text-base">
-                Point camera at your machine's display
-              </p>
-            </div>
-
+          {/* Right: Info + Buttons */}
+          <div className="flex-1 flex flex-col justify-center">
             {/* WiFi reminder */}
-            <div className="flex items-center gap-2 text-sm text-theme-muted mb-4 p-2.5 bg-theme-secondary/50 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-theme-muted mb-4 p-3 bg-theme-secondary/50 rounded-xl border border-theme/10">
               <Wifi className="w-4 h-4 text-accent flex-shrink-0" />
-              <span>Machine must be on WiFi</span>
+              <span>Make sure your machine is connected to WiFi</span>
             </div>
 
             {/* Error message */}
             {error && (
-              <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 w-full max-w-[280px]">
+              <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
                   <p className="text-sm text-red-500">{error}</p>
@@ -132,22 +129,14 @@ export function ScanStep({
             )}
 
             {/* Action buttons */}
-            <div className="flex gap-3 w-full max-w-[280px]">
+            <div className="flex gap-3">
               {onBack && (
-                <Button
-                  variant="secondary"
-                  className="flex-1 py-2.5"
-                  onClick={onBack}
-                >
+                <Button variant="secondary" className="flex-1" onClick={onBack}>
                   Back
                 </Button>
               )}
               <Button
-                className={
-                  onBack
-                    ? "flex-1 py-2.5 font-semibold"
-                    : "w-full py-2.5 font-semibold"
-                }
+                className={onBack ? "flex-1 font-semibold" : "w-full font-semibold"}
                 onClick={onValidate}
                 disabled={disabled}
                 loading={loading}
