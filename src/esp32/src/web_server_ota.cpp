@@ -216,6 +216,13 @@ void WebServer::startGitHubOTA(const String& version) {
     bool foundPartition = false;
     
     // Constants for partition detection
+    /*
+     * WARNING: The hardcoded default address (0x670000) below assumes an 8MB partition layout (default_8MB.csv).
+     * This fallback will FAIL on boards with different flash sizes or custom partition tables.
+     * If you use a custom partition table or a non-8MB flash, you MUST update or remove this fallback.
+     * Prefer finding the partition by label ("littlefs") above. Only use this fallback if you are certain
+     * your partition layout matches the default 8MB configuration.
+     */
     constexpr uint32_t DEFAULT_LITTLEFS_ADDRESS = 0x670000;  // Default address for 8MB partition layout
     constexpr size_t MIN_PARTITION_SIZE = 0x100000;          // 1MB minimum size for filesystem partition
     constexpr uint32_t MIN_PARTITION_ADDRESS = 0x600000;     // 6MB - filesystem typically starts after app partitions
@@ -230,8 +237,10 @@ void WebServer::startGitHubOTA(const String& version) {
     }
     
     // Method 2: Find by expected address (fallback for partition layouts without label)
-    // Note: This is specific to default_8MB.csv partition layout. If partition layout changes,
-    // this fallback may need adjustment or removal.
+    // WARNING: This creates a fragile dependency on specific partition layouts.
+    // This is specific to default_8MB.csv partition layout. If partition layout changes,
+    // this fallback may need adjustment or removal. Consider removing this method or
+    // making the address configurable through a build-time constant.
     esp_partition_iterator_t addressIt = NULL;
     if (!foundPartition) {
         addressIt = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
@@ -302,12 +311,16 @@ void WebServer::startGitHubOTA(const String& version) {
         writeIt = esp_partition_next(writeIt);
     }
     
+    // Always release the iterator after use (regardless of success or failure)
+    // Note: partition pointer remains valid after iterator release in ESP-IDF
+    if (writeIt) {
+        esp_partition_iterator_release(writeIt);
+        writeIt = NULL;
+    }
+    
     if (!partition || partition->address != fsPartitionAddr) {
         LOG_E("Failed to get partition handle for writing");
         broadcastLog("Firmware updated, but web UI update failed (partition handle error)", "warn");
-        if (writeIt) {
-            esp_partition_iterator_release(writeIt);
-        }
         httpFs.end();
         broadcastProgress("complete", 100, "Firmware updated");
         delay(1000);
@@ -320,9 +333,6 @@ void WebServer::startGitHubOTA(const String& version) {
     if (esp_partition_erase_range(partition, 0, fsPartitionSize) != ESP_OK) {
         LOG_E("Failed to erase LittleFS partition");
         broadcastLog("Firmware updated, but web UI update failed (erase failed)", "warn");
-        if (writeIt) {
-            esp_partition_iterator_release(writeIt);
-        }
         httpFs.end();
         broadcastProgress("complete", 100, "Firmware updated");
         delay(1000);
@@ -348,9 +358,6 @@ void WebServer::startGitHubOTA(const String& version) {
                 if (err != ESP_OK) {
                     LOG_E("Failed to write to LittleFS partition at offset %d: %s", offset, esp_err_to_name(err));
                     broadcastLog("Firmware updated, but web UI update failed (write failed)", "warn");
-                    if (writeIt) {
-                        esp_partition_iterator_release(writeIt);
-                    }
                     httpFs.end();
                     broadcastProgress("complete", 100, "Firmware updated");
                     delay(1000);
@@ -374,9 +381,6 @@ void WebServer::startGitHubOTA(const String& version) {
     if (writtenFs != (size_t)fsContentLength) {
         LOG_W("LittleFS download incomplete: %d/%d bytes", writtenFs, fsContentLength);
         broadcastLog("Firmware updated, but web UI update incomplete", "warn");
-        if (writeIt) {
-            esp_partition_iterator_release(writeIt);
-        }
         broadcastProgress("complete", 100, "Firmware updated");
         delay(1000);
         ESP.restart();
@@ -386,10 +390,7 @@ void WebServer::startGitHubOTA(const String& version) {
     LOG_I("LittleFS update successful! Total written: %d bytes", writtenFs);
     broadcastProgress("complete", 100, "Update complete!");
     
-    // Release partition iterator
-    if (writeIt) {
-        esp_partition_iterator_release(writeIt);
-    }
+    // Note: Partition iterator was already released earlier (after finding partition)
     
     LOG_I("OTA update successful (firmware + filesystem)!");
     broadcastLog("BrewOS updated successfully! Restarting...", "info");
