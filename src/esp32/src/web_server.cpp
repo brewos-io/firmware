@@ -1567,6 +1567,96 @@ void WebServer::setupRoutes() {
         }
     );
     
+    // ==========================================================================
+    // Web Assets OTA Update
+    // ==========================================================================
+    
+    // Start web OTA - cleans old assets and prepares for upload
+    // This is called once at the beginning of a web update session
+    _server.on("/api/ota/web/start", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        LOG_I("Starting web OTA - cleaning old assets...");
+        int deleted = 0;
+        
+        // Remove files in /assets directory (hashed JS/CSS bundles)
+        if (LittleFS.exists("/assets")) {
+            File assets = LittleFS.open("/assets");
+            File file = assets.openNextFile();
+            std::vector<String> toDelete;
+            while (file) {
+                toDelete.push_back(String("/assets/") + file.name());
+                file = assets.openNextFile();
+            }
+            for (const String& path : toDelete) {
+                if (LittleFS.remove(path)) {
+                    deleted++;
+                }
+            }
+            LittleFS.rmdir("/assets");
+        }
+        
+        // Remove root-level web files (keep system config files)
+        const char* webFiles[] = {"index.html", "favicon.svg", "favicon.ico", "logo.png", 
+                                   "logo-icon.svg", "manifest.json", "sw.js", "version-manifest.json"};
+        for (const char* filename : webFiles) {
+            String path = String("/") + filename;
+            if (LittleFS.exists(path) && LittleFS.remove(path)) {
+                deleted++;
+            }
+        }
+        
+        // Recreate assets directory
+        LittleFS.mkdir("/assets");
+        
+        LOG_I("Cleaned %d old web files, ready for upload", deleted);
+        
+        char response[64];
+        snprintf(response, sizeof(response), "{\"cleaned\":%d,\"status\":\"ready\"}", deleted);
+        request->send(200, "application/json", response);
+    });
+    
+    // Upload web asset file - called for each file in the web bundle
+    _server.on("/api/ota/web/upload", HTTP_POST,
+        [](AsyncWebServerRequest* request) {
+            request->send(200, "application/json", "{\"status\":\"ok\"}");
+        },
+        [this](AsyncWebServerRequest* request, const String& filename, size_t index, 
+               uint8_t* data, size_t len, bool final) {
+            static File uploadFile;
+            String path = "/" + filename;
+            
+            if (index == 0) {
+                uploadFile = LittleFS.open(path, "w");
+                if (!uploadFile) {
+                    LOG_E("Failed to open %s for writing", path.c_str());
+                    return;
+                }
+            }
+            
+            if (uploadFile && len > 0) {
+                uploadFile.write(data, len);
+            }
+            
+            if (final && uploadFile) {
+                uploadFile.close();
+                LOG_D("Web OTA: %s (%u bytes)", path.c_str(), (unsigned)(index + len));
+            }
+        }
+    );
+    
+    // Complete web OTA - logs completion
+    _server.on("/api/ota/web/complete", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        size_t used = LittleFS.usedBytes();
+        size_t total = LittleFS.totalBytes();
+        LOG_I("Web OTA complete. Filesystem: %uKB / %uKB", (unsigned)(used/1024), (unsigned)(total/1024));
+        broadcastLog("Web update complete");
+        
+        char response[96];
+        snprintf(response, sizeof(response), 
+            "{\"status\":\"complete\",\"used\":%u,\"total\":%u}", 
+            (unsigned)used, (unsigned)total);
+        request->send(200, "application/json", response);
+    });
+    
     // Serve static files from LittleFS (React app assets: JS, CSS, images, etc.)
     // This is registered AFTER all API routes to ensure API endpoints have priority
     _server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
