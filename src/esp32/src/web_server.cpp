@@ -13,6 +13,7 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <esp_heap_caps.h>
+#include <esp_partition.h>
 #include <pgmspace.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -3581,7 +3582,7 @@ void WebServer::startGitHubOTA(const String& version) {
         return;
     }
     
-    broadcastProgress("flash", 98, "Finalizing...");
+    broadcastProgress("flash", 95, "Finalizing firmware...");
     
     if (!Update.end(true)) {
         LOG_E("Update failed: %s", Update.errorString());
@@ -3590,9 +3591,215 @@ void WebServer::startGitHubOTA(const String& version) {
         return;
     }
     
-    LOG_I("OTA update successful!");
-    broadcastLog("BrewOS updated successfully! Restarting...", "info");
+    LOG_I("Firmware update successful! Now updating filesystem...");
+    broadcastProgress("flash", 96, "Updating web UI...");
+    
+    // Step 2: Download and flash LittleFS filesystem image
+    char littlefsUrl[256];
+    snprintf(littlefsUrl, sizeof(littlefsUrl), 
+             "https://github.com/" GITHUB_OWNER "/" GITHUB_REPO "/releases/download/%s/" GITHUB_ESP32_LITTLEFS_ASSET, 
+             tag);
+    LOG_I("LittleFS download URL: %s", littlefsUrl);
+    
+    HTTPClient httpFs;
+    httpFs.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    httpFs.setTimeout(30000);
+    
+    if (!httpFs.begin(littlefsUrl)) {
+        LOG_W("Failed to connect for LittleFS download - continuing with firmware update only");
+        broadcastLog("Firmware updated, but web UI update failed", "warn");
+        broadcastProgress("complete", 100, "Firmware updated");
+        delay(1000);
+        ESP.restart();
+        return;
+    }
+    
+    httpFs.addHeader("User-Agent", "BrewOS-ESP32/" ESP32_VERSION);
+    int httpCodeFs = httpFs.GET();
+    
+    if (httpCodeFs != HTTP_CODE_OK) {
+        LOG_W("LittleFS download failed: %d - continuing with firmware update only", httpCodeFs);
+        broadcastLog("Firmware updated, but web UI update failed", "warn");
+        httpFs.end();
+        broadcastProgress("complete", 100, "Firmware updated");
+        delay(1000);
+        ESP.restart();
+        return;
+    }
+    
+    int fsContentLength = httpFs.getSize();
+    if (fsContentLength <= 0) {
+        LOG_W("Invalid LittleFS content length: %d", fsContentLength);
+        broadcastLog("Firmware updated, but web UI update failed", "warn");
+        httpFs.end();
+        broadcastProgress("complete", 100, "Firmware updated");
+        delay(1000);
+        ESP.restart();
+        return;
+    }
+    
+    LOG_I("LittleFS image size: %d bytes", fsContentLength);
+    broadcastProgress("flash", 97, "Installing web UI...");
+    
+    // Find the LittleFS partition
+    // For default_8MB.csv, LittleFS partition is at 0x670000
+    // Store partition info we need (address and size) since iterator pointers may not persist
+    uint32_t fsPartitionAddr = 0;
+    size_t fsPartitionSize = 0;
+    bool foundPartition = false;
+    
+    // Method 1: Find by label "littlefs" (most reliable)
+    const esp_partition_t* partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "littlefs");
+    if (partition) {
+        fsPartitionAddr = partition->address;
+        fsPartitionSize = partition->size;
+        foundPartition = true;
+        LOG_I("Found LittleFS partition by label at 0x%08X, size: %d", fsPartitionAddr, fsPartitionSize);
+    }
+    
+    // Method 2: Find by expected address (0x670000 for default_8MB.csv)
+    if (!foundPartition) {
+        esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
+        while (it != NULL) {
+            const esp_partition_t* p = esp_partition_get(it);
+            if (p->address == 0x670000) {
+                fsPartitionAddr = p->address;
+                fsPartitionSize = p->size;
+                foundPartition = true;
+                LOG_I("Found filesystem partition by address at 0x%08X, size: %d", fsPartitionAddr, fsPartitionSize);
+                break;
+            }
+            it = esp_partition_next(it);
+        }
+        esp_partition_iterator_release(it);
+    }
+    
+    // Method 3: Find largest data partition (excluding nvs, otadata, etc.)
+    if (!foundPartition) {
+        esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
+        size_t largestSize = 0;
+        while (it != NULL) {
+            const esp_partition_t* p = esp_partition_get(it);
+            // Skip small system partitions, look for large data partition after 6MB
+            if (p->size > 0x100000 && p->address >= 0x600000) {  // > 1MB and after 6MB
+                if (p->size > largestSize) {
+                    fsPartitionAddr = p->address;
+                    fsPartitionSize = p->size;
+                    largestSize = p->size;
+                    foundPartition = true;
+                }
+            }
+            it = esp_partition_next(it);
+        }
+        esp_partition_iterator_release(it);
+        if (foundPartition) {
+            LOG_I("Found filesystem partition by size at 0x%08X, size: %d", fsPartitionAddr, fsPartitionSize);
+        }
+    }
+    
+    if (!foundPartition || fsPartitionAddr == 0 || fsPartitionSize == 0) {
+        LOG_E("LittleFS partition not found");
+        broadcastLog("Firmware updated, but web UI update failed (partition not found)", "warn");
+        httpFs.end();
+        broadcastProgress("complete", 100, "Firmware updated");
+        delay(1000);
+        ESP.restart();
+        return;
+    }
+    
+    // Re-find partition by address for writing (esp_partition_find_first returns stable pointer)
+    partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
+    // Find the one matching our address
+    esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
+    while (it != NULL && partition) {
+        const esp_partition_t* p = esp_partition_get(it);
+        if (p->address == fsPartitionAddr) {
+            partition = p;  // This pointer is valid while iterator exists
+            break;
+        }
+        it = esp_partition_next(it);
+    }
+    
+    if (!partition || partition->address != fsPartitionAddr) {
+        LOG_E("Failed to get partition handle for writing");
+        broadcastLog("Firmware updated, but web UI update failed (partition handle error)", "warn");
+        if (it) esp_partition_iterator_release(it);
+        httpFs.end();
+        broadcastProgress("complete", 100, "Firmware updated");
+        delay(1000);
+        ESP.restart();
+        return;
+    }
+    
+    // Erase the partition first
+    broadcastProgress("flash", 98, "Erasing filesystem...");
+    if (esp_partition_erase_range(partition, 0, fsPartitionSize) != ESP_OK) {
+        LOG_E("Failed to erase LittleFS partition");
+        broadcastLog("Firmware updated, but web UI update failed (erase failed)", "warn");
+        httpFs.end();
+        broadcastProgress("complete", 100, "Firmware updated");
+        delay(1000);
+        ESP.restart();
+        return;
+    }
+    
+    // Download and write to partition
+    WiFiClient* streamFs = httpFs.getStreamPtr();
+    uint8_t bufferFs[1024];
+    size_t writtenFs = 0;
+    size_t offset = 0;
+    
+    while (httpFs.connected() && writtenFs < (size_t)fsContentLength && offset < fsPartitionSize) {
+        size_t available = streamFs->available();
+        if (available > 0) {
+            size_t toRead = min(available, sizeof(bufferFs));
+            size_t bytesRead = streamFs->readBytes(bufferFs, toRead);
+            
+            if (bytesRead > 0) {
+                // Write to partition
+                esp_err_t err = esp_partition_write(partition, offset, bufferFs, bytesRead);
+                if (err != ESP_OK) {
+                    LOG_E("Failed to write to LittleFS partition at offset %d: %s", offset, esp_err_to_name(err));
+                    broadcastLog("Firmware updated, but web UI update failed (write failed)", "warn");
+                    httpFs.end();
+                    broadcastProgress("complete", 100, "Firmware updated");
+                    delay(1000);
+                    ESP.restart();
+                    return;
+                }
+                writtenFs += bytesRead;
+                offset += bytesRead;
+                
+                // Report progress 97-99%
+                int progress = 97 + (writtenFs * 2) / fsContentLength;
+                if (progress > 99) progress = 99;
+                broadcastProgress("flash", progress, "Installing web UI...");
+            }
+        }
+        delay(1);  // Yield to other tasks
+    }
+    
+    httpFs.end();
+    
+    if (writtenFs != (size_t)fsContentLength) {
+        LOG_W("LittleFS download incomplete: %d/%d bytes", writtenFs, fsContentLength);
+        broadcastLog("Firmware updated, but web UI update incomplete", "warn");
+        broadcastProgress("complete", 100, "Firmware updated");
+        delay(1000);
+        ESP.restart();
+        return;
+    }
+    
+    LOG_I("LittleFS update successful! Total written: %d bytes", writtenFs);
     broadcastProgress("complete", 100, "Update complete!");
+    
+    // Release partition iterator
+    if (it) {
+        esp_partition_iterator_release(it);
+    }
+    
+    LOG_I("OTA update successful (firmware + filesystem)!");
+    broadcastLog("BrewOS updated successfully! Restarting...", "info");
     
     // Give time for the message to be sent
     delay(1000);

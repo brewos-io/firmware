@@ -89,6 +89,7 @@
 #define GITHUB_OWNER            "mizrachiran"
 #define GITHUB_REPO             "brewos"
 #define GITHUB_ESP32_ASSET      "brewos_esp32.bin"
+#define GITHUB_ESP32_LITTLEFS_ASSET "brewos_esp32_littlefs.bin"
 
 // Pico firmware assets by machine type (UF2 format)
 #define GITHUB_PICO_DUAL_BOILER_ASSET     "brewos_dual_boiler.uf2"
