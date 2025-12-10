@@ -565,23 +565,18 @@ void setup() {
     
     Serial.print("Heap: ");
     Serial.println(ESP.getFreeHeap());
-    Serial.flush();
-    
-    Serial.print("Free heap: ");
-    Serial.print(ESP.getFreeHeap());
-    Serial.print("\n");
-    Serial.flush();
-    
-    Serial.print("Free heap: ");
-    Serial.println(ESP.getFreeHeap());
     Serial.print("PSRAM size: ");
     Serial.println(ESP.getPsramSize());
     Serial.flush();
     
     // Verify PSRAM is disabled for heap allocations
+    // ESP32-S3 PSRAM address range
+    constexpr uintptr_t ESP32S3_PSRAM_START = 0x3C000000;
+    constexpr uintptr_t ESP32S3_PSRAM_END   = 0x3E000000;
+    
     void* testAlloc = malloc(64);
     uintptr_t addr = (uintptr_t)testAlloc;
-    bool inPSRAM = (addr >= 0x3C000000 && addr < 0x3E000000);
+    bool inPSRAM = (addr >= ESP32S3_PSRAM_START && addr < ESP32S3_PSRAM_END);
     Serial.printf("Malloc test: 0x%08X (%s)\n", addr, inPSRAM ? "PSRAM - ERROR!" : "Internal RAM - OK");
     if (inPSRAM) {
         Serial.println("ERROR: PSRAM should be disabled! Check platformio.ini");
@@ -1065,8 +1060,8 @@ void loop() {
     }
     yield();  // Feed watchdog
     
-    // BLE Scale - disabled until WiFi/BLE coexistence issue is resolved
-    // TODO: Re-enable after fixing potential WiFi/BLE conflict causing watchdog resets
+    // BLE Scale - disabled by default (scaleEnabled = false at top of file)
+    // Known issue: BLE scanning may conflict with WiFi causing watchdog resets on some networks
     if (scaleEnabled && scaleManager) {
         scaleManager->loop();
         yield();

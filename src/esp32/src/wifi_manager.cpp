@@ -6,11 +6,13 @@
 // PSRAM data is at 0x3C000000-0x3DFFFFFF - calling this would crash
 static inline bool isValidCodePointer(void* ptr) {
     uintptr_t addr = (uintptr_t)ptr;
-    // Valid ESP32-S3 code regions: ROM, IRAM, Flash
+    // Valid ESP32-S3 code/data regions:
+    // 0x3FF80000 - 0x3FFFFFFF: DRAM (function pointers can reside here)
     // 0x40000000 - 0x4001FFFF: ROM
     // 0x40020000 - 0x40027FFF: IRAM 
     // 0x42000000 - 0x42FFFFFF: Flash mapped code
-    return (addr >= 0x40000000 && addr < 0x43000000);
+    return ((addr >= 0x40000000 && addr < 0x43000000) || 
+            (addr >= 0x3FF80000 && addr <= 0x3FFFFFFF));
 }
 
 // Safe callback invocation with validation
