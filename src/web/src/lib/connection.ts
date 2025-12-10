@@ -149,6 +149,7 @@ export class Connection implements IConnection {
     }
 
     // Local connection - direct to ESP32
+    // WebSocket on same port 80, endpoint /ws
     const endpoint = this.config.endpoint || '/ws';
     
     if (typeof window !== 'undefined') {

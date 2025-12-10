@@ -124,18 +124,20 @@ public:
     String getStatusString() const;
     
     /**
-     * Events
+     * Events - Simple function pointers to avoid std::function PSRAM allocation issues
      */
-    void onConnected(std::function<void()> callback) { _onConnected = callback; }
-    void onDisconnected(std::function<void()> callback) { _onDisconnected = callback; }
+    typedef void (*mqtt_event_callback_t)();
+    typedef void (*mqtt_command_callback_t)(const char* cmd, const JsonDocument& doc);
+    
+    void onConnected(mqtt_event_callback_t callback) { _onConnected = callback; }
+    void onDisconnected(mqtt_event_callback_t callback) { _onDisconnected = callback; }
     
     /**
      * Command callback - called when a command is received via MQTT
      * @param cmd Command name (e.g., "set_temp", "set_mode", "tare")
      * @param doc JSON document with command parameters
      */
-    typedef std::function<void(const char* cmd, const JsonDocument& doc)> command_callback_t;
-    void onCommand(command_callback_t callback) { _commandCallback = callback; }
+    void onCommand(mqtt_command_callback_t callback) { _commandCallback = callback; }
     
 private:
     WiFiClient _wifiClient;
@@ -150,10 +152,10 @@ private:
     unsigned long _lastStatusPublish;
     int _reconnectDelay;
     
-    // Callbacks
-    std::function<void()> _onConnected;
-    std::function<void()> _onDisconnected;
-    command_callback_t _commandCallback;
+    // Callbacks - simple function pointers
+    mqtt_event_callback_t _onConnected = nullptr;
+    mqtt_event_callback_t _onDisconnected = nullptr;
+    mqtt_command_callback_t _commandCallback = nullptr;
     
     // Internal methods
     void loadConfig();
@@ -177,6 +179,6 @@ private:
 };
 
 // Global instance
-extern MQTTClient mqttClient;
+// extern MQTTClient mqttClient;  // Commented out - now using pointer in main.cpp
 
 #endif // MQTT_CLIENT_H

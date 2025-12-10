@@ -70,6 +70,8 @@ jobs:
         run: |
           cd src/web
           npm ci
+          # Clean old files before build (prevent stale hashed assets)
+          rm -rf ../esp32/data/assets ../esp32/data/index.html ../esp32/data/*.svg ../esp32/data/*.png ../esp32/data/*.json ../esp32/data/sw.js 2>/dev/null || true
           # Build with ESP32 mode (__ESP32__=true, __CLOUD__=false)
           # This disables demo mode and cloud-only features
           npm run build:esp32

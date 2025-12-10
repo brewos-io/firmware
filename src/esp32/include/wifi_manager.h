@@ -47,6 +47,9 @@ struct TimeStatus {
     int32_t utcOffset;      // Current UTC offset in seconds
 };
 
+// Simple function pointer types to avoid std::function PSRAM allocation issues
+typedef void (*WiFiEventCallback)();
+
 class WiFiManager {
 public:
     WiFiManager();
@@ -80,6 +83,9 @@ public:
     bool isConnected();
     String getIP();
     
+    // Get stored credentials (raw pointers to internal buffers)
+    const char* getStoredSSID() const { return _storedSSID; }
+    
     // NTP/Time configuration
     void configureNTP(const char* server, int16_t utcOffsetMinutes, bool dstEnabled, int16_t dstOffsetMinutes);
     void syncNTP();
@@ -88,17 +94,18 @@ public:
     time_t getLocalTime();
     String getFormattedTime(const char* format = "%Y-%m-%d %H:%M:%S");
     
-    // Events (set callbacks)
-    void onConnected(std::function<void()> callback) { _onConnected = callback; }
-    void onDisconnected(std::function<void()> callback) { _onDisconnected = callback; }
-    void onAPStarted(std::function<void()> callback) { _onAPStarted = callback; }
+    // Events - use simple function pointers to avoid std::function PSRAM issues
+    void onConnected(WiFiEventCallback callback) { _onConnected = callback; }
+    void onDisconnected(WiFiEventCallback callback) { _onDisconnected = callback; }
+    void onAPStarted(WiFiEventCallback callback) { _onAPStarted = callback; }
 
 private:
     WiFiManagerMode _mode;
     Preferences _prefs;
     
-    String _storedSSID;
-    String _storedPassword;
+    // Fixed-size buffers to avoid String/PSRAM allocations
+    char _storedSSID[64];
+    char _storedPassword[128];
     
     // Static IP configuration
     StaticIPConfig _staticIP = {false, IPAddress(), IPAddress(), IPAddress(255,255,255,0), IPAddress(), IPAddress()};
@@ -112,9 +119,10 @@ private:
     int32_t _dstOffsetSec = 0;
     bool _ntpConfigured = false;
     
-    std::function<void()> _onConnected;
-    std::function<void()> _onDisconnected;
-    std::function<void()> _onAPStarted;
+    // Simple function pointers - no dynamic allocation
+    WiFiEventCallback _onConnected = nullptr;
+    WiFiEventCallback _onDisconnected = nullptr;
+    WiFiEventCallback _onAPStarted = nullptr;
     
     void loadCredentials();
     void saveCredentials(const String& ssid, const String& password);
@@ -123,4 +131,3 @@ private:
 };
 
 #endif // WIFI_MANAGER_H
-

@@ -128,10 +128,10 @@ static void update_status_display(void) {
     
     lv_obj_t* btn_label = lv_obj_get_child(action_btn, 0);
     
-    if (scaleManager.isConnected()) {
+    if (scaleManager && scaleManager->isConnected()) {
         // Connected state
         lv_obj_set_style_text_color(status_icon, COLOR_SUCCESS, 0);
-        lv_label_set_text(status_label, scaleManager.getScaleName());
+        lv_label_set_text(status_label, scaleManager ? scaleManager->getScaleName() : "N/A");
         lv_obj_clear_flag(weight_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(spinner, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(scale_list, LV_OBJ_FLAG_HIDDEN);
@@ -142,7 +142,7 @@ static void update_status_display(void) {
         lv_label_set_text(hint_label, "Press to disconnect • Tare with double-press");
         current_state = SCALE_SCREEN_IDLE;
     }
-    else if (scaleManager.isScanning()) {
+    else if (scaleManager && scaleManager->isScanning()) {
         // Scanning state
         lv_obj_set_style_text_color(status_icon, COLOR_INFO, 0);
         lv_label_set_text(status_label, "Scanning for scales...");
@@ -160,7 +160,8 @@ static void update_status_display(void) {
         // Show discovered scales
         lv_obj_set_style_text_color(status_icon, COLOR_INFO, 0);
         
-        const auto& devices = scaleManager.getDiscoveredScales();
+        static const std::vector<scale_info_t> empty_devices;
+        const auto& devices = scaleManager ? scaleManager->getDiscoveredScales() : empty_devices;
         if (devices.empty()) {
             lv_label_set_text(status_label, "No scales found");
             lv_obj_add_flag(scale_list, LV_OBJ_FLAG_HIDDEN);
@@ -218,7 +219,8 @@ static void update_list(void) {
     lv_obj_clean(scale_list);
     selected_index = 0;
     
-    const auto& devices = scaleManager.getDiscoveredScales();
+    static const std::vector<scale_info_t> empty_devices;
+    const auto& devices = scaleManager ? scaleManager->getDiscoveredScales() : empty_devices;
     
     for (size_t i = 0; i < devices.size(); i++) {
         create_list_item(devices[i], i);
@@ -266,8 +268,8 @@ void screen_scale_update(const ui_state_t* state) {
     if (!state || !screen) return;
     
     // Update weight display if connected
-    if (scaleManager.isConnected()) {
-        scale_state_t scale_state = scaleManager.getState();
+    if (scaleManager && scaleManager->isConnected()) {
+        scale_state_t scale_state = scaleManager ? scaleManager->getState() : scale_state_t{};
         char buf[16];
         snprintf(buf, sizeof(buf), "%.1fg", scale_state.weight);
         lv_label_set_text(weight_label, buf);
@@ -281,8 +283,8 @@ void screen_scale_update(const ui_state_t* state) {
     static bool was_scanning = false;
     static bool was_connected = false;
     
-    bool is_scanning = scaleManager.isScanning();
-    bool is_connected = scaleManager.isConnected();
+    bool is_scanning = scaleManager ? scaleManager->isScanning() : false;
+    bool is_connected = scaleManager ? scaleManager->isConnected() : false;
     
     if (was_scanning && !is_scanning) {
         // Scan finished - update list
@@ -303,7 +305,8 @@ void screen_scale_update(const ui_state_t* state) {
 
 void screen_scale_encoder(int direction) {
     if (current_state == SCALE_SCREEN_LIST) {
-        const auto& devices = scaleManager.getDiscoveredScales();
+        static const std::vector<scale_info_t> empty_devices;
+        const auto& devices = scaleManager ? scaleManager->getDiscoveredScales() : empty_devices;
         if (devices.empty()) return;
         
         int new_index = selected_index + direction;
@@ -320,9 +323,9 @@ void screen_scale_encoder(int direction) {
 bool screen_scale_select(void) {
     switch (current_state) {
         case SCALE_SCREEN_IDLE:
-            if (scaleManager.isConnected()) {
+            if (scaleManager && scaleManager->isConnected()) {
                 // Disconnect
-                scaleManager.disconnect();
+                if (scaleManager) scaleManager->disconnect();
                 update_status_display();
             } else {
                 // Start scan
@@ -338,12 +341,13 @@ bool screen_scale_select(void) {
             
         case SCALE_SCREEN_LIST: {
             // Connect to selected scale
-            const auto& devices = scaleManager.getDiscoveredScales();
+            static const std::vector<scale_info_t> empty_devices;
+        const auto& devices = scaleManager ? scaleManager->getDiscoveredScales() : empty_devices;
             if (selected_index >= 0 && selected_index < (int)devices.size()) {
                 current_state = SCALE_SCREEN_CONNECTING;
                 update_status_display();
                 
-                if (scaleManager.connectByIndex(selected_index)) {
+                if (scaleManager && scaleManager->connectByIndex(selected_index)) {
                     LOG_I("Connecting to scale index %d", selected_index);
                 } else {
                     LOG_W("Failed to connect to scale");
@@ -364,15 +368,17 @@ bool screen_scale_select(void) {
 }
 
 void screen_scale_start_scan(void) {
-    scaleManager.clearDiscovered();
-    scaleManager.startScan(15000);
+    if (scaleManager) {
+        scaleManager->clearDiscovered();
+        scaleManager->startScan(15000);
+    }
     current_state = SCALE_SCREEN_SCANNING;
     update_status_display();
     LOG_I("Scale scan started");
 }
 
 void screen_scale_stop_scan(void) {
-    scaleManager.stopScan();
+        if (scaleManager) scaleManager->stopScan();
     current_state = SCALE_SCREEN_IDLE;
     update_status_display();
     LOG_I("Scale scan stopped");

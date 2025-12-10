@@ -12,10 +12,28 @@
 #include <LittleFS.h>
 #include <HTTPClient.h>
 #include <Update.h>
+#include <esp_heap_caps.h>
+#include <pgmspace.h>
+#include <stdarg.h>
+#include <stdio.h>
+
+// Deferred WiFi connection state (allows HTTP response to be sent before disconnecting AP)
+static bool _pendingWiFiConnect = false;
+static unsigned long _wifiConnectRequestTime = 0;
+
+// Track when WiFi is ready to serve requests (prevents PSRAM crashes from early HTTP requests)
+static unsigned long _wifiReadyTime = 0;
+static const unsigned long WIFI_READY_DELAY_MS = 5000;  // 5 seconds after WiFi connects
+
+// Static WebServer pointer for WebSocket callback
+static WebServer* _wsInstance = nullptr;
+
+// Note: All JsonDocument instances should use StaticJsonDocument with stack allocation
+// to avoid PSRAM crashes. Use the pragma pattern from handleGetWiFiNetworks.
 
 WebServer::WebServer(WiFiManager& wifiManager, PicoUART& picoUart, MQTTClient& mqttClient, PairingManager* pairingManager)
     : _server(WEB_SERVER_PORT)
-    , _ws(WEBSOCKET_PATH)
+    , _ws("/ws")  // WebSocket on same port 80, endpoint /ws
     , _wifiManager(wifiManager)
     , _picoUart(picoUart)
     , _mqttClient(mqttClient)
@@ -35,55 +53,428 @@ void WebServer::begin() {
     // Setup routes
     setupRoutes();
     
-    // Setup WebSocket
-    _ws.onEvent([this](AsyncWebSocket* server, AsyncWebSocketClient* client,
-                       AwsEventType type, void* arg, uint8_t* data, size_t len) {
-        onWsEvent(server, client, type, arg, data, len);
+    // Setup WebSocket handler
+    _wsInstance = this;
+    _ws.onEvent([](AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len) {
+        if (_wsInstance) {
+            _wsInstance->handleWsEvent(server, client, type, arg, data, len);
+        }
     });
     _server.addHandler(&_ws);
     
-    // Start server
+    // Start HTTP server
     _server.begin();
-    LOG_I("Web server started on port %d", WEB_SERVER_PORT);
+    LOG_I("HTTP server started on port %d", WEB_SERVER_PORT);
+    LOG_I("WebSocket available at ws://brewos.local/ws");
 }
 
 void WebServer::setCloudConnection(CloudConnection* cloudConnection) {
     _cloudConnection = cloudConnection;
 }
 
+void WebServer::setWiFiConnected() {
+    _wifiReadyTime = millis();
+    LOG_I("WiFi connected - requests will be served after %lu ms delay", WIFI_READY_DELAY_MS);
+}
+
+bool WebServer::isWiFiReady() {
+    if (_wifiReadyTime == 0) {
+        return false;  // WiFi not connected yet
+    }
+    return (millis() - _wifiReadyTime) >= WIFI_READY_DELAY_MS;
+}
+
+// The React app is served from LittleFS via serveStatic()
+// Users can access it at http://brewos.local after WiFi connects
+
 void WebServer::loop() {
-    // Cleanup disconnected WebSocket clients
-    _ws.cleanupClients();
+    // AsyncWebSocket is event-driven, no loop() needed
+    // Periodically clean up disconnected clients
+    static unsigned long lastCleanup = 0;
+    if (millis() - lastCleanup > 1000) {
+        _ws.cleanupClients();
+        lastCleanup = millis();
+    }
+    
+    // Handle deferred WiFi connection
+    // Wait 500ms after request to ensure HTTP response is fully sent
+    if (_pendingWiFiConnect && _wifiConnectRequestTime == 0) {
+        _wifiConnectRequestTime = millis();
+    }
+    
+    if (_pendingWiFiConnect && _wifiConnectRequestTime > 0 && 
+        millis() - _wifiConnectRequestTime > 500) {
+        _pendingWiFiConnect = false;
+        _wifiConnectRequestTime = 0;
+        LOG_I("Starting WiFi connection (deferred)");
+        _wifiManager.connectToWiFi();
+    }
 }
 
 void WebServer::setupRoutes() {
-    // Serve static files from LittleFS (assets, favicon, logo)
-    _server.serveStatic("/assets", LittleFS, "/assets");
-    _server.serveStatic("/favicon.svg", LittleFS, "/favicon.svg");
-    _server.serveStatic("/logo.png", LittleFS, "/logo.png");
+    // Simple test endpoint - no LittleFS needed
+    _server.on("/test", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send(200, "text/plain", "BrewOS Web Server OK");
+    });
     
-    // Root route - always serve index.html (React handles AP mode detection)
+    // WiFi Setup page - inline HTML (no file operations, no PSRAM issues)
+    // This follows IoT best practices: minimal setup page served directly
+    _server.on("/setup", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        // Inline HTML WiFi setup page - completely self-contained
+        // No file operations, no PSRAM usage, works reliably
+        // Using PROGMEM to store in flash (not RAM/PSRAM)
+        const char html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>BrewOS WiFi Setup</title>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(145deg,#1a1412 0%,#2d1f18 50%,#1a1412 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+        .card{background:linear-gradient(180deg,#1e1714 0%,#171210 100%);border-radius:24px;box-shadow:0 25px 80px rgba(0,0,0,0.5),0 0 0 1px rgba(186,132,86,0.1);max-width:420px;width:100%;padding:40px 32px;position:relative;overflow:hidden}
+        .card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#ba8456,#c38f5f,#a06b3d)}
+        .logo{width:80px;height:80px;margin:0 auto 24px;display:block;filter:drop-shadow(0 4px 12px rgba(186,132,86,0.3))}
+        h1{color:#f5f0eb;text-align:center;margin-bottom:8px;font-size:26px;font-weight:600;letter-spacing:-0.5px}
+        .subtitle{color:#9a8578;text-align:center;margin-bottom:32px;font-size:14px}
+        .form-group{margin-bottom:20px}
+        label{display:block;color:#c4b5a9;font-weight:500;margin-bottom:10px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px}
+        input{width:100%;padding:14px 16px;background:#0d0a09;border:1px solid #3d2e24;border-radius:12px;font-size:15px;color:#f5f0eb;transition:all 0.2s}
+        input::placeholder{color:#5c4d42}
+        input:focus{outline:none;border-color:#ba8456;box-shadow:0 0 0 3px rgba(186,132,86,0.15)}
+        .btn{width:100%;padding:16px;background:linear-gradient(135deg,#ba8456 0%,#a06b3d 100%);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;transition:all 0.2s;text-transform:uppercase;letter-spacing:0.5px}
+        .btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(186,132,86,0.3)}
+        .btn:active{transform:translateY(0)}
+        .btn:disabled{opacity:0.4;cursor:not-allowed;transform:none}
+        .btn-secondary{background:#2d241e;color:#c4b5a9;margin-top:12px}
+        .btn-secondary:hover{background:#3d2e24}
+        .status{margin-top:20px;padding:14px 16px;border-radius:12px;font-size:14px;display:none;text-align:center}
+        .status.success{background:rgba(34,197,94,0.1);color:#4ade80;border:1px solid rgba(34,197,94,0.2)}
+        .status.error{background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2)}
+        .status.info{background:rgba(186,132,86,0.1);color:#d5a071;border:1px solid rgba(186,132,86,0.2)}
+        .network-list{max-height:280px;overflow-y:auto;background:#0d0a09;border:1px solid #3d2e24;border-radius:12px;margin-bottom:16px}
+        .network-list::-webkit-scrollbar{width:6px}
+        .network-list::-webkit-scrollbar-track{background:#1a1412}
+        .network-list::-webkit-scrollbar-thumb{background:#3d2e24;border-radius:3px}
+        .network-item{padding:14px 16px;border-bottom:1px solid #2d241e;cursor:pointer;transition:all 0.15s}
+        .network-item:hover{background:#1a1412}
+        .network-item:last-child{border-bottom:none}
+        .network-item.selected{background:rgba(186,132,86,0.1);border-color:rgba(186,132,86,0.3)}
+        .network-ssid{font-weight:500;color:#f5f0eb;font-size:15px;display:flex;align-items:center;gap:8px}
+        .network-ssid .lock{color:#ba8456;font-size:12px}
+        .network-rssi{font-size:12px;color:#7a6b5f;margin-top:4px}
+        .signal-bars{display:inline-flex;gap:2px;margin-left:auto}
+        .signal-bar{width:3px;background:#3d2e24;border-radius:1px}
+        .signal-bar.active{background:#ba8456}
+        .empty-state{text-align:center;padding:40px 20px;color:#5c4d42}
+        .empty-state svg{width:48px;height:48px;margin-bottom:16px;opacity:0.5}
+        .spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:8px;vertical-align:middle}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .divider{height:1px;background:linear-gradient(90deg,transparent,#3d2e24,transparent);margin:24px 0}
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="card">
+        <svg class="logo" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="48" fill="url(#grad1)" stroke="#ba8456" stroke-width="2"/>
+            <path d="M30 35C30 35 32 25 50 25C68 25 70 35 70 35V60C70 70 60 75 50 75C40 75 30 70 30 60V35Z" fill="#2d1f18" stroke="#ba8456" stroke-width="2"/>
+            <path d="M70 40H75C80 40 82 45 82 50C82 55 80 60 75 60H70" stroke="#ba8456" stroke-width="2" fill="none"/>
+            <ellipse cx="50" cy="35" rx="18" ry="6" fill="#ba8456" opacity="0.3"/>
+            <path d="M40 50C42 55 48 58 50 58C52 58 58 55 60 50" stroke="#d5a071" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+            <defs><linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1e1714"/><stop offset="100%" stop-color="#0d0a09"/></linearGradient></defs>
+        </svg>
+        
+        <h1>BrewOS</h1>
+        <p class="subtitle">Connect your espresso machine to WiFi</p>
+        
+        <div class="form-group">
+            <label>Available Networks</label>
+            <div id="networkList" class="network-list">
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"/>
+                    </svg>
+                    <p>Tap "Scan" to find networks</p>
+                </div>
+            </div>
+        </div>
+        
+        <button id="scanBtn" class="btn btn-secondary" onclick="scanNetworks()">
+            <span id="scanSpinner" class="spinner" style="display:none"></span>
+            <span id="scanText">Scan for Networks</span>
+        </button>
+        
+        <div class="divider"></div>
+        
+        <div class="form-group" id="passwordGroup" style="display:none">
+            <label>WiFi Password</label>
+            <input type="password" id="password" placeholder="Enter password">
+        </div>
+        
+        <button id="connectBtn" class="btn" onclick="connectWiFi()" disabled>
+            <span id="connectSpinner" class="spinner" style="display:none"></span>
+            <span id="connectText">Connect to Network</span>
+        </button>
+        
+        <div id="status" class="status"></div>
+    </div>
+    
+    <script>
+        let selectedSSID = '';
+        
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+        }
+        
+        function hideStatus() {
+            document.getElementById('status').style.display = 'none';
+        }
+        
+        function getSignalBars(rssi) {
+            const bars = rssi > -50 ? 4 : rssi > -60 ? 3 : rssi > -70 ? 2 : 1;
+            return Array(4).fill(0).map((_, i) => 
+                `<div class="signal-bar${i < bars ? ' active' : ''}" style="height:${6 + i * 3}px"></div>`
+            ).join('');
+        }
+        
+        async function scanNetworks() {
+            const btn = document.getElementById('scanBtn');
+            const spinner = document.getElementById('scanSpinner');
+            const text = document.getElementById('scanText');
+            const list = document.getElementById('networkList');
+            
+            btn.disabled = true;
+            spinner.style.display = 'inline-block';
+            text.textContent = 'Scanning...';
+            hideStatus();
+            
+            try {
+                const response = await fetch('/api/wifi/networks');
+                const data = await response.json();
+                
+                if (data.networks && data.networks.length > 0) {
+                    list.innerHTML = '';
+                    data.networks.sort((a,b) => b.rssi - a.rssi).forEach(network => {
+                        const item = document.createElement('div');
+                        item.className = 'network-item';
+                        item.onclick = () => selectNetwork(network.ssid, network.secure, item);
+                        item.innerHTML = `
+                            <div class="network-ssid">
+                                ${escapeHtml(network.ssid)}
+                                ${network.secure ? '<span class="lock">🔒</span>' : ''}
+                                <span class="signal-bars">${getSignalBars(network.rssi)}</span>
+                            </div>
+                            <div class="network-rssi">${network.rssi} dBm</div>
+                        `;
+                        list.appendChild(item);
+                    });
+                    showStatus(data.networks.length + ' networks found', 'success');
+                } else {
+                    list.innerHTML = '<div class="empty-state"><p>No networks found</p></div>';
+                    showStatus('No networks found. Try again.', 'error');
+                }
+            } catch (error) {
+                showStatus('Scan failed. Please try again.', 'error');
+                list.innerHTML = '<div class="empty-state"><p>Scan failed</p></div>';
+            }
+            
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            text.textContent = 'Scan for Networks';
+        }
+        
+        function selectNetwork(ssid, secure, element) {
+            selectedSSID = ssid;
+            document.getElementById('passwordGroup').style.display = secure ? 'block' : 'none';
+            document.getElementById('connectBtn').disabled = false;
+            
+            document.querySelectorAll('.network-item').forEach(item => item.classList.remove('selected'));
+            element.classList.add('selected');
+            
+            showStatus('Selected: ' + ssid, 'info');
+        }
+        
+        async function connectWiFi() {
+            if (!selectedSSID) {
+                showStatus('Please select a network first', 'error');
+                return;
+            }
+            
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('connectBtn');
+            const spinner = document.getElementById('connectSpinner');
+            const text = document.getElementById('connectText');
+            
+            btn.disabled = true;
+            spinner.style.display = 'inline-block';
+            text.textContent = 'Connecting...';
+            hideStatus();
+            
+            try {
+                const response = await fetch('/api/wifi/connect', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ssid: selectedSSID, password: password})
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('Connected! Redirecting to BrewOS...', 'success');
+                    text.textContent = 'Connected!';
+                    setTimeout(() => {
+                        window.location.href = 'http://brewos.local';
+                    }, 3000);
+                } else {
+                    showStatus(data.error || 'Connection failed', 'error');
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    text.textContent = 'Connect to Network';
+                }
+            } catch (error) {
+                showStatus('Connection error. Please try again.', 'error');
+                btn.disabled = false;
+                spinner.style.display = 'none';
+                text.textContent = 'Connect to Network';
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Auto-scan on load
+        window.onload = () => scanNetworks();
+    </script>
+</body>
+</html>
+)rawliteral";
+        // Copy from PROGMEM to regular RAM for AsyncWebServer
+        size_t htmlLen = strlen_P(html);
+        char* htmlBuffer = (char*)heap_caps_malloc(htmlLen + 1, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (htmlBuffer) {
+            strcpy_P(htmlBuffer, html);
+            request->send(200, "text/html", htmlBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "text/plain", "Out of memory");
+        }
+    });
+    
+    // Root route - serve React app
     _server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+        Serial.println("[WEB] / hit - serving index.html");
         request->send(LittleFS, "/index.html", "text/html");
+    });
+    
+    // NOTE: serveStatic is registered at the END of setupRoutes() to ensure
+    // API routes have priority over static file serving
+    
+    // Captive portal detection routes - redirect to lightweight setup page
+    // Android/Chrome
+    _server.on("/generate_204", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/setup");
+    });
+    _server.on("/gen_204", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/setup");
+    });
+    // Apple
+    _server.on("/hotspot-detect.html", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/setup");
+    });
+    _server.on("/library/test/success.html", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/setup");
+    });
+    // Windows
+    _server.on("/connecttest.txt", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/setup");
+    });
+    _server.on("/ncsi.txt", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/setup");
+    });
+    // Firefox
+    _server.on("/success.txt", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/setup");
+    });
+    // Generic captive portal check
+    _server.on("/fwlink", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->redirect("/setup");
     });
     
     // API endpoints
     
     // Check if in AP mode (for WiFi setup detection)
     _server.on("/api/mode", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        JsonDocument doc;
+        // Delay serving if WiFi just connected (prevents PSRAM crashes)
+        // Use const char* to avoid String allocation in PSRAM
+        if (!_wifiManager.isAPMode() && !isWiFiReady()) {
+            const char* error = "{\"error\":\"WiFi initializing, please wait\"}";
+            request->send(503, "application/json", error);
+            return;
+        }
+        
+        // Use stack allocation to avoid PSRAM crashes
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<256> doc;
+        #pragma GCC diagnostic pop
         doc["mode"] = "local";
         doc["apMode"] = _wifiManager.isAPMode();
-        doc["hostname"] = WiFi.getHostname();
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        // Copy hostname to stack buffer to avoid PSRAM
+        // Use a local scope to ensure String is destroyed before any other operations
+        char hostnameBuf[64];
+        {
+            String hostnameStr = WiFi.getHostname();
+            if (hostnameStr.length() > 0) {
+                strncpy(hostnameBuf, hostnameStr.c_str(), sizeof(hostnameBuf) - 1);
+                hostnameBuf[sizeof(hostnameBuf) - 1] = '\0';
+            } else {
+                strncpy(hostnameBuf, "brewos", sizeof(hostnameBuf) - 1);
+                hostnameBuf[sizeof(hostnameBuf) - 1] = '\0';
+            }
+            // String destructor runs here at end of scope, before any other operations
+        }
+        doc["hostname"] = hostnameBuf;
+        
+        // Serialize JSON to buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // API info endpoint - provides version and feature detection for web UI compatibility
     // This is the primary endpoint for version negotiation between web UI and backend
     _server.on("/api/info", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        JsonDocument doc;
+        // Delay serving if WiFi just connected (prevents PSRAM crashes)
+        // Use const char* to avoid String allocation in PSRAM
+        if (!_wifiManager.isAPMode() && !isWiFiReady()) {
+            const char* error = "{\"error\":\"WiFi initializing, please wait\"}";
+            request->send(503, "application/json", error);
+            return;
+        }
+        
+        // Use stack allocation to avoid PSRAM crashes
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<1024> doc;
+        #pragma GCC diagnostic pop
         
         // API version - increment ONLY for breaking changes to REST/WebSocket APIs
         // Web UI checks this to determine compatibility
@@ -94,9 +485,10 @@ void WebServer::setupRoutes() {
         doc["webVersion"] = ESP32_VERSION;  // Web UI bundled with this firmware
         doc["protocolVersion"] = ECM_PROTOCOL_VERSION;
         
-        // Pico version (if connected)
+        // Pico version (if connected) - with safety check
         if (_picoUart.isConnected()) {
             doc["picoConnected"] = true;
+            // Safely get Pico version - State might not be fully initialized
             const char* picoVer = State.getPicoVersion();
             if (picoVer && picoVer[0] != '\0') {
                 doc["picoVersion"] = picoVer;
@@ -111,7 +503,7 @@ void WebServer::setupRoutes() {
         
         // Feature flags - granular capability detection
         // Web UI uses these to conditionally show/hide features
-        JsonArray features = doc["features"].to<JsonArray>();
+        JsonArray features = doc.createNestedArray("features");
         
         // Core features (always available)
         features.add("temperature_control");
@@ -134,13 +526,47 @@ void WebServer::setupRoutes() {
         features.add("debug_console");    // Debug console
         features.add("protocol_debug");   // Protocol debugging
         
-        // Device info
-        doc["deviceId"] = WiFi.macAddress();
-        doc["hostname"] = WiFi.getHostname();
+        // Device info - get MAC and hostname directly to avoid String allocations
+        // WiFi.macAddress() and WiFi.getHostname() return String, but we copy immediately
+        // to minimize PSRAM exposure
+        uint8_t mac[6];
+        WiFi.macAddress(mac);
+        char macBuf[18];  // MAC address format: "XX:XX:XX:XX:XX:XX" + null
+        snprintf(macBuf, sizeof(macBuf), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        // Get hostname - must use String but copy immediately to minimize PSRAM exposure
+        // Use a local scope to ensure String is destroyed before any other operations
+        char hostnameBuf[64];
+        {
+            String hostnameStr = WiFi.getHostname();
+            if (hostnameStr.length() > 0) {
+                strncpy(hostnameBuf, hostnameStr.c_str(), sizeof(hostnameBuf) - 1);
+                hostnameBuf[sizeof(hostnameBuf) - 1] = '\0';
+            } else {
+                strncpy(hostnameBuf, "brewos", sizeof(hostnameBuf) - 1);
+                hostnameBuf[sizeof(hostnameBuf) - 1] = '\0';
+            }
+            // String destructor runs here at end of scope, before any other operations
+        }
+        
+        doc["deviceId"] = macBuf;
+        doc["hostname"] = hostnameBuf;
+        
+        // Serialize JSON to buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
@@ -153,21 +579,39 @@ void WebServer::setupRoutes() {
     
     // Get full statistics
     _server.on("/api/stats", HTTP_GET, [](AsyncWebServerRequest* request) {
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         BrewOS::FullStatistics stats;
         Stats.getFullStatistics(stats);
         
         JsonObject obj = doc.to<JsonObject>();
         stats.toJson(obj);
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // Get extended statistics with history data
     _server.on("/api/stats/extended", HTTP_GET, [](AsyncWebServerRequest* request) {
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         
         // Get full statistics
         BrewOS::FullStatistics stats;
@@ -196,9 +640,21 @@ void WebServer::setupRoutes() {
         JsonArray dailyArr = doc["dailyHistory"].to<JsonArray>();
         Stats.getDailyHistory(dailyArr);
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // Get brew history
@@ -222,19 +678,34 @@ void WebServer::setupRoutes() {
     
     // Get power history
     _server.on("/api/stats/power", HTTP_GET, [](AsyncWebServerRequest* request) {
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         JsonArray arr = doc.to<JsonArray>();
         Stats.getPowerHistory(arr);
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // Reset statistics (with confirmation)
     _server.on("/api/stats/reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
         Stats.resetAll();
-        broadcastLog("Statistics reset", "warning");
+        broadcastLog("Statistics reset", static_cast<const char*>("warn"));
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
@@ -283,6 +754,14 @@ void WebServer::setupRoutes() {
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
+    // Setup status endpoint (check if first-run wizard is complete)
+    _server.on("/api/setup/status", HTTP_GET, [](AsyncWebServerRequest* request) {
+        bool complete = State.settings().system.setupComplete;
+        char response[64];
+        snprintf(response, sizeof(response), "{\"complete\":%s}", complete ? "true" : "false");
+        request->send(200, "application/json", response);
+    });
+    
     // Setup complete endpoint (marks first-run wizard as done)
     // Note: No auth required - this endpoint is only accessible on local network
     // during initial device setup before WiFi is configured
@@ -319,7 +798,7 @@ void WebServer::setupRoutes() {
     // Brew-by-Weight settings
     _server.on("/api/scale/settings", HTTP_GET, [](AsyncWebServerRequest* request) {
         JsonDocument doc;
-        bbw_settings_t settings = brewByWeight.getSettings();
+        bbw_settings_t settings = brewByWeight ? brewByWeight->getSettings() : bbw_settings_t{};
         
         doc["target_weight"] = settings.target_weight;
         doc["dose_weight"] = settings.dose_weight;
@@ -343,19 +822,19 @@ void WebServer::setupRoutes() {
             }
             
             if (!doc["target_weight"].isNull()) {
-                brewByWeight.setTargetWeight(doc["target_weight"].as<float>());
+                brewByWeight->setTargetWeight(doc["target_weight"].as<float>());
             }
             if (!doc["dose_weight"].isNull()) {
-                brewByWeight.setDoseWeight(doc["dose_weight"].as<float>());
+                brewByWeight->setDoseWeight(doc["dose_weight"].as<float>());
             }
             if (!doc["stop_offset"].isNull()) {
-                brewByWeight.setStopOffset(doc["stop_offset"].as<float>());
+                brewByWeight->setStopOffset(doc["stop_offset"].as<float>());
             }
             if (!doc["auto_stop"].isNull()) {
-                brewByWeight.setAutoStop(doc["auto_stop"].as<bool>());
+                brewByWeight->setAutoStop(doc["auto_stop"].as<bool>());
             }
             if (!doc["auto_tare"].isNull()) {
-                brewByWeight.setAutoTare(doc["auto_tare"].as<bool>());
+                brewByWeight->setAutoTare(doc["auto_tare"].as<bool>());
             }
             
             request->send(200, "application/json", "{\"status\":\"ok\"}");
@@ -364,14 +843,14 @@ void WebServer::setupRoutes() {
     
     _server.on("/api/scale/state", HTTP_GET, [](AsyncWebServerRequest* request) {
         JsonDocument doc;
-        bbw_state_t state = brewByWeight.getState();
-        bbw_settings_t settings = brewByWeight.getSettings();
+        bbw_state_t state = brewByWeight ? brewByWeight->getState() : bbw_state_t{};
+        bbw_settings_t settings = brewByWeight ? brewByWeight->getSettings() : bbw_settings_t{};
         
         doc["active"] = state.active;
         doc["current_weight"] = state.current_weight;
         doc["target_weight"] = settings.target_weight;
-        doc["progress"] = brewByWeight.getProgress();
-        doc["ratio"] = brewByWeight.getCurrentRatio();
+        doc["progress"] = brewByWeight ? brewByWeight->getProgress() : 0.0f;
+        doc["ratio"] = brewByWeight ? brewByWeight->getCurrentRatio() : 0.0f;
         doc["target_reached"] = state.target_reached;
         doc["stop_signaled"] = state.stop_signaled;
         
@@ -381,20 +860,20 @@ void WebServer::setupRoutes() {
     });
     
     _server.on("/api/scale/tare", HTTP_POST, [](AsyncWebServerRequest* request) {
-        scaleManager.tare();
+        scaleManager->tare();
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
     // Scale connection status
     _server.on("/api/scale/status", HTTP_GET, [](AsyncWebServerRequest* request) {
         JsonDocument doc;
-        scale_state_t state = scaleManager.getState();
+        scale_state_t state = scaleManager ? scaleManager->getState() : scale_state_t{};
         
-        doc["connected"] = scaleManager.isConnected();
-        doc["scanning"] = scaleManager.isScanning();
-        doc["name"] = scaleManager.getScaleName();
-        doc["type"] = (int)scaleManager.getScaleType();
-        doc["type_name"] = getScaleTypeName(scaleManager.getScaleType());
+        doc["connected"] = scaleManager ? scaleManager->isConnected() : false;
+        doc["scanning"] = scaleManager ? scaleManager->isScanning() : false;
+        doc["name"] = scaleManager ? scaleManager->getScaleName() : "";
+        doc["type"] = scaleManager ? (int)scaleManager->getScaleType() : 0;
+        doc["type_name"] = scaleManager ? getScaleTypeName(scaleManager->getScaleType()) : "";
         doc["weight"] = state.weight;
         doc["stable"] = state.stable;
         doc["flow_rate"] = state.flow_rate;
@@ -407,22 +886,22 @@ void WebServer::setupRoutes() {
     
     // Start BLE scale scan
     _server.on("/api/scale/scan", HTTP_POST, [this](AsyncWebServerRequest* request) {
-        if (scaleManager.isScanning()) {
+        if (scaleManager && scaleManager->isScanning()) {
             request->send(400, "application/json", "{\"error\":\"Already scanning\"}");
             return;
         }
-        if (scaleManager.isConnected()) {
-            scaleManager.disconnect();
+        if (scaleManager && scaleManager->isConnected()) {
+            scaleManager->disconnect();
         }
-        scaleManager.clearDiscovered();
-        scaleManager.startScan(15000);  // 15 second scan
+        scaleManager->clearDiscovered();
+        scaleManager->startScan(15000);  // 15 second scan
         broadcastLog("BLE scale scan started", "info");
         request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Scanning...\"}");
     });
     
     // Stop BLE scan
     _server.on("/api/scale/scan/stop", HTTP_POST, [](AsyncWebServerRequest* request) {
-        scaleManager.stopScan();
+        scaleManager->stopScan();
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
@@ -431,7 +910,8 @@ void WebServer::setupRoutes() {
         JsonDocument doc;
         JsonArray devices = doc["devices"].to<JsonArray>();
         
-        const auto& discovered = scaleManager.getDiscoveredScales();
+        static const std::vector<scale_info_t> empty_devices;
+        const auto& discovered = scaleManager ? scaleManager->getDiscoveredScales() : empty_devices;
         for (size_t i = 0; i < discovered.size(); i++) {
             JsonObject device = devices.add<JsonObject>();
             device["index"] = i;
@@ -442,7 +922,7 @@ void WebServer::setupRoutes() {
             device["rssi"] = discovered[i].rssi;
         }
         
-        doc["scanning"] = scaleManager.isScanning();
+        doc["scanning"] = scaleManager ? scaleManager->isScanning() : false;
         doc["count"] = discovered.size();
         
         String response;
@@ -467,15 +947,15 @@ void WebServer::setupRoutes() {
                 // Connect by address
                 const char* addr = doc["address"].as<const char*>();
                 if (addr && strlen(addr) > 0) {
-                    success = scaleManager.connect(addr);
+                    success = scaleManager ? scaleManager->connect(addr) : false;
                 }
             } else if (!doc["index"].isNull()) {
                 // Connect by index from discovered list
                 int idx = doc["index"].as<int>();
-                success = scaleManager.connectByIndex(idx);
+                success = scaleManager ? scaleManager->connectByIndex(idx) : false;
             } else {
                 // Try to reconnect to saved scale
-                success = scaleManager.connect(nullptr);
+                success = scaleManager ? scaleManager->connect(nullptr) : false;
             }
             
             if (success) {
@@ -489,30 +969,30 @@ void WebServer::setupRoutes() {
     
     // Disconnect from scale
     _server.on("/api/scale/disconnect", HTTP_POST, [](AsyncWebServerRequest* request) {
-        scaleManager.disconnect();
+        scaleManager->disconnect();
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
     // Forget saved scale
     _server.on("/api/scale/forget", HTTP_POST, [this](AsyncWebServerRequest* request) {
-        scaleManager.forgetScale();
+        scaleManager->forgetScale();
         broadcastLog("Scale forgotten", "info");
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
     // Timer control (for scales that support it)
     _server.on("/api/scale/timer/start", HTTP_POST, [](AsyncWebServerRequest* request) {
-        scaleManager.startTimer();
+        scaleManager->startTimer();
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
     _server.on("/api/scale/timer/stop", HTTP_POST, [](AsyncWebServerRequest* request) {
-        scaleManager.stopTimer();
+        scaleManager->stopTimer();
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
     _server.on("/api/scale/timer/reset", HTTP_POST, [](AsyncWebServerRequest* request) {
-        scaleManager.resetTimer();
+        scaleManager->resetTimer();
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
     
@@ -522,13 +1002,28 @@ void WebServer::setupRoutes() {
     
     // Get all schedules
     _server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest* request) {
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         JsonObject obj = doc.to<JsonObject>();
         State.settings().schedule.toJson(obj);
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // Add a new schedule
@@ -553,7 +1048,7 @@ void WebServer::setupRoutes() {
                 String response;
                 serializeJson(resp, response);
                 request->send(200, "application/json", response);
-                broadcastLog("Schedule added: " + String(entry.name), "info");
+                broadcastLog("Schedule added: %s", entry.name);
             } else {
                 request->send(400, "application/json", "{\"error\":\"Max schedules reached\"}");
             }
@@ -582,7 +1077,7 @@ void WebServer::setupRoutes() {
             
             if (State.updateSchedule(id, entry)) {
                 request->send(200, "application/json", "{\"status\":\"ok\"}");
-                broadcastLog("Schedule updated: " + String(entry.name), "info");
+                broadcastLog("Schedule updated: %s", entry.name);
             } else {
                 request->send(404, "application/json", "{\"error\":\"Schedule not found\"}");
             }
@@ -644,13 +1139,28 @@ void WebServer::setupRoutes() {
     
     // Auto power-off settings
     _server.on("/api/schedules/auto-off", HTTP_GET, [](AsyncWebServerRequest* request) {
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         doc["enabled"] = State.getAutoPowerOffEnabled();
         doc["minutes"] = State.getAutoPowerOffMinutes();
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     _server.on("/api/schedules/auto-off", HTTP_POST,
@@ -668,8 +1178,7 @@ void WebServer::setupRoutes() {
             
             State.setAutoPowerOff(enabled, minutes);
             request->send(200, "application/json", "{\"status\":\"ok\"}");
-            broadcastLog("Auto power-off: " + String(enabled ? "enabled" : "disabled") + 
-                        " (" + String(minutes) + " min)", "info");
+            broadcastLog("Auto power-off: %s (%d min)", enabled ? "enabled" : "disabled", minutes);
         }
     );
     
@@ -679,7 +1188,10 @@ void WebServer::setupRoutes() {
     
     // Get time status and settings
     _server.on("/api/time", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         
         // Current time status
         TimeStatus timeStatus = _wifiManager.getTimeStatus();
@@ -692,9 +1204,21 @@ void WebServer::setupRoutes() {
         JsonObject settings = doc["settings"].to<JsonObject>();
         State.settings().time.toJson(settings);
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // Update time settings
@@ -760,7 +1284,7 @@ void WebServer::setupRoutes() {
             payload[0] = 0x01;  // Brew boiler ID
             memcpy(&payload[1], &temp, sizeof(float));
             if (_picoUart.sendCommand(MSG_CMD_SET_TEMP, payload, 5)) {
-                broadcastLog("Brew temp set to " + String(temp, 1) + "°C", "info");
+                broadcastLog("Brew temp set to %.1f°C", temp);
                 request->send(200, "application/json", "{\"status\":\"ok\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Failed to send command\"}");
@@ -789,7 +1313,7 @@ void WebServer::setupRoutes() {
             payload[0] = 0x02;  // Steam boiler ID
             memcpy(&payload[1], &temp, sizeof(float));
             if (_picoUart.sendCommand(MSG_CMD_SET_TEMP, payload, 5)) {
-                broadcastLog("Steam temp set to " + String(temp, 1) + "°C", "info");
+                broadcastLog("Steam temp set to %.1f°C", temp);
                 request->send(200, "application/json", "{\"status\":\"ok\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Failed to send command\"}");
@@ -821,7 +1345,7 @@ void WebServer::setupRoutes() {
             }
             
             if (_picoUart.sendCommand(MSG_CMD_MODE, &cmd, 1)) {
-                broadcastLog("Machine mode set to: " + mode, "info");
+                broadcastLog("Machine mode set to: %s", mode.c_str());
                 request->send(200, "application/json", "{\"status\":\"ok\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Failed to send command\"}");
@@ -833,21 +1357,39 @@ void WebServer::setupRoutes() {
     _server.on("/api/cloud/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
         auto& cloudSettings = State.settings().cloud;
         
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         doc["enabled"] = cloudSettings.enabled;
         doc["connected"] = _cloudConnection ? _cloudConnection->isConnected() : false;
         doc["serverUrl"] = cloudSettings.serverUrl;
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // Push notification preferences endpoint (GET)
     _server.on("/api/push/preferences", HTTP_GET, [this](AsyncWebServerRequest* request) {
         auto& notifSettings = State.settings().notifications;
         
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         doc["machineReady"] = notifSettings.machineReady;
         doc["waterEmpty"] = notifSettings.waterEmpty;
         doc["descaleDue"] = notifSettings.descaleDue;
@@ -858,9 +1400,21 @@ void WebServer::setupRoutes() {
         doc["scheduleTriggered"] = notifSettings.scheduleTriggered;
         doc["brewComplete"] = notifSettings.brewComplete;
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // Push notification preferences endpoint (POST)
@@ -912,15 +1466,30 @@ void WebServer::setupRoutes() {
             _pairingManager->generateToken();
         }
         
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         doc["deviceId"] = _pairingManager->getDeviceId();
         doc["token"] = _pairingManager->getCurrentToken();
         doc["url"] = _pairingManager->getPairingUrl();
         doc["expiresIn"] = (_pairingManager->getTokenExpiry() - millis()) / 1000;
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     _server.on("/api/pairing/refresh", HTTP_POST, [this](AsyncWebServerRequest* request) {
@@ -933,15 +1502,30 @@ void WebServer::setupRoutes() {
         
         _pairingManager->generateToken();
         
-        JsonDocument doc;
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
         doc["deviceId"] = _pairingManager->getDeviceId();
         doc["token"] = _pairingManager->getCurrentToken();
         doc["url"] = _pairingManager->getPairingUrl();
         doc["expiresIn"] = 600;  // 10 minutes
         
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
+        
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
     });
     
     // ==========================================================================
@@ -975,7 +1559,7 @@ void WebServer::setupRoutes() {
             uint8_t payload[1] = { testId };
             
             if (_picoUart.sendCommand(MSG_CMD_DIAGNOSTICS, payload, 1)) {
-                broadcastLog("Running diagnostic test " + String(testId), "info");
+                broadcastLog("Running diagnostic test %d", testId);
                 request->send(200, "application/json", "{\"status\":\"ok\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Failed to send command\"}");
@@ -983,34 +1567,81 @@ void WebServer::setupRoutes() {
         }
     );
     
-    // SPA fallback - serve index.html for client-side routes
-    // (any route that doesn't match API or static files)
+    // Serve static files from LittleFS (React app assets: JS, CSS, images, etc.)
+    // This is registered AFTER all API routes to ensure API endpoints have priority
+    _server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+    
+    // SPA fallback - serve index.html for all non-API routes (React Router handles client-side routing)
+    // This is critical for SPA apps: routes like /stats, /settings, etc. are handled by React Router
     _server.onNotFound([](AsyncWebServerRequest* request) {
-        // If it's an API call, return 404
-        if (request->url().startsWith("/api/")) {
+        String url = request->url();
+        
+        // API routes should return 404 if not found
+        if (url.startsWith("/api/")) {
             request->send(404, "application/json", "{\"error\":\"Not found\"}");
             return;
         }
-        // For all other routes, serve index.html (React Router handles it)
+        
+        // For all other routes, serve index.html (SPA fallback)
+        // React Router will handle the routing client-side
+        Serial.printf("[WEB] SPA fallback: %s -> index.html\n", url.c_str());
         request->send(LittleFS, "/index.html", "text/html");
     });
+    
+    LOG_I("Routes setup complete");
 }
 
 void WebServer::handleGetStatus(AsyncWebServerRequest* request) {
-    JsonDocument doc;
+    // Delay serving if WiFi just connected (prevents PSRAM crashes)
+    // Use const char* to avoid String allocation in PSRAM
+    if (!_wifiManager.isAPMode() && !isWiFiReady()) {
+        const char* error = "{\"error\":\"WiFi initializing, please wait\"}";
+        request->send(503, "application/json", error);
+        return;
+    }
+    
+    // Use stack allocation to avoid PSRAM crashes
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<2048> doc;
+    #pragma GCC diagnostic pop
     
     // WiFi status
+    // CRITICAL: Copy WiFiStatus Strings to stack buffers immediately to avoid PSRAM pointer issues
+    // WiFiStatus contains String fields that might be allocated in PSRAM
     WiFiStatus wifi = _wifiManager.getStatus();
+    
+    // Copy Strings to stack buffers (internal RAM) before using them
+    char ssidBuf[64];
+    char ipBuf[16];
+    char gatewayBuf[16];
+    char subnetBuf[16];
+    char dns1Buf[16];
+    char dns2Buf[16];
+    
+    strncpy(ssidBuf, wifi.ssid.c_str(), sizeof(ssidBuf) - 1);
+    ssidBuf[sizeof(ssidBuf) - 1] = '\0';
+    strncpy(ipBuf, wifi.ip.c_str(), sizeof(ipBuf) - 1);
+    ipBuf[sizeof(ipBuf) - 1] = '\0';
+    strncpy(gatewayBuf, wifi.gateway.c_str(), sizeof(gatewayBuf) - 1);
+    gatewayBuf[sizeof(gatewayBuf) - 1] = '\0';
+    strncpy(subnetBuf, wifi.subnet.c_str(), sizeof(subnetBuf) - 1);
+    subnetBuf[sizeof(subnetBuf) - 1] = '\0';
+    strncpy(dns1Buf, wifi.dns1.c_str(), sizeof(dns1Buf) - 1);
+    dns1Buf[sizeof(dns1Buf) - 1] = '\0';
+    strncpy(dns2Buf, wifi.dns2.c_str(), sizeof(dns2Buf) - 1);
+    dns2Buf[sizeof(dns2Buf) - 1] = '\0';
+    
     doc["wifi"]["mode"] = (int)wifi.mode;
-    doc["wifi"]["ssid"] = wifi.ssid;
-    doc["wifi"]["ip"] = wifi.ip;
+    doc["wifi"]["ssid"] = ssidBuf;
+    doc["wifi"]["ip"] = ipBuf;
     doc["wifi"]["rssi"] = wifi.rssi;
     doc["wifi"]["configured"] = wifi.configured;
     doc["wifi"]["staticIp"] = wifi.staticIp;
-    doc["wifi"]["gateway"] = wifi.gateway;
-    doc["wifi"]["subnet"] = wifi.subnet;
-    doc["wifi"]["dns1"] = wifi.dns1;
-    doc["wifi"]["dns2"] = wifi.dns2;
+    doc["wifi"]["gateway"] = gatewayBuf;
+    doc["wifi"]["subnet"] = subnetBuf;
+    doc["wifi"]["dns1"] = dns1Buf;
+    doc["wifi"]["dns2"] = dns2Buf;
     
     // Pico status
     doc["pico"]["connected"] = _picoUart.isConnected();
@@ -1025,14 +1656,24 @@ void WebServer::handleGetStatus(AsyncWebServerRequest* request) {
     // MQTT status
     doc["mqtt"]["enabled"] = _mqttClient.getConfig().enabled;
     doc["mqtt"]["connected"] = _mqttClient.isConnected();
-    doc["mqtt"]["status"] = _mqttClient.getStatusString();
+    // Copy MQTT status string to stack buffer to avoid PSRAM
+    String mqttStatusStr = _mqttClient.getStatusString();
+    char mqttStatusBuf[32];
+    strncpy(mqttStatusBuf, mqttStatusStr.c_str(), sizeof(mqttStatusBuf) - 1);
+    mqttStatusBuf[sizeof(mqttStatusBuf) - 1] = '\0';
+    doc["mqtt"]["status"] = mqttStatusBuf;
     
     // Scale status
-    doc["scale"]["connected"] = scaleManager.isConnected();
-    doc["scale"]["scanning"] = scaleManager.isScanning();
-    doc["scale"]["name"] = scaleManager.getScaleName();
-    if (scaleManager.isConnected()) {
-        scale_state_t scaleState = scaleManager.getState();
+    doc["scale"]["connected"] = scaleManager ? scaleManager->isConnected() : false;
+    doc["scale"]["scanning"] = scaleManager ? scaleManager->isScanning() : false;
+    // Copy scale name to stack buffer to avoid PSRAM
+    String scaleNameStr = scaleManager ? scaleManager->getScaleName() : "";
+    char scaleNameBuf[64];
+    strncpy(scaleNameBuf, scaleNameStr.c_str(), sizeof(scaleNameBuf) - 1);
+    scaleNameBuf[sizeof(scaleNameBuf) - 1] = '\0';
+    doc["scale"]["name"] = scaleNameBuf;
+    if (scaleManager && scaleManager->isConnected()) {
+        scale_state_t scaleState = scaleManager->getState();
         doc["scale"]["weight"] = scaleState.weight;
         doc["scale"]["flow_rate"] = scaleState.flow_rate;
         doc["scale"]["stable"] = scaleState.stable;
@@ -1044,35 +1685,142 @@ void WebServer::handleGetStatus(AsyncWebServerRequest* request) {
     // Setup status
     doc["setupComplete"] = State.settings().system.setupComplete;
     
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
-}
-
-void WebServer::handleGetWiFiNetworks(AsyncWebServerRequest* request) {
-    LOG_I("Scanning WiFi networks...");
-    
-    int n = WiFi.scanNetworks();
-    
-    JsonDocument doc;
-    JsonArray networks = doc["networks"].to<JsonArray>();
-    
-    for (int i = 0; i < n; i++) {
-        JsonObject network = networks.add<JsonObject>();
-        network["ssid"] = WiFi.SSID(i);
-        network["rssi"] = WiFi.RSSI(i);
-        network["secure"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+    // Serialize JSON to buffer in internal RAM (not PSRAM)
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        jsonBuffer = (char*)malloc(jsonSize);
     }
     
-    WiFi.scanDelete();
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        request->send(200, "application/json", jsonBuffer);
+        // Buffer will be freed by AsyncWebServer after response
+    } else {
+        request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+    }
+}
+
+// Static cache for async WiFi scan results
+static bool _scanInProgress = false;
+static bool _scanResultsReady = false;
+static int _cachedNetworkCount = 0;
+static unsigned long _lastScanTime = 0;
+static const unsigned long SCAN_CACHE_TIMEOUT_MS = 30000;  // Cache results for 30 seconds
+
+void WebServer::handleGetWiFiNetworks(AsyncWebServerRequest* request) {
+    // Use cached results if available and fresh
+    unsigned long now = millis();
     
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
+    // If we have fresh cached results, return them immediately
+    if (_scanResultsReady && (now - _lastScanTime < SCAN_CACHE_TIMEOUT_MS)) {
+        LOG_I("Returning cached WiFi scan results (%d networks)", _cachedNetworkCount);
+        
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
+        JsonArray networks = doc["networks"].to<JsonArray>();
+        
+        int n = WiFi.scanComplete();
+        if (n > 0) {
+            int maxNetworks = (n > 20) ? 20 : n;
+            for (int i = 0; i < maxNetworks; i++) {
+                String ssid = WiFi.SSID(i);
+                if (ssid.length() > 0) {
+                    JsonObject network = networks.add<JsonObject>();
+                    network["ssid"] = ssid;
+                    network["rssi"] = WiFi.RSSI(i);
+                    network["secure"] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+                }
+            }
+        }
+        
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
+        return;
+    }
+    
+    // Check if async scan is complete
+    int scanResult = WiFi.scanComplete();
+    
+    if (scanResult == WIFI_SCAN_RUNNING) {
+        // Scan still in progress - return status
+        LOG_I("WiFi scan in progress...");
+        request->send(202, "application/json", "{\"status\":\"scanning\",\"networks\":[]}");
+        return;
+    }
+    
+    if (scanResult >= 0) {
+        // Scan complete - return results
+        LOG_I("WiFi scan complete, found %d networks", scanResult);
+        _scanResultsReady = true;
+        _cachedNetworkCount = scanResult;
+        _lastScanTime = now;
+        _scanInProgress = false;
+        
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
+        JsonArray networks = doc["networks"].to<JsonArray>();
+        
+        int maxNetworks = (scanResult > 20) ? 20 : scanResult;
+        for (int i = 0; i < maxNetworks; i++) {
+            String ssid = WiFi.SSID(i);
+            if (ssid.length() > 0) {
+                JsonObject network = networks.add<JsonObject>();
+                network["ssid"] = ssid;
+                network["rssi"] = WiFi.RSSI(i);
+                network["secure"] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+            }
+        }
+        
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
+        return;
+    }
+    
+    // No scan in progress and no results - start async scan
+    LOG_I("Starting async WiFi scan...");
+    _scanInProgress = true;
+    _scanResultsReady = false;
+    
+    // Switch to AP+STA mode if in pure AP mode
+    bool wasAPMode = _wifiManager.isAPMode();
+    if (wasAPMode && WiFi.getMode() == WIFI_AP) {
+        WiFi.mode(WIFI_AP_STA);
+        delay(100);  // Short delay for mode switch
+    }
+    
+    // Clear previous results and start ASYNC scan (non-blocking!)
+    WiFi.scanDelete();
+    WiFi.scanNetworks(true, false);  // async=true, show_hidden=false
+    
+    // Return "scanning" status - client should poll again
+    request->send(202, "application/json", "{\"status\":\"scanning\",\"networks\":[]}");
 }
 
 void WebServer::handleSetWiFi(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
-    JsonDocument doc;
+    // Use stack allocation to avoid PSRAM crashes
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<512> doc;
+    #pragma GCC diagnostic pop
     DeserializationError error = deserializeJson(doc, data, len);
     
     if (error) {
@@ -1084,11 +1832,12 @@ void WebServer::handleSetWiFi(AsyncWebServerRequest* request, uint8_t* data, siz
     String password = doc["password"] | "";
     
     if (_wifiManager.setCredentials(ssid, password)) {
+        // Send response first - connection will happen in loop() after delay
         request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Connecting...\"}");
         
-        // Connect after sending response
-        delay(100);
-        _wifiManager.connectToWiFi();
+        // Set flag to trigger connection in the next loop iteration
+        // This gives time for the HTTP response to be fully sent
+        _pendingWiFiConnect = true;
     } else {
         request->send(400, "application/json", "{\"error\":\"Invalid credentials\"}");
     }
@@ -1168,9 +1917,16 @@ void WebServer::handleOTAUpload(AsyncWebServerRequest* request, const String& fi
             doc["progress"] = progress;
             doc["uploaded"] = uploadedSize;
             doc["total"] = totalSize;
-            String json;
-            serializeJson(doc, json);
-            _ws.textAll(json);
+            
+            // Use heap_caps_malloc to avoid PSRAM
+            size_t jsonSize = measureJson(doc) + 1;
+            char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+            if (jsonBuffer) {
+                serializeJson(doc, jsonBuffer, jsonSize);
+                _ws.textAll(jsonBuffer);
+                free(jsonBuffer);
+            }
             LOG_I("Upload progress: %d%% (%d/%d bytes)", progress, uploadedSize, totalSize);
         }
     }
@@ -1199,20 +1955,29 @@ void WebServer::handleOTAUpload(AsyncWebServerRequest* request, const String& fi
             uploadSuccess = false;
         }
         
-        // Notify clients
-        JsonDocument doc;
-        doc["type"] = "ota_progress";
-        doc["stage"] = "upload";
-        doc["progress"] = uploadSuccess ? 100 : 0;
-        doc["uploaded"] = uploadedSize;
-        doc["total"] = totalSize;
-        doc["success"] = uploadSuccess;
-        String json;
-        serializeJson(doc, json);
-        _ws.textAll(json);
+        // Notify clients using stack allocation
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<256> finalDoc;
+        #pragma GCC diagnostic pop
+        finalDoc["type"] = "ota_progress";
+        finalDoc["stage"] = "upload";
+        finalDoc["progress"] = uploadSuccess ? 100 : 0;
+        finalDoc["uploaded"] = uploadedSize;
+        finalDoc["total"] = totalSize;
+        finalDoc["success"] = uploadSuccess;
+        
+        size_t jsonSize = measureJson(finalDoc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+        if (jsonBuffer) {
+            serializeJson(finalDoc, jsonBuffer, jsonSize);
+            _ws.textAll(jsonBuffer);
+            free(jsonBuffer);
+        }
         
         if (uploadSuccess) {
-            broadcastLog("Firmware uploaded: " + String(uploadedSize) + " bytes", "info");
+            broadcastLog("Firmware uploaded: %zu bytes", uploadedSize);
         }
     }
 }
@@ -1284,40 +2049,48 @@ void WebServer::handleStartOTA(AsyncWebServerRequest* request) {
     broadcastLog("Firmware update complete. Pico should boot with new firmware.", "info");
 }
 
-void WebServer::onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
-                          AwsEventType type, void* arg, uint8_t* data, size_t len) {
+// WebSocket event handler for AsyncWebSocket (ESP32Async library)
+void WebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len) {
     switch (type) {
-        case WS_EVT_CONNECT:
-            LOG_I("WebSocket client connected: %u", client->id());
-            // Send device info to newly connected client
-            broadcastDeviceInfo();
-            broadcastLog("Client connected", "info");
+        case WS_EVT_DISCONNECT:
+            LOG_I("WebSocket client %u disconnected", client->id());
             break;
             
-        case WS_EVT_DISCONNECT:
-            LOG_I("WebSocket client disconnected: %u", client->id());
+        case WS_EVT_CONNECT:
+            LOG_I("WebSocket client %u connected from %s", client->id(), client->remoteIP().toString().c_str());
+            broadcastLog("Client connected");
             break;
             
         case WS_EVT_DATA:
-            handleWsMessage(client, data, len);
-            break;
-            
-        case WS_EVT_ERROR:
-            LOG_E("WebSocket error: %u", client->id());
+            {
+                AwsFrameInfo* info = (AwsFrameInfo*)arg;
+                if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+                    // Complete text message
+                    handleWsMessage(client->id(), data, len);
+                }
+            }
             break;
             
         case WS_EVT_PONG:
+            // Response to our ping
+            break;
+            
+        case WS_EVT_ERROR:
+            LOG_E("WebSocket error on client %u", client->id());
             break;
     }
 }
 
-void WebServer::handleWsMessage(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
-    // Parse JSON command from client
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, data, len);
+void WebServer::handleWsMessage(uint32_t clientNum, uint8_t* payload, size_t length) {
+    // Parse JSON command from client - use stack allocation
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<1024> doc;
+    #pragma GCC diagnostic pop
+    DeserializationError error = deserializeJson(doc, payload, length);
     
     if (error) {
-        LOG_W("Invalid WebSocket message");
+        LOG_W("Invalid WebSocket message from client %u", clientNum);
         return;
     }
     
@@ -1347,7 +2120,7 @@ void WebServer::processCommand(JsonDocument& doc) {
         String levelStr = doc["level"] | "info";
         BrewOSLogLevel level = stringToLogLevel(levelStr.c_str());
         setLogLevel(level);
-        broadcastLog("Log level set to: " + String(logLevelToString(level)), "info");
+        broadcastLog("Log level set to: %s", logLevelToString(level));
     }
     else if (type == "command") {
         // Handle commands from web UI
@@ -1370,8 +2143,8 @@ void WebServer::processCommand(JsonDocument& doc) {
             payload[4] = timeout & 0xFF;
             
             if (_picoUart.sendCommand(MSG_CMD_SET_ECO, payload, 5)) {
-                broadcastLog("Eco mode config sent: enabled=" + String(enabled) + 
-                            ", temp=" + String(brewTemp, 1) + "°C, timeout=" + String(timeout) + "min", "info");
+                broadcastLog("info", "Eco mode config sent: enabled=%s, temp=%.1f°C, timeout=%dmin", 
+                         enabled ? "true" : "false", brewTemp, timeout);
             } else {
                 broadcastLog("Failed to send eco config", "error");
             }
@@ -1403,7 +2176,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             payload[0] = (boiler == "steam") ? 0x02 : 0x01;
             memcpy(&payload[1], &temp, sizeof(float));
             if (_picoUart.sendCommand(MSG_CMD_SET_TEMP, payload, 5)) {
-                broadcastLog(boiler + " temp set to " + String(temp, 1) + "°C", "info");
+                broadcastLog("%s temp set to %.1f°C", boiler.c_str(), temp);
             }
         }
         else if (cmd == "set_mode") {
@@ -1418,7 +2191,7 @@ void WebServer::processCommand(JsonDocument& doc) {
                     // Set heating strategy first
                     uint8_t strategyPayload[2] = {0x01, strategy};  // CONFIG_HEATING_STRATEGY = 0x01
                     _picoUart.sendCommand(MSG_CMD_CONFIG, strategyPayload, 2);
-                    broadcastLog("Heating strategy set to: " + String(strategy), "info");
+                    broadcastLog("Heating strategy set to: %d", strategy);
                 }
             }
             
@@ -1436,7 +2209,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             }
             
             if (_picoUart.sendCommand(MSG_CMD_MODE, &modeCmd, 1)) {
-                broadcastLog("Mode set to: " + mode, "info");
+                broadcastLog("Mode set to: %s", mode.c_str());
             }
         }
         else if (cmd == "mqtt_test") {
@@ -1506,7 +2279,7 @@ void WebServer::processCommand(JsonDocument& doc) {
                 if (cloudSettings.enabled && strlen(cloudSettings.serverUrl) > 0) {
                     // Initialize or update with new URL
                     _pairingManager->begin(String(cloudSettings.serverUrl));
-                    broadcastLog("Cloud enabled: " + String(cloudSettings.serverUrl), "info");
+                    broadcastLog("Cloud enabled: %s", cloudSettings.serverUrl);
                 } else if (!cloudSettings.enabled && wasEnabled) {
                     // Cloud was disabled - clear pairing manager
                     _pairingManager->begin("");  // Clear cloud URL
@@ -1514,7 +2287,7 @@ void WebServer::processCommand(JsonDocument& doc) {
                 }
             }
             
-            broadcastLog("Cloud configuration updated: " + String(cloudSettings.enabled ? "enabled" : "disabled"), "info");
+            broadcastLog("Cloud configuration updated: %s", cloudSettings.enabled ? "enabled" : "disabled");
         }
         else if (cmd == "add_schedule") {
             // Add a new schedule
@@ -1523,7 +2296,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             
             uint8_t newId = State.addSchedule(entry);
             if (newId > 0) {
-                broadcastLog("Schedule added: " + String(entry.name), "info");
+                broadcastLog("Schedule added: %s", entry.name);
             }
         }
         else if (cmd == "update_schedule") {
@@ -1565,55 +2338,55 @@ void WebServer::processCommand(JsonDocument& doc) {
         }
         // Scale commands
         else if (cmd == "scale_scan") {
-            if (!scaleManager.isScanning()) {
-                if (scaleManager.isConnected()) {
-                    scaleManager.disconnect();
+            if (!scaleManager || !scaleManager->isScanning()) {
+                if (scaleManager && scaleManager->isConnected()) {
+                    scaleManager->disconnect();
                 }
-                scaleManager.clearDiscovered();
-                scaleManager.startScan(15000);
+                scaleManager->clearDiscovered();
+                scaleManager->startScan(15000);
                 broadcastLog("BLE scale scan started", "info");
             }
         }
         else if (cmd == "scale_scan_stop") {
-            scaleManager.stopScan();
+            scaleManager->stopScan();
             broadcastLog("BLE scale scan stopped", "info");
         }
         else if (cmd == "scale_connect") {
             String address = doc["address"] | "";
             if (!address.isEmpty()) {
-                scaleManager.connect(address.c_str());
-                broadcastLog("Connecting to scale: " + address, "info");
+                scaleManager->connect(address.c_str());
+                broadcastLog("Connecting to scale: %s", address.c_str());
             }
         }
         else if (cmd == "scale_disconnect") {
-            scaleManager.disconnect();
+            scaleManager->disconnect();
             broadcastLog("Scale disconnected", "info");
         }
         else if (cmd == "tare" || cmd == "scale_tare") {
-            scaleManager.tare();
+            scaleManager->tare();
             broadcastLog("Scale tared", "info");
         }
         else if (cmd == "scale_reset") {
-            scaleManager.tare();
-            brewByWeight.reset();
+            scaleManager->tare();
+            brewByWeight->reset();
             broadcastLog("Scale reset", "info");
         }
         // Brew-by-weight settings
         else if (cmd == "set_bbw") {
             if (!doc["target_weight"].isNull()) {
-                brewByWeight.setTargetWeight(doc["target_weight"].as<float>());
+                brewByWeight->setTargetWeight(doc["target_weight"].as<float>());
             }
             if (!doc["dose_weight"].isNull()) {
-                brewByWeight.setDoseWeight(doc["dose_weight"].as<float>());
+                brewByWeight->setDoseWeight(doc["dose_weight"].as<float>());
             }
             if (!doc["stop_offset"].isNull()) {
-                brewByWeight.setStopOffset(doc["stop_offset"].as<float>());
+                brewByWeight->setStopOffset(doc["stop_offset"].as<float>());
             }
             if (!doc["auto_stop"].isNull()) {
-                brewByWeight.setAutoStop(doc["auto_stop"].as<bool>());
+                brewByWeight->setAutoStop(doc["auto_stop"].as<bool>());
             }
             if (!doc["auto_tare"].isNull()) {
-                brewByWeight.setAutoTare(doc["auto_tare"].as<bool>());
+                brewByWeight->setAutoTare(doc["auto_tare"].as<bool>());
             }
             broadcastLog("Brew-by-weight settings updated", "info");
         }
@@ -1645,9 +2418,8 @@ void WebServer::processCommand(JsonDocument& doc) {
                     settings.brew.preinfusionPressure = enabled ? 1.0f : 0.0f;  // Use as enabled flag
                     State.saveBrewSettings();
                     
-                    broadcastLog("Pre-infusion settings saved: " + 
-                                String(enabled ? "enabled" : "disabled") + 
-                                ", on=" + String(onTimeMs) + "ms, pause=" + String(pauseTimeMs) + "ms", "info");
+                    broadcastLog("info", "Pre-infusion settings saved: %s, on=%dms, pause=%dms", 
+                             enabled ? "enabled" : "disabled", onTimeMs, pauseTimeMs);
                 } else {
                     broadcastLog("Failed to send pre-infusion config to Pico", "error");
                 }
@@ -1671,14 +2443,14 @@ void WebServer::processCommand(JsonDocument& doc) {
             State.settings().power.maxCurrent = (float)maxCurrent;
             State.savePowerSettings();
             
-            broadcastLog("Power settings updated: " + String(voltage) + "V, " + String(maxCurrent) + "A", "info");
+            broadcastLog("Power settings updated: %dV, %.1fA", voltage, maxCurrent);
         }
         // Power meter configuration
         else if (cmd == "configure_power_meter") {
             String source = doc["source"] | "none";
             
             if (source == "none") {
-                powerMeterManager.setSource(PowerMeterSource::NONE);
+                powerMeterManager->setSource(PowerMeterSource::NONE);
                 // Send disable command to Pico
                 uint8_t payload[1] = {0};  // 0 = disabled
                 _picoUart.sendCommand(MSG_CMD_POWER_METER_CONFIG, payload, 1);
@@ -1686,7 +2458,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             }
             else if (source == "hardware") {
                 // Hardware meters are configured on Pico
-                powerMeterManager.configureHardware();
+                powerMeterManager->configureHardware();
                 
                 // Send enable command to Pico
                 uint8_t payload[1] = {1};  // 1 = enabled
@@ -1698,8 +2470,8 @@ void WebServer::processCommand(JsonDocument& doc) {
                 String format = doc["format"] | "auto";
                 
                 if (topic.length() > 0) {
-                    if (powerMeterManager.configureMqtt(topic.c_str(), format.c_str())) {
-                        broadcastLog("MQTT power meter configured: " + topic, "info");
+                    if (powerMeterManager && powerMeterManager->configureMqtt(topic.c_str(), format.c_str())) {
+                        broadcastLog("MQTT power meter configured: %s", topic.c_str());
                     } else {
                         broadcastLog("Failed to configure MQTT power meter", "error");
                     }
@@ -1714,13 +2486,13 @@ void WebServer::processCommand(JsonDocument& doc) {
         else if (cmd == "start_power_meter_discovery") {
             // Forward discovery command to Pico
             _picoUart.sendCommand(MSG_CMD_POWER_METER_DISCOVER, nullptr, 0);
-            powerMeterManager.startAutoDiscovery();
+            powerMeterManager->startAutoDiscovery();
             broadcastLog("Starting power meter auto-discovery...", "info");
         }
         // WiFi commands
         else if (cmd == "wifi_forget") {
             _wifiManager.clearCredentials();
-            broadcastLog("WiFi credentials cleared. Device will restart.", "warning");
+            broadcastLog("WiFi credentials cleared. Device will restart.", "warn");
             delay(1000);
             ESP.restart();
         }
@@ -1736,7 +2508,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             _wifiManager.setStaticIP(staticIp, ip, gateway, subnet, dns1, dns2);
             
             if (staticIp) {
-                broadcastLog("Static IP configured: " + ip + ". Reconnecting...", "info");
+                broadcastLog("Static IP configured: %s. Reconnecting...", ip.c_str());
             } else {
                 broadcastLog("DHCP mode enabled. Reconnecting...", "info");
             }
@@ -1747,12 +2519,12 @@ void WebServer::processCommand(JsonDocument& doc) {
         }
         // System commands
         else if (cmd == "restart") {
-            broadcastLog("Device restarting...", "warning");
+            broadcastLog("Device restarting...", "warn");
             delay(500);
             ESP.restart();
         }
         else if (cmd == "factory_reset") {
-            broadcastLog("Factory reset initiated...", "warning");
+            broadcastLog("Factory reset initiated...", "warn");
             State.factoryReset();
             _wifiManager.clearCredentials();
             delay(1000);
@@ -1823,7 +2595,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             
             // Broadcast device info update
             broadcastDeviceInfo();
-            broadcastLog("Device info updated: " + String(machineInfo.deviceName), "info");
+            broadcastLog("Device info updated: %s", machineInfo.deviceName);
         }
         // User preferences (synced across devices)
         else if (cmd == "set_preferences") {
@@ -1863,7 +2635,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             String type = doc["type"] | "";
             if (!type.isEmpty()) {
                 State.recordMaintenance(type.c_str());
-                broadcastLog("Maintenance recorded: " + type, "info");
+                broadcastLog("Maintenance recorded: %s", type.c_str());
             }
         }
         // Diagnostics commands
@@ -1881,7 +2653,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             uint8_t testId = doc["testId"] | 0;
             uint8_t payload[1] = { testId };
             if (_picoUart.sendCommand(MSG_CMD_DIAGNOSTICS, payload, 1)) {
-                broadcastLog("Running diagnostic test " + String(testId), "info");
+                broadcastLog("Running diagnostic test %d", testId);
             } else {
                 broadcastLog("Failed to start diagnostic test", "error");
             }
@@ -1889,16 +2661,113 @@ void WebServer::processCommand(JsonDocument& doc) {
     }
 }
 
-void WebServer::broadcastLog(const String& message, const String& level) {
-    JsonDocument doc;
+// Internal helper to broadcast a formatted log message
+static void broadcastLogInternal(AsyncWebSocket* ws, CloudConnection* cloudConnection, 
+                                 const char* level, const char* message) {
+    if (!message || !ws) return;
+    
+    // Use stack allocation to avoid PSRAM crashes
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<512> doc;
+    #pragma GCC diagnostic pop
     doc["type"] = "log";
-    doc["level"] = level;
+    doc["level"] = level ? level : "info";
     doc["message"] = message;
     doc["timestamp"] = millis();
     
-    String json;
-    serializeJson(doc, json);
-    _ws.textAll(json);
+    // Allocate JSON buffer in internal RAM (not PSRAM) to avoid crashes
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        // Fallback to regular malloc if heap_caps_malloc fails
+        jsonBuffer = (char*)malloc(jsonSize);
+    }
+    
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        ws->textAll(jsonBuffer);
+        
+        // Also send to cloud - use jsonBuffer directly to avoid String allocation
+        if (cloudConnection) {
+            cloudConnection->send(jsonBuffer);
+        }
+        
+        free(jsonBuffer);
+    }
+}
+
+// Variadic version - format string with arguments (like printf)
+// Variadic version - format string with arguments (like printf), defaults to "info"
+void WebServer::broadcastLog(const char* format, ...) {
+    if (!format) return;
+    
+    // Format message into stack-allocated buffer (internal RAM, not PSRAM)
+    char message[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    
+    broadcastLogInternal(&_ws, _cloudConnection, "info", message);
+}
+
+// Variadic version with explicit level (format, level, ...args)
+void WebServer::broadcastLog(const char* format, const char* level, ...) {
+    if (!format || !level) return;
+    
+    // Format message into stack-allocated buffer (internal RAM, not PSRAM)
+    char message[256];
+    va_list args;
+    va_start(args, level);
+    vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    
+    broadcastLogInternal(&_ws, _cloudConnection, level, message);
+}
+
+
+void WebServer::broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_t len) {
+    // Use stack allocation to avoid PSRAM crashes
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<512> doc;
+    #pragma GCC diagnostic pop
+    doc["type"] = "pico";
+    doc["msgType"] = type;
+    doc["timestamp"] = millis();
+    
+    // Convert payload to hex string for debugging - use stack buffer
+    char hexPayload[128] = {0};  // Max 56 bytes * 2 = 112 chars + null
+    size_t hexLen = 0;
+    for (size_t i = 0; i < len && i < 56 && hexLen < sizeof(hexPayload) - 2; i++) {
+        hexLen += snprintf(hexPayload + hexLen, sizeof(hexPayload) - hexLen, "%02X", payload[i]);
+    }
+    doc["payload"] = hexPayload;
+    doc["length"] = len;
+    
+    // Allocate JSON buffer in internal RAM (not PSRAM) to avoid crashes
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        jsonBuffer = (char*)malloc(jsonSize);
+    }
+    
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        _ws.textAll(jsonBuffer);
+        
+        // Also send to cloud - use jsonBuffer directly to avoid String allocation
+        if (_cloudConnection) {
+            _cloudConnection->send(jsonBuffer);
+        }
+        
+        free(jsonBuffer);
+    }
+}
+
+void WebServer::broadcastRaw(const String& json) {
+    _ws.textAll(json.c_str(), json.length());
     
     // Also send to cloud
     if (_cloudConnection) {
@@ -1906,33 +2775,8 @@ void WebServer::broadcastLog(const String& message, const String& level) {
     }
 }
 
-void WebServer::broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_t len) {
-    JsonDocument doc;
-    doc["type"] = "pico";
-    doc["msgType"] = type;
-    doc["timestamp"] = millis();
-    
-    // Convert payload to hex string for debugging
-    String hexPayload = "";
-    for (size_t i = 0; i < len && i < 56; i++) {
-        char hex[3];
-        sprintf(hex, "%02X", payload[i]);
-        hexPayload += hex;
-    }
-    doc["payload"] = hexPayload;
-    doc["length"] = len;
-    
-    String json;
-    serializeJson(doc, json);
-    _ws.textAll(json);
-    
-    // Also send to cloud (debug messages)
-    if (_cloudConnection) {
-        _cloudConnection->send(json);
-    }
-}
-
-void WebServer::broadcastRaw(const String& json) {
+void WebServer::broadcastRaw(const char* json) {
+    if (!json) return;
     _ws.textAll(json);
     
     // Also send to cloud
@@ -1945,7 +2789,21 @@ void WebServer::broadcastRaw(const String& json) {
 // Unified Status Broadcast - Single comprehensive message
 // =============================================================================
 void WebServer::broadcastFullStatus(const ui_state_t& state) {
-    JsonDocument doc;
+    // Safety check - only broadcast if we have clients
+    if (_ws.count() == 0 && (!_cloudConnection || !_cloudConnection->isConnected())) {
+        return;  // No one to send to
+    }
+    
+    // Use heap allocation to avoid stack overflow (4KB is too large for stack)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    DynamicJsonDocument* docPtr = new DynamicJsonDocument(4096);
+    if (!docPtr) {
+        LOG_E("Failed to allocate JSON document for status broadcast");
+        return;
+    }
+    DynamicJsonDocument& doc = *docPtr;
+    #pragma GCC diagnostic pop
     doc["type"] = "status";
     
     // Timestamps - track machine on time and last shot
@@ -2055,16 +2913,16 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     
     // Get power meter reading if available
     PowerMeterReading meterReading;
-    if (powerMeterManager.getReading(meterReading)) {
+    if (powerMeterManager && powerMeterManager->getReading(meterReading)) {
         power["voltage"] = meterReading.voltage;
-        power["todayKwh"] = powerMeterManager.getTodayKwh();  // Daily energy (since midnight)
-        power["totalKwh"] = powerMeterManager.getTotalKwh();  // Total energy from meter
+        power["todayKwh"] = powerMeterManager->getTodayKwh();  // Daily energy (since midnight)
+        power["totalKwh"] = powerMeterManager->getTotalKwh();  // Total energy from meter
         
         // Add meter info
         JsonObject meter = power["meter"].to<JsonObject>();
-        meter["source"] = powerMeterSourceToString(powerMeterManager.getSource());
-        meter["connected"] = powerMeterManager.isConnected();
-        meter["meterType"] = powerMeterManager.getMeterName();
+        meter["source"] = powerMeterManager ? powerMeterSourceToString(powerMeterManager->getSource()) : "none";
+        meter["connected"] = powerMeterManager ? powerMeterManager->isConnected() : false;
+        meter["meterType"] = powerMeterManager ? powerMeterManager->getMeterName() : "";
         meter["lastUpdate"] = meterReading.timestamp;
         
         JsonObject reading = meter["reading"].to<JsonObject>();
@@ -2150,18 +3008,40 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     esp32["freeHeap"] = ESP.getFreeHeap();
     esp32["uptime"] = millis();
     
-    String json;
-    serializeJson(doc, json);
-    _ws.textAll(json);
-    
-    // Also send to cloud - this is the main state broadcast
-    if (_cloudConnection) {
-        _cloudConnection->send(json);
+    // Allocate JSON buffer in internal RAM (not PSRAM) to avoid crashes
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        // Fallback to regular malloc if heap_caps_malloc fails
+        jsonBuffer = (char*)malloc(jsonSize);
     }
+    
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        
+        // Send to WebSocket clients (check count again to be safe)
+        if (_ws.count() > 0) {
+            _ws.textAll(jsonBuffer);
+        }
+        
+        // Also send to cloud - use jsonBuffer directly to avoid String allocation
+        if (_cloudConnection && _cloudConnection->isConnected()) {
+            _cloudConnection->send(jsonBuffer);
+        }
+        
+        free(jsonBuffer);
+    }
+    
+    // Free the JSON document
+    delete docPtr;
 }
 
 void WebServer::broadcastDeviceInfo() {
-    JsonDocument doc;
+    // Use stack allocation to avoid PSRAM crashes
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<2048> doc;
+    #pragma GCC diagnostic pop
     doc["type"] = "device_info";
     
     // Get device info from state manager
@@ -2197,50 +3077,92 @@ void WebServer::broadcastDeviceInfo() {
     JsonObject preferences = doc["preferences"].to<JsonObject>();
     prefs.toJson(preferences);
     
-    String json;
-    serializeJson(doc, json);
-    _ws.textAll(json);
+    // Allocate JSON buffer in internal RAM (not PSRAM) to avoid crashes
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        jsonBuffer = (char*)malloc(jsonSize);
+    }
     
-    // Also send to cloud
-    if (_cloudConnection) {
-        _cloudConnection->send(json);
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        _ws.textAll(jsonBuffer);
+        
+        // Also send to cloud - use jsonBuffer directly to avoid String allocation
+        if (_cloudConnection) {
+            _cloudConnection->send(jsonBuffer);
+        }
+        
+        free(jsonBuffer);
     }
 }
 
 void WebServer::broadcastPowerMeterStatus() {
-    JsonDocument doc;
+    // Use stack allocation to avoid PSRAM crashes
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<1024> doc;
+    #pragma GCC diagnostic pop
     doc["type"] = "power_meter_status";
     
     // Get status from power meter manager
-    powerMeterManager.getStatus(doc);
+    if (powerMeterManager) powerMeterManager->getStatus(doc);
     
-    String json;
-    serializeJson(doc, json);
-    _ws.textAll(json);
+    // Allocate JSON buffer in internal RAM (not PSRAM) to avoid crashes
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        jsonBuffer = (char*)malloc(jsonSize);
+    }
     
-    // Also send to cloud
-    if (_cloudConnection) {
-        _cloudConnection->send(json);
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        _ws.textAll(jsonBuffer);
+        
+        // Also send to cloud - use jsonBuffer directly to avoid String allocation
+        if (_cloudConnection) {
+            _cloudConnection->send(jsonBuffer);
+        }
+        
+        free(jsonBuffer);
     }
 }
 
 void WebServer::broadcastEvent(const String& event, const JsonDocument* data) {
-    JsonDocument doc;
+    // Use stack allocation to avoid PSRAM crashes
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<1024> doc;
+    #pragma GCC diagnostic pop
     doc["type"] = "event";
-    doc["event"] = event;
+    // Copy event string to avoid PSRAM pointer issues
+    char eventBuf[64];
+    strncpy(eventBuf, event.c_str(), sizeof(eventBuf) - 1);
+    eventBuf[sizeof(eventBuf) - 1] = '\0';
+    doc["event"] = eventBuf;
     doc["timestamp"] = millis();
     
     if (data) {
         doc["data"] = *data;
     }
     
-    String json;
-    serializeJson(doc, json);
-    _ws.textAll(json);
+    // Allocate JSON buffer in internal RAM (not PSRAM) to avoid crashes
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        jsonBuffer = (char*)malloc(jsonSize);
+    }
     
-    // Also send to cloud - events are important for remote users
-    if (_cloudConnection) {
-        _cloudConnection->send(json);
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        _ws.textAll(jsonBuffer);
+        
+        // Also send to cloud - use jsonBuffer directly to avoid String allocation
+        if (_cloudConnection) {
+            _cloudConnection->send(jsonBuffer);
+        }
+        
+        free(jsonBuffer);
     }
 }
 
@@ -2281,7 +3203,7 @@ bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
         size_t sent = _picoUart.streamFirmwareChunk(buffer, bytesRead, chunkNumber);
         if (sent != bytesRead) {
             LOG_E("Failed to send chunk %d: %d/%d bytes", chunkNumber, sent, bytesRead);
-            broadcastLog("Firmware streaming error at chunk " + String(chunkNumber), "error");
+            broadcastLog("Firmware streaming error at chunk %d", "error", chunkNumber);
             return false;
         }
         
@@ -2293,15 +3215,24 @@ bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
         size_t progress = (bytesSent * 100) / firmwareSize;
         if (progress >= lastProgress + 10 || bytesSent == firmwareSize) {
             lastProgress = progress;
-            JsonDocument doc;
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            StaticJsonDocument<256> doc;
+            #pragma GCC diagnostic pop
             doc["type"] = "ota_progress";
             doc["stage"] = "flash";
             doc["progress"] = progress;
             doc["sent"] = bytesSent;
             doc["total"] = firmwareSize;
-            String json;
-            serializeJson(doc, json);
-            _ws.textAll(json);
+            
+            size_t jsonSize = measureJson(doc) + 1;
+            char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+            if (jsonBuffer) {
+                serializeJson(doc, jsonBuffer, jsonSize);
+                _ws.textAll(jsonBuffer);
+                free(jsonBuffer);
+            }
             LOG_I("Flash progress: %d%% (%d/%d bytes)", progress, bytesSent, firmwareSize);
         }
         
@@ -2319,14 +3250,17 @@ bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
     }
     
     LOG_I("Firmware streaming complete: %d bytes in %d chunks", bytesSent, chunkNumber);
-    broadcastLog("Firmware streaming complete: " + String(bytesSent) + " bytes in " + String(chunkNumber) + " chunks", "info");
+    broadcastLog("Firmware streaming complete: %zu bytes in %d chunks", bytesSent, chunkNumber);
     return true;
 }
 
 void WebServer::handleGetMQTTConfig(AsyncWebServerRequest* request) {
     MQTTConfig config = _mqttClient.getConfig();
     
-    JsonDocument doc;
+    #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<2048> doc;
+        #pragma GCC diagnostic pop
     doc["enabled"] = config.enabled;
     doc["broker"] = config.broker;
     doc["port"] = config.port;
@@ -2338,11 +3272,28 @@ void WebServer::handleGetMQTTConfig(AsyncWebServerRequest* request) {
     doc["ha_discovery"] = config.ha_discovery;
     doc["ha_device_id"] = config.ha_device_id;
     doc["connected"] = _mqttClient.isConnected();
-    doc["status"] = _mqttClient.getStatusString();
+    // Get MQTT status - copy String to stack buffer to avoid PSRAM
+    String mqttStatusStr = _mqttClient.getStatusString();
+    char mqttStatusBuf[32];
+    strncpy(mqttStatusBuf, mqttStatusStr.c_str(), sizeof(mqttStatusBuf) - 1);
+    mqttStatusBuf[sizeof(mqttStatusBuf) - 1] = '\0';
+    doc["status"] = mqttStatusBuf;
     
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
+    
+        // Allocate JSON buffer in internal RAM (not PSRAM)
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) {
+            jsonBuffer = (char*)malloc(jsonSize);
+        }
+        
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            request->send(200, "application/json", jsonBuffer);
+            // Buffer will be freed by AsyncWebServer after response
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+        }
 }
 
 void WebServer::handleSetMQTTConfig(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
@@ -2403,31 +3354,51 @@ void WebServer::handleTestMQTT(AsyncWebServerRequest* request) {
 // GitHub OTA - Download and install ESP32 firmware from GitHub releases
 // =============================================================================
 
+// Helper to broadcast OTA progress - uses stack allocation
+static void broadcastOtaProgress(AsyncWebSocket* ws, const char* stage, int progress, const char* message) {
+    if (!ws) return;
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<256> doc;
+    #pragma GCC diagnostic pop
+    doc["type"] = "ota_progress";
+    doc["stage"] = stage;
+    doc["progress"] = progress;
+    doc["message"] = message;
+    
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        ws->textAll(jsonBuffer);
+        free(jsonBuffer);
+    }
+}
+
 void WebServer::startGitHubOTA(const String& version) {
     LOG_I("Starting ESP32 GitHub OTA for version: %s", version.c_str());
     
-    // Broadcast OTA progress
-    auto broadcastProgress = [this](const char* stage, int progress, const char* message) {
-        JsonDocument doc;
-        doc["type"] = "ota_progress";
-        doc["stage"] = stage;
-        doc["progress"] = progress;
-        doc["message"] = message;
-        String json;
-        serializeJson(doc, json);
-        _ws.textAll(json);
-    };
+    // Define macro for consistent OTA progress broadcasting
+    #define broadcastProgress(stage, progress, message) broadcastOtaProgress(&_ws, stage, progress, message)
     
     broadcastProgress("flash", 65, "Completing update...");
     
     // Build the GitHub release download URL
-    String tag = version;
-    if (version != "dev-latest" && !version.startsWith("v")) {
-        tag = "v" + version;
+    // Build download URL using stack buffer to avoid PSRAM
+    char tag[32];
+    if (strcmp(version.c_str(), "dev-latest") != 0 && strncmp(version.c_str(), "v", 1) != 0) {
+        snprintf(tag, sizeof(tag), "v%s", version.c_str());
+    } else {
+        strncpy(tag, version.c_str(), sizeof(tag) - 1);
+        tag[sizeof(tag) - 1] = '\0';
     }
     
-    String downloadUrl = "https://github.com/" GITHUB_OWNER "/" GITHUB_REPO "/releases/download/" + tag + "/" GITHUB_ESP32_ASSET;
-    LOG_I("Download URL: %s", downloadUrl.c_str());
+    char downloadUrl[256];
+    snprintf(downloadUrl, sizeof(downloadUrl), 
+             "https://github.com/" GITHUB_OWNER "/" GITHUB_REPO "/releases/download/%s/" GITHUB_ESP32_ASSET, 
+             tag);
+    LOG_I("Download URL: %s", downloadUrl);
     
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -2436,7 +3407,7 @@ void WebServer::startGitHubOTA(const String& version) {
     if (!http.begin(downloadUrl)) {
         LOG_E("Failed to connect to GitHub");
         broadcastLog("Update error: Cannot connect to server", "error");
-        broadcastProgress("error", 0, "Connection failed");
+        broadcastOtaProgress(&_ws, "error", 0, "Connection failed");
         return;
     }
     
@@ -2446,9 +3417,9 @@ void WebServer::startGitHubOTA(const String& version) {
     
     if (httpCode != HTTP_CODE_OK) {
         LOG_E("HTTP error: %d", httpCode);
-        String errorMsg = (httpCode == 404) ? "Update not found" : "Download failed";
-        broadcastLog("Update error: " + errorMsg, "error");
-        broadcastProgress("error", 0, errorMsg.c_str());
+        const char* errorMsg = (httpCode == 404) ? "Update not found" : "Download failed";
+        broadcastLog("Update error: %s", "error", errorMsg);
+        broadcastOtaProgress(&_ws, "error", 0, errorMsg);
         http.end();
         return;
     }
@@ -2457,19 +3428,19 @@ void WebServer::startGitHubOTA(const String& version) {
     if (contentLength <= 0) {
         LOG_E("Invalid content length: %d", contentLength);
         broadcastLog("Update error: Invalid firmware", "error");
-        broadcastProgress("error", 0, "Invalid firmware");
+        broadcastOtaProgress(&_ws, "error", 0, "Invalid firmware");
         http.end();
         return;
     }
     
     LOG_I("ESP32 firmware size: %d bytes", contentLength);
-    broadcastProgress("download", 70, "Downloading...");
+    broadcastOtaProgress(&_ws, "download", 70, "Downloading...");
     
     // Begin OTA update
     if (!Update.begin(contentLength)) {
         LOG_E("Not enough space for OTA");
         broadcastLog("Update error: Not enough space", "error");
-        broadcastProgress("error", 0, "Not enough space");
+        broadcastOtaProgress(&_ws, "error", 0, "Not enough space");
         http.end();
         return;
     }
@@ -2538,6 +3509,8 @@ void WebServer::startGitHubOTA(const String& version) {
     
     // Restart to apply the update
     ESP.restart();
+    
+    #undef broadcastProgress
 }
 
 // =============================================================================
@@ -2592,7 +3565,7 @@ void WebServer::checkForUpdates() {
     
     if (httpCode != HTTP_CODE_OK) {
         LOG_E("GitHub API error: %d", httpCode);
-        broadcastLog("Update check failed: HTTP " + String(httpCode), "error");
+        broadcastLog("Update check failed: HTTP %d", "error", httpCode);
         http.end();
         return;
     }
@@ -2689,13 +3662,13 @@ void WebServer::checkForUpdates() {
     
     // Log result
     if (updateAvailable && combinedUpdateAvailable) {
-        broadcastLog("BrewOS " + latestVersionNum + " available (current: " + currentVersion + ")", "info");
+        broadcastLog("BrewOS %s available (current: %s)", latestVersionNum.c_str(), currentVersion.c_str());
     } else if (updateAvailable) {
         // Update available but missing some assets - log internally only
         LOG_W("Update available but missing assets: esp32=%d, pico=%d", esp32AssetFound, picoAssetFound);
-        broadcastLog("BrewOS " + latestVersionNum + " available (current: " + currentVersion + ")", "info");
+        broadcastLog("BrewOS %s available (current: %s)", latestVersionNum.c_str(), currentVersion.c_str());
     } else {
-        broadcastLog("BrewOS is up to date (" + currentVersion + ")", "info");
+        broadcastLog("BrewOS is up to date (%s)", currentVersion.c_str());
     }
 }
 
@@ -2727,27 +3700,24 @@ void WebServer::startPicoGitHubOTA(const String& version) {
     
     LOG_I("Pico asset: %s", picoAsset);
     
-    // Build the GitHub release download URL
-    String tag = version;
-    if (version != "dev-latest" && !version.startsWith("v")) {
-        tag = "v" + version;
+    // Build the GitHub release download URL using stack buffer to avoid PSRAM
+    char tag[32];
+    if (strcmp(version.c_str(), "dev-latest") != 0 && strncmp(version.c_str(), "v", 1) != 0) {
+        snprintf(tag, sizeof(tag), "v%s", version.c_str());
+    } else {
+        strncpy(tag, version.c_str(), sizeof(tag) - 1);
+        tag[sizeof(tag) - 1] = '\0';
     }
     
-    String downloadUrl = "https://github.com/" GITHUB_OWNER "/" GITHUB_REPO "/releases/download/" + tag + "/" + String(picoAsset);
+    char downloadUrl[256];
+    snprintf(downloadUrl, sizeof(downloadUrl), 
+             "https://github.com/" GITHUB_OWNER "/" GITHUB_REPO "/releases/download/%s/%s", 
+             tag, picoAsset);
     
-    LOG_I("Pico download URL: %s", downloadUrl.c_str());
+    LOG_I("Pico download URL: %s", downloadUrl);
     
-    // Broadcast OTA progress
-    auto broadcastProgress = [this](const char* stage, int progress, const char* message) {
-        JsonDocument doc;
-        doc["type"] = "ota_progress";
-        doc["stage"] = stage;
-        doc["progress"] = progress;
-        doc["message"] = message;
-        String json;
-        serializeJson(doc, json);
-        _ws.textAll(json);
-    };
+    // Use static helper for OTA progress (broadcastOtaProgress defined above)
+    #define broadcastProgress(stage, progress, message) broadcastOtaProgress(&_ws, stage, progress, message)
     
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -2766,9 +3736,9 @@ void WebServer::startPicoGitHubOTA(const String& version) {
     
     if (httpCode != HTTP_CODE_OK) {
         LOG_E("HTTP error: %d", httpCode);
-        String errorMsg = (httpCode == 404) ? "Update not found for this version" : "Download failed";
-        broadcastLog("Update error: " + errorMsg, "error");
-        broadcastProgress("error", 0, errorMsg.c_str());
+        const char* errorMsg = (httpCode == 404) ? "Update not found for this version" : "Download failed";
+        broadcastLog("Update error: %s", "error", errorMsg);
+        broadcastProgress("error", 0, errorMsg);
         http.end();
         return;
     }
@@ -2894,6 +3864,8 @@ void WebServer::startPicoGitHubOTA(const String& version) {
     delay(3000);  // Give Pico time to boot
     
     LOG_I("Pico OTA complete!");
+    
+    #undef broadcastProgress
 }
 
 // =============================================================================
@@ -2902,19 +3874,11 @@ void WebServer::startPicoGitHubOTA(const String& version) {
 
 void WebServer::startCombinedOTA(const String& version) {
     LOG_I("Starting combined OTA for version: %s", version.c_str());
-    broadcastLog("Starting BrewOS update to v" + version + "...", "info");
+    broadcastLog("Starting BrewOS update to v%s...", version.c_str());
     
-    // Broadcast OTA progress
-    auto broadcastProgress = [this](const char* stage, int progress, const char* message) {
-        JsonDocument doc;
-        doc["type"] = "ota_progress";
-        doc["stage"] = stage;
-        doc["progress"] = progress;
-        doc["message"] = message;
-        String json;
-        serializeJson(doc, json);
-        _ws.textAll(json);
-    };
+    // Define macro for consistent OTA progress broadcasting
+    #define broadcastProgress(stage, progress, message) broadcastOtaProgress(&_ws, stage, progress, message)
+    // Note: broadcastProgress macro already defined above for startPicoGitHubOTA
     
     // Check machine type is known
     uint8_t machineType = State.getMachineType();
@@ -2948,6 +3912,8 @@ void WebServer::startCombinedOTA(const String& version) {
     
     broadcastProgress("flash", 60, "Completing update...");
     
+    #undef broadcastProgress
+    
     // Step 2: Update ESP32 (this will reboot)
     LOG_I("Step 2/2: Updating ESP32 firmware...");
     startGitHubOTA(version);
@@ -2968,28 +3934,39 @@ bool WebServer::checkVersionMismatch() {
         return false;  // No mismatch detected (not fully connected yet)
     }
     
-    // Compare versions (strip 'v' prefix if present)
-    String picoVer = picoVersion;
-    String esp32Ver = esp32Version;
+    // Compare versions using stack buffers (strip 'v' prefix if present)
+    char picoVer[16];
+    char esp32Ver[16];
+    strncpy(picoVer, picoVersion[0] == 'v' ? picoVersion + 1 : picoVersion, sizeof(picoVer) - 1);
+    picoVer[sizeof(picoVer) - 1] = '\0';
+    strncpy(esp32Ver, esp32Version[0] == 'v' ? esp32Version + 1 : esp32Version, sizeof(esp32Ver) - 1);
+    esp32Ver[sizeof(esp32Ver) - 1] = '\0';
     
-    if (picoVer.startsWith("v")) picoVer = picoVer.substring(1);
-    if (esp32Ver.startsWith("v")) esp32Ver = esp32Ver.substring(1);
-    
-    bool mismatch = (picoVer != esp32Ver);
+    bool mismatch = (strcmp(picoVer, esp32Ver) != 0);
     
     if (mismatch) {
-        LOG_W("Internal version mismatch: %s vs %s", esp32Ver.c_str(), picoVer.c_str());
+        LOG_W("Internal version mismatch: %s vs %s", esp32Ver, picoVer);
         
-        // Broadcast to clients - suggest update without technical details
-        JsonDocument doc;
+        // Broadcast to clients using stack allocation
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<256> doc;
+        #pragma GCC diagnostic pop
         doc["type"] = "version_mismatch";
-        doc["currentVersion"] = esp32Ver;  // Show the ESP32 version as "current"
+        doc["currentVersion"] = esp32Ver;
         doc["message"] = "A firmware update is recommended to ensure optimal performance.";
-        String json;
-        serializeJson(doc, json);
-        _ws.textAll(json);
+        
+        size_t jsonSize = measureJson(doc) + 1;
+        char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+        if (jsonBuffer) {
+            serializeJson(doc, jsonBuffer, jsonSize);
+            _ws.textAll(jsonBuffer);
+            free(jsonBuffer);
+        }
     }
     
     return mismatch;
 }
+
 

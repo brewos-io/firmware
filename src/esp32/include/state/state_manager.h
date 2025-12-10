@@ -2,7 +2,6 @@
 
 #include "state_types.h"
 #include <Preferences.h>
-#include <functional>
 
 namespace BrewOS {
 
@@ -129,8 +128,8 @@ public:
     bool getAutoPowerOffEnabled() const { return _settings.schedule.autoPowerOffEnabled; }
     uint16_t getAutoPowerOffMinutes() const { return _settings.schedule.autoPowerOffMinutes; }
     
-    // Schedule callbacks (for triggering actions)
-    using ScheduleCallback = std::function<void(const ScheduleEntry&)>;
+    // Schedule callbacks (for triggering actions) - using function pointers to avoid PSRAM issues
+    typedef void (*ScheduleCallback)(const ScheduleEntry&);
     void onScheduleTriggered(ScheduleCallback callback);
     
     // Check schedules (called from loop)
@@ -144,10 +143,11 @@ public:
     // CHANGE NOTIFICATIONS
     // ==========================================================================
     
-    using SettingsCallback = std::function<void(const Settings&)>;
-    using StatsCallback = std::function<void(const Statistics&)>;
-    using StateCallback = std::function<void(const RuntimeState&)>;
-    using ShotCallback = std::function<void(const ShotRecord&)>;
+    // Simple function pointers to avoid std::function PSRAM allocation issues
+    typedef void (*SettingsCallback)(const Settings&);
+    typedef void (*StatsCallback)(const Statistics&);
+    typedef void (*StateCallback)(const RuntimeState&);
+    typedef void (*ShotCallback)(const ShotRecord&);
     
     void onSettingsChanged(SettingsCallback callback);
     void onStatsChanged(StatsCallback callback);

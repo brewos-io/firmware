@@ -796,14 +796,29 @@ String MQTTClient::getStatusString() const {
         // Get state from non-const client (temporary)
         MQTTClient* nonConst = const_cast<MQTTClient*>(this);
         int state = nonConst->_client.state();
-        return "Disconnected (" + String(state) + ")";
+        // Use stack buffer to avoid String concatenation in PSRAM
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Disconnected (%d)", state);
+        return String(buf);
     }
     
     return "Connected";
 }
 
 void MQTTClient::loadConfig() {
-    _prefs.begin("mqtt", true);
+    // After fresh flash, NVS namespace won't exist - this is expected
+    if (!_prefs.begin("mqtt", true)) {
+        LOG_I("No saved MQTT config (fresh flash) - using defaults");
+        _config.enabled = false;
+        _config.broker[0] = '\0';
+        _config.port = 1883;
+        _config.username[0] = '\0';
+        _config.password[0] = '\0';
+        _config.client_id[0] = '\0';
+        strcpy(_config.topic_prefix, "brewos");
+        _config.use_tls = false;
+        return;
+    }
     
     _config.enabled = _prefs.getBool("enabled", false);
     _prefs.getString("broker", _config.broker, sizeof(_config.broker));

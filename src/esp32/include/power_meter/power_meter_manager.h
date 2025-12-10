@@ -97,7 +97,7 @@ private:
 };
 
 // Global instance
-extern PowerMeterManager powerMeterManager;
+extern PowerMeterManager* powerMeterManager;
 
 #endif // POWER_METER_MANAGER_H
 

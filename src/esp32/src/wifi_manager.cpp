@@ -1,6 +1,28 @@
 #include "wifi_manager.h"
 #include "config.h"
 
+// Helper to validate function pointers before calling
+// On ESP32-S3, valid code addresses are in flash (0x40000000-0x42FFFFFF)
+// PSRAM data is at 0x3C000000-0x3DFFFFFF - calling this would crash
+static inline bool isValidCodePointer(void* ptr) {
+    uintptr_t addr = (uintptr_t)ptr;
+    // Valid ESP32-S3 code regions: ROM, IRAM, Flash
+    // 0x40000000 - 0x4001FFFF: ROM
+    // 0x40020000 - 0x40027FFF: IRAM 
+    // 0x42000000 - 0x42FFFFFF: Flash mapped code
+    return (addr >= 0x40000000 && addr < 0x43000000);
+}
+
+// Safe callback invocation with validation
+static inline void safeCallback(WiFiEventCallback callback) {
+    if (callback && isValidCodePointer((void*)callback)) {
+        callback();
+    } else if (callback) {
+        // Callback pointer is corrupted (pointing to PSRAM or invalid area)
+        Serial.printf("[FATAL] Corrupted callback pointer: 0x%08X - NOT calling!\n", (uint32_t)callback);
+    }
+}
+
 WiFiManager::WiFiManager() 
     : _mode(WiFiManagerMode::DISCONNECTED)
     , _lastConnectAttempt(0)
@@ -8,6 +30,9 @@ WiFiManager::WiFiManager()
     , _onConnected(nullptr)
     , _onDisconnected(nullptr)
     , _onAPStarted(nullptr) {
+    // Initialize credential buffers
+    _storedSSID[0] = '\0';
+    _storedPassword[0] = '\0';
 }
 
 void WiFiManager::begin() {
@@ -19,7 +44,7 @@ void WiFiManager::begin() {
     
     // Try to connect if we have credentials
     if (hasStoredCredentials()) {
-        LOG_I("Found stored WiFi credentials for: %s", _storedSSID.c_str());
+        LOG_I("Found stored WiFi credentials for: %s", _storedSSID);
         connectToWiFi();
     } else {
         LOG_I("No stored credentials, starting AP mode");
@@ -33,8 +58,12 @@ void WiFiManager::loop() {
             // Check connection status
             if (WiFi.status() == WL_CONNECTED) {
                 _mode = WiFiManagerMode::STA_MODE;
-                LOG_I("WiFi connected! IP: %s", WiFi.localIP().toString().c_str());
-                if (_onConnected) _onConnected();
+                // Get IP using direct format to avoid String allocation
+                IPAddress ip = WiFi.localIP();
+                char ipStr[16];
+                snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+                LOG_I("WiFi connected! IP: %s", ipStr);
+                safeCallback(_onConnected);
             } 
             else if (millis() - _connectStartTime > WIFI_CONNECT_TIMEOUT_MS) {
                 LOG_W("WiFi connection timeout, starting AP mode");
@@ -47,7 +76,7 @@ void WiFiManager::loop() {
             if (WiFi.status() != WL_CONNECTED) {
                 LOG_W("WiFi disconnected");
                 _mode = WiFiManagerMode::DISCONNECTED;
-                if (_onDisconnected) _onDisconnected();
+                safeCallback(_onDisconnected);
                 
                 // Try to reconnect after interval
                 if (millis() - _lastConnectAttempt > WIFI_RECONNECT_INTERVAL) {
@@ -71,7 +100,7 @@ void WiFiManager::loop() {
 }
 
 bool WiFiManager::hasStoredCredentials() {
-    return _storedSSID.length() > 0 && _storedPassword.length() > 0;
+    return strlen(_storedSSID) > 0 && strlen(_storedPassword) > 0;
 }
 
 bool WiFiManager::setCredentials(const String& ssid, const String& password) {
@@ -81,8 +110,10 @@ bool WiFiManager::setCredentials(const String& ssid, const String& password) {
     }
     
     saveCredentials(ssid, password);
-    _storedSSID = ssid;
-    _storedPassword = password;
+    strncpy(_storedSSID, ssid.c_str(), sizeof(_storedSSID) - 1);
+    _storedSSID[sizeof(_storedSSID) - 1] = '\0';
+    strncpy(_storedPassword, password.c_str(), sizeof(_storedPassword) - 1);
+    _storedPassword[sizeof(_storedPassword) - 1] = '\0';
     
     LOG_I("Credentials saved for: %s", ssid.c_str());
     return true;
@@ -93,8 +124,8 @@ void WiFiManager::clearCredentials() {
     _prefs.clear();
     _prefs.end();
     
-    _storedSSID = "";
-    _storedPassword = "";
+    _storedSSID[0] = '\0';
+    _storedPassword[0] = '\0';
     
     LOG_I("Credentials cleared");
 }
@@ -105,7 +136,7 @@ bool WiFiManager::connectToWiFi() {
         return false;
     }
     
-    LOG_I("Connecting to WiFi: %s", _storedSSID.c_str());
+    LOG_I("Connecting to WiFi: %s", _storedSSID);
     
     // Stop AP if running
     WiFi.softAPdisconnect(true);
@@ -124,7 +155,7 @@ bool WiFiManager::connectToWiFi() {
         WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
     }
     
-    WiFi.begin(_storedSSID.c_str(), _storedPassword.c_str());
+    WiFi.begin(_storedSSID, _storedPassword);
     
     _mode = WiFiManagerMode::STA_CONNECTING;
     _connectStartTime = millis();
@@ -146,9 +177,13 @@ void WiFiManager::startAP() {
     
     _mode = WiFiManagerMode::AP_MODE;
     
-    LOG_I("AP started. IP: %s", WiFi.softAPIP().toString().c_str());
+    // Get AP IP without String allocation
+    IPAddress apIP = WiFi.softAPIP();
+    char apIPStr[16];
+    snprintf(apIPStr, sizeof(apIPStr), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+    LOG_I("AP started. IP: %s", apIPStr);
     
-    if (_onAPStarted) _onAPStarted();
+    safeCallback(_onAPStarted);
 }
 
 WiFiStatus WiFiManager::getStatus() {
@@ -212,10 +247,23 @@ String WiFiManager::getIP() {
 }
 
 void WiFiManager::loadCredentials() {
-    _prefs.begin("wifi", true);  // Read-only
-    _storedSSID = _prefs.getString("ssid", "");
-    _storedPassword = _prefs.getString("password", "");
+    // After fresh flash, NVS namespace won't exist - this is expected
+    if (!_prefs.begin("wifi", true)) {  // Read-only
+        LOG_I("No saved WiFi credentials (fresh flash) - using defaults");
+        _storedSSID[0] = '\0';
+        _storedPassword[0] = '\0';
+        return;
+    }
+    
+    // Load to temporary String, then copy to fixed buffer
+    String ssid = _prefs.getString("ssid", "");
+    String password = _prefs.getString("password", "");
     _prefs.end();
+    
+    strncpy(_storedSSID, ssid.c_str(), sizeof(_storedSSID) - 1);
+    _storedSSID[sizeof(_storedSSID) - 1] = '\0';
+    strncpy(_storedPassword, password.c_str(), sizeof(_storedPassword) - 1);
+    _storedPassword[sizeof(_storedPassword) - 1] = '\0';
 }
 
 void WiFiManager::saveCredentials(const String& ssid, const String& password) {
@@ -258,7 +306,12 @@ void WiFiManager::setStaticIP(bool enabled, const String& ip, const String& gate
 }
 
 void WiFiManager::loadStaticIPConfig() {
-    _prefs.begin("wifi", true);  // Read-only
+    // After fresh flash, NVS namespace won't exist - this is expected
+    if (!_prefs.begin("wifi", true)) {  // Read-only
+        LOG_I("No saved static IP config (fresh flash) - using defaults");
+        _staticIP.enabled = false;
+        return;
+    }
     _staticIP.enabled = _prefs.getBool("static_en", false);
     
     if (_staticIP.enabled) {

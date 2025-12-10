@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
+// Using ESPAsyncWebServer's built-in AsyncWebSocket (same port 80)
 #include <ArduinoJson.h>
 #include "wifi_manager.h"
 #include "ui/ui.h"
@@ -26,11 +27,20 @@ public:
     // Set cloud connection for remote state broadcasting
     void setCloudConnection(CloudConnection* cloudConnection);
     
+    // Mark WiFi as connected - starts delay timer before serving requests
+    void setWiFiConnected();
+    
+    // Check if WiFi is ready to serve requests (prevents crashes from early requests)
+    bool isWiFiReady();
+    
     // Send data to all WebSocket clients - Unified Status Broadcast
     void broadcastFullStatus(const ui_state_t& machineState);  // Comprehensive status (periodic)
     void broadcastDeviceInfo();   // Device info (on connect only)
     void broadcastPowerMeterStatus();  // Power meter status update
-    void broadcastLog(const String& message, const String& level = "info");  // Log messages
+    // Log messages - variadic format string (like printf) to avoid PSRAM
+    // Usage: broadcastLog("info", "Message: %s", value) or broadcastLog("Message", "info")
+    void broadcastLog(const char* format, ...) __attribute__((format(printf, 2, 3)));  // Variadic: defaults to "info"
+    void broadcastLog(const char* format, const char* level, ...) __attribute__((format(printf, 3, 4)));  // Variadic with explicit level
     void broadcastEvent(const String& event, const JsonDocument* data = nullptr);  // Events (shot_start, shot_end, etc.)
     
     // Legacy/debug - raw pico message forwarding
@@ -38,6 +48,7 @@ public:
     
     // Broadcast raw JSON string to all WebSocket clients
     void broadcastRaw(const String& json);
+    void broadcastRaw(const char* json);  // const char* overload to avoid String allocation
     
     // Get client count
     size_t getClientCount();
@@ -45,10 +56,13 @@ public:
     // Process a command from any source (local WebSocket or cloud)
     // Used by CloudConnection to forward cloud commands to the same handler
     void processCommand(JsonDocument& doc);
+    
+    // WebSocket event handler (public - called from static callback)
+    void handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len);
 
 private:
     AsyncWebServer _server;
-    AsyncWebSocket _ws;
+    AsyncWebSocket _ws;  // Built-in WebSocket on same port 80
     WiFiManager& _wifiManager;
     PicoUART& _picoUart;
     MQTTClient& _mqttClient;
@@ -70,10 +84,8 @@ private:
                          size_t index, uint8_t* data, size_t len, bool final);
     void handleStartOTA(AsyncWebServerRequest* request);
     
-    // WebSocket handlers
-    void onWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
-                   AwsEventType type, void* arg, uint8_t* data, size_t len);
-    void handleWsMessage(AsyncWebSocketClient* client, uint8_t* data, size_t len);
+    // WebSocket message handler (processes JSON commands)
+    void handleWsMessage(uint32_t clientNum, uint8_t* payload, size_t length);
     
     // Helpers
     String getContentType(const String& filename);

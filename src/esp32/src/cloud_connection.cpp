@@ -237,14 +237,32 @@ void CloudConnection::send(const String& json) {
     _ws.sendTXT(json.c_str(), json.length());
 }
 
+void CloudConnection::send(const char* json) {
+    if (!_connected || !json) {
+        return;
+    }
+    
+    // Send directly without String allocation
+    _ws.sendTXT(json, strlen(json));
+}
+
 void CloudConnection::send(const JsonDocument& doc) {
     if (!_connected) {
         return;
     }
     
-    String json;
-    serializeJson(doc, json);
-    _ws.sendTXT(json);
+    // Allocate JSON buffer in internal RAM (not PSRAM) to avoid crashes
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        jsonBuffer = (char*)malloc(jsonSize);
+    }
+    
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        _ws.sendTXT(jsonBuffer, strlen(jsonBuffer));
+        free(jsonBuffer);
+    }
 }
 
 void CloudConnection::onCommand(CommandCallback callback) {

@@ -144,7 +144,16 @@ build_web() {
         }
     fi
     
-    # Build for ESP32
+    # Clean ESP32 data folder before build (prevent stale hashed files)
+    print_info "Cleaning ESP32 data folder..."
+    rm -rf "$ESP32_DIR/data/assets" 2>/dev/null || true
+    rm -f "$ESP32_DIR/data/index.html" "$ESP32_DIR/data/favicon.svg" \
+          "$ESP32_DIR/data/logo.png" "$ESP32_DIR/data/logo-icon.svg" \
+          "$ESP32_DIR/data/manifest.json" "$ESP32_DIR/data/sw.js" \
+          "$ESP32_DIR/data/version-manifest.json" 2>/dev/null || true
+    rm -rf "$ESP32_DIR/data/.well-known" 2>/dev/null || true
+    
+    # Build for ESP32 (outputs directly to esp32/data with emptyOutDir)
     print_info "Building web UI..."
     npm run build:esp32 || {
         print_error "Web build failed"
@@ -172,9 +181,9 @@ build_esp32() {
         exit 1
     fi
     
-    # Build
+    # Build only ESP32-S3 environment (skip simulator which has different requirements)
     print_info "Building with PlatformIO..."
-    pio run || {
+    pio run -e esp32s3 || {
         print_error "Build failed"
         exit 1
     }

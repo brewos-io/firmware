@@ -2,7 +2,6 @@
 #define PICO_UART_H
 
 #include <Arduino.h>
-#include <functional>
 
 // Packet structure
 struct PicoPacket {
@@ -14,8 +13,8 @@ struct PicoPacket {
     bool valid;
 };
 
-// Callback type for received packets
-using PacketCallback = std::function<void(const PicoPacket& packet)>;
+// Simple function pointer callback to avoid std::function PSRAM allocation issues
+typedef void (*PacketCallback)(const PicoPacket& packet);
 
 class PicoUART {
 public:
@@ -47,7 +46,7 @@ public:
     // Brew-by-weight control
     void setWeightStop(bool active);       // Set WEIGHT_STOP signal (HIGH = stop brew)
     
-    // Set callback for received packets
+    // Set callback for received packets - uses simple function pointer
     void onPacket(PacketCallback callback) { _packetCallback = callback; }
     
     // Statistics
@@ -57,7 +56,7 @@ public:
 
 private:
     HardwareSerial& _serial;
-    PacketCallback _packetCallback;
+    PacketCallback _packetCallback = nullptr;
     
     // Receive state machine
     enum class RxState {
@@ -92,4 +91,3 @@ private:
 };
 
 #endif // PICO_UART_H
-

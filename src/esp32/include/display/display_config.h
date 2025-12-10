@@ -1,9 +1,10 @@
 /**
  * BrewOS Display Configuration
  * 
- * Target: UEDX48480021-MD80E (ESP32-S3 Knob Display)
+ * Target: UEDX48480021-MD80E (ESP32-S3 Knob Display / Spotpear 2.1")
  * - 2.1" Round IPS 480x480
- * - GC9A01 or ST7701 controller (common for round displays)
+ * - GC9503V controller with RGB666 parallel interface
+ * - 3-wire SPI for initialization commands
  * - Rotary Encoder + Push Button
  */
 
@@ -24,34 +25,63 @@
 #define DISPLAY_RADIUS          (DISPLAY_WIDTH / 2)
 
 // Safe area for round display (content should stay within this)
-// Elements at top/bottom need ~70-80px margin from edge
-// Elements at corners are cut off - avoid placing content there
 #define DISPLAY_SAFE_MARGIN     70
 #define DISPLAY_SAFE_RADIUS     (DISPLAY_RADIUS - DISPLAY_SAFE_MARGIN)
 
 // =============================================================================
-// Display SPI Pins (adjust based on actual board pinout)
-// These need to be verified for UEDX48480021-MD80E
+// Display Pins for UEDX48480021-MD80E (Spotpear 2.1" Round)
+// Uses RGB666 parallel interface with 3-wire SPI for init
 // =============================================================================
 
-// SPI pins for display
-#define DISPLAY_MOSI_PIN        11      // SPI MOSI
-#define DISPLAY_SCLK_PIN        12      // SPI Clock
-#define DISPLAY_CS_PIN          10      // Chip Select
-#define DISPLAY_DC_PIN          13      // Data/Command
-#define DISPLAY_RST_PIN         14      // Reset
-#define DISPLAY_BL_PIN          21      // Backlight PWM
+// 3-wire SPI for display initialization (no DC pin)
+#define DISPLAY_SPI_CS_PIN      18      // SPI Chip Select
+#define DISPLAY_SPI_SCK_PIN     13      // SPI Clock  
+#define DISPLAY_SPI_MOSI_PIN    12      // SPI MOSI
+#define DISPLAY_RST_PIN         8       // Reset
 
-// SPI settings
-#define DISPLAY_SPI_FREQ        40000000    // 40MHz SPI clock
+// RGB parallel interface pins
+#define DISPLAY_DE_PIN          17      // Data Enable
+#define DISPLAY_VSYNC_PIN       3       // Vertical Sync
+#define DISPLAY_HSYNC_PIN       46      // Horizontal Sync
+#define DISPLAY_PCLK_PIN        9       // Pixel Clock
+
+// RGB data pins (RGB565/RGB666)
+#define DISPLAY_R0_PIN          1
+#define DISPLAY_R1_PIN          40
+#define DISPLAY_R2_PIN          41
+#define DISPLAY_R3_PIN          42
+#define DISPLAY_R4_PIN          2
+
+#define DISPLAY_G0_PIN          39
+#define DISPLAY_G1_PIN          21
+#define DISPLAY_G2_PIN          47
+#define DISPLAY_G3_PIN          48
+#define DISPLAY_G4_PIN          45
+#define DISPLAY_G5_PIN          38
+
+#define DISPLAY_B0_PIN          14
+#define DISPLAY_B1_PIN          10
+#define DISPLAY_B2_PIN          11
+#define DISPLAY_B3_PIN          12
+#define DISPLAY_B4_PIN          13
+
+// Backlight control
+#define DISPLAY_BL_PIN          7       // Backlight PWM
+
+// Legacy SPI pins for compatibility (not used for RGB display)
+#define DISPLAY_MOSI_PIN        DISPLAY_SPI_MOSI_PIN
+#define DISPLAY_SCLK_PIN        DISPLAY_SPI_SCK_PIN
+#define DISPLAY_CS_PIN          DISPLAY_SPI_CS_PIN
+#define DISPLAY_DC_PIN          -1      // Not used (3-wire SPI)
+#define DISPLAY_SPI_FREQ        10000000
 #define DISPLAY_SPI_HOST        SPI2_HOST
 
 // =============================================================================
-// Rotary Encoder Pins (adjust based on actual board pinout)
+// Rotary Encoder Pins for UEDX48480021-MD80E
 // =============================================================================
 
-#define ENCODER_A_PIN           1       // Encoder A (CLK)
-#define ENCODER_B_PIN           2       // Encoder B (DT)
+#define ENCODER_A_PIN           6       // Encoder A (CLK)
+#define ENCODER_B_PIN           5       // Encoder B (DT)
 #define ENCODER_BTN_PIN         0       // Encoder Button (SW) - also boot button
 
 // Encoder settings
@@ -84,13 +114,10 @@
 // LVGL Display Buffer
 // =============================================================================
 
-// Use full screen buffer in PSRAM for smooth animations
-#define LVGL_BUFFER_SIZE        (DISPLAY_WIDTH * DISPLAY_HEIGHT)
+// Partial buffer for RGB displays (full buffer would be too large)
+#define LVGL_BUFFER_SIZE        (DISPLAY_WIDTH * DISPLAY_HEIGHT / 8)
 
-// Alternative: partial buffer for less memory usage
-// #define LVGL_BUFFER_SIZE     (DISPLAY_WIDTH * 40)
-
-// Double buffering for DMA (recommended for smooth display)
+// Double buffering for smoother display
 #define LVGL_DOUBLE_BUFFER      1
 
 #endif // DISPLAY_CONFIG_H

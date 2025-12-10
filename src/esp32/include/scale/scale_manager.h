@@ -18,7 +18,6 @@
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
-#include <functional>
 #include <vector>
 #include "scale_interface.h"
 
@@ -165,9 +164,10 @@ public:
     // Callbacks
     // =========================================================================
     
-    typedef std::function<void(const scale_state_t&)> weight_callback_t;
-    typedef std::function<void(bool connected)> connection_callback_t;
-    typedef std::function<void(const scale_info_t&)> discovery_callback_t;
+    // Simple function pointers to avoid std::function PSRAM allocation issues
+    typedef void (*weight_callback_t)(const scale_state_t&);
+    typedef void (*connection_callback_t)(bool connected);
+    typedef void (*discovery_callback_t)(const scale_info_t&);
     
     void onWeight(weight_callback_t cb) { _weightCallback = cb; }
     void onConnection(connection_callback_t cb) { _connectionCallback = cb; }
@@ -247,7 +247,7 @@ private:
 };
 
 // Global instance
-extern ScaleManager scaleManager;
+extern ScaleManager* scaleManager;
 
 #endif // SCALE_MANAGER_H
 
