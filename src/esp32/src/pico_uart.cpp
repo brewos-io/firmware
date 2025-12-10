@@ -17,8 +17,12 @@ PicoUART::PicoUART(HardwareSerial& serial)
 void PicoUART::begin() {
     LOG_I("Initializing Pico UART at %d baud", PICO_UART_BAUD);
     
+    // Configure RX pin with pull-down to prevent floating when Pico is not connected
+    // This prevents noise from being interpreted as data
+    pinMode(PICO_UART_RX_PIN, INPUT_PULLDOWN);
+    
     // Initialize UART
-    _serial.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
+    Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
     
     // Initialize control pins
     pinMode(PICO_RUN_PIN, OUTPUT);
@@ -33,15 +37,21 @@ void PicoUART::begin() {
 }
 
 void PicoUART::loop() {
-    // Process all available bytes
-    while (_serial.available()) {
-        uint8_t byte = _serial.read();
-        processByte(byte);
-    }
-    
-    // Update connection status
+    // Update connection status first (safe operation)
     if (_lastPacketTime > 0) {
         _connected = (millis() - _lastPacketTime) < 2000;
+    } else {
+        _connected = false;
+    }
+    
+    // WORKAROUND: Use Serial1 directly instead of _serial reference
+    // The reference seems to get corrupted on ESP32-S3
+    int avail = Serial1.available();
+    if (avail > 0) {
+        while (Serial1.available()) {
+            uint8_t byte = Serial1.read();
+            processByte(byte);
+        }
     }
 }
 
@@ -162,7 +172,7 @@ bool PicoUART::sendPacket(uint8_t type, const uint8_t* payload, uint8_t length) 
     buffer[idx++] = (crc >> 8) & 0xFF;
     
     // Send
-    size_t written = _serial.write(buffer, idx);
+    size_t written = Serial1.write(buffer, idx);
     
     return written == idx;
 }
@@ -257,8 +267,8 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
     uint8_t index = 0;
     
     // Clear any pending data first to avoid confusion
-    while (_serial.available()) {
-        _serial.read();
+    while (Serial1.available()) {
+        Serial1.read();
     }
     
     // Reset packet state machine to avoid interference
@@ -267,8 +277,8 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
     _rxState = RxState::WAIT_START;
     
     while ((millis() - startTime) < timeoutMs) {
-        if (_serial.available()) {
-            uint8_t byte = _serial.read();
+        if (Serial1.available()) {
+            uint8_t byte = Serial1.read();
             
             if (index == 0 && byte == expected[0]) {
                 // Got first byte (0xAA) - could be protocol sync or bootloader ACK
@@ -324,28 +334,28 @@ size_t PicoUART::streamFirmwareChunk(const uint8_t* data, size_t len, uint32_t c
     }
     
     // Send header
-    size_t written = _serial.write(header, 8);
+    size_t written = Serial1.write(header, 8);
     if (written != 8) {
         LOG_E("Failed to write chunk header");
         return 0;
     }
     
     // Send data
-    written = _serial.write(data, len);
+    written = Serial1.write(data, len);
     if (written != len) {
         LOG_E("Failed to write chunk data: %d/%d", written, len);
         return 0;
     }
     
     // Send checksum
-    written = _serial.write(&checksum, 1);
+    written = Serial1.write(&checksum, 1);
     if (written != 1) {
         LOG_E("Failed to write checksum");
         return 0;
     }
     
     // Flush to ensure data is sent
-    _serial.flush();
+    Serial1.flush();
     
     return len;
 }

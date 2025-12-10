@@ -19,22 +19,42 @@ StateManager& StateManager::getInstance() {
 void StateManager::begin() {
     Serial.println("[State] Initializing...");
     
-    // Load persisted data
+    // Load persisted data with error handling - step by step with logging
+    Serial.println("[State] Step 1: Loading settings...");
     loadSettings();
+    Serial.println("[State] Step 1: OK");
+    
+    Serial.println("[State] Step 2: Loading stats...");
     loadStats();
+    Serial.println("[State] Step 2: OK");
+    
+    Serial.println("[State] Step 3: Loading shot history...");
     loadShotHistory();
+    Serial.println("[State] Step 3: OK");
+    
+    Serial.println("[State] Step 4: Loading schedules...");
     loadScheduleSettings();
+    Serial.println("[State] Step 4: OK");
     
     // Initialize session
-    _stats.sessionStartTimestamp = time(nullptr);
+    // Safe time() call - if NTP not synced, use 0 (will be updated later)
+    time_t now = time(nullptr);
+    _stats.sessionStartTimestamp = (now > 1000000) ? now : 0;  // Only use if valid (after 2001)
     _stats.sessionShots = 0;
     _state.uptime = millis();
     _lastActivityTime = millis();
     _lastScheduleCheck = millis();
     _lastScheduleMinute = 255;
     
-    Serial.printf("[State] Loaded %d settings, %lu total shots, %d history entries, %d schedules\n",
-        1, _stats.totalShots, _shotHistory.count, _settings.schedule.count);
+    // Simplified logging to avoid stack issues
+    Serial.print("[State] Loaded settings, shots: ");
+    Serial.print(_stats.totalShots);
+    Serial.print(", history: ");
+    Serial.print(_shotHistory.count);
+    Serial.print(", schedules: ");
+    Serial.println(_settings.schedule.count);
+    
+    Serial.println("[State] Initialization complete");
 }
 
 void StateManager::loop() {
@@ -59,124 +79,138 @@ void StateManager::loop() {
 // =============================================================================
 
 void StateManager::loadSettings() {
-    _prefs.begin(NVS_SETTINGS, true);  // Read-only
+    // Use a fresh Preferences object for safety
+    Preferences prefs;
+    
+    // Try read-write first to create namespace if it doesn't exist
+    // This is normal after a fresh flash - will use defaults
+    if (!prefs.begin(NVS_SETTINGS, false)) {
+        Serial.println("[State] No saved settings (fresh flash) - using defaults");
+        return;  // Use default values
+    }
+    // Now we can read
     
     // Temperature
-    _settings.temperature.brewSetpoint = _prefs.getFloat("brewSP", 93.5f);
-    _settings.temperature.steamSetpoint = _prefs.getFloat("steamSP", 145.0f);
-    _settings.temperature.brewOffset = _prefs.getFloat("brewOff", 0.0f);
-    _settings.temperature.steamOffset = _prefs.getFloat("steamOff", 0.0f);
-    _settings.temperature.ecoBrewTemp = _prefs.getFloat("ecoTemp", 80.0f);
-    _settings.temperature.ecoTimeoutMinutes = _prefs.getUShort("ecoTimeout", 30);
+    _settings.temperature.brewSetpoint = prefs.getFloat("brewSP", 93.5f);
+    _settings.temperature.steamSetpoint = prefs.getFloat("steamSP", 145.0f);
+    _settings.temperature.brewOffset = prefs.getFloat("brewOff", 0.0f);
+    _settings.temperature.steamOffset = prefs.getFloat("steamOff", 0.0f);
+    _settings.temperature.ecoBrewTemp = prefs.getFloat("ecoTemp", 80.0f);
+    _settings.temperature.ecoTimeoutMinutes = prefs.getUShort("ecoTimeout", 30);
     
     // Brew
-    _settings.brew.bbwEnabled = _prefs.getBool("bbwEnabled", false);
-    _settings.brew.doseWeight = _prefs.getFloat("doseWt", 18.0f);
-    _settings.brew.targetWeight = _prefs.getFloat("targetWt", 36.0f);
-    _settings.brew.stopOffset = _prefs.getFloat("stopOff", 2.0f);
-    _settings.brew.autoTare = _prefs.getBool("autoTare", true);
-    _settings.brew.preinfusionTime = _prefs.getFloat("preinf", 0.0f);
-    _settings.brew.preinfusionPressure = _prefs.getFloat("preinfP", 2.0f);
+    _settings.brew.bbwEnabled = prefs.getBool("bbwEnabled", false);
+    _settings.brew.doseWeight = prefs.getFloat("doseWt", 18.0f);
+    _settings.brew.targetWeight = prefs.getFloat("targetWt", 36.0f);
+    _settings.brew.stopOffset = prefs.getFloat("stopOff", 2.0f);
+    _settings.brew.autoTare = prefs.getBool("autoTare", true);
+    _settings.brew.preinfusionTime = prefs.getFloat("preinf", 0.0f);
+    _settings.brew.preinfusionPressure = prefs.getFloat("preinfP", 2.0f);
     
     // Power
-    _settings.power.mainsVoltage = _prefs.getUShort("voltage", 220);
-    _settings.power.maxCurrent = _prefs.getFloat("maxCurr", 13.0f);
-    _settings.power.powerOnBoot = _prefs.getBool("pwrBoot", false);
+    _settings.power.mainsVoltage = prefs.getUShort("voltage", 220);
+    _settings.power.maxCurrent = prefs.getFloat("maxCurr", 13.0f);
+    _settings.power.powerOnBoot = prefs.getBool("pwrBoot", false);
     
     // Network
-    _prefs.getString("wifiSsid", _settings.network.wifiSsid, sizeof(_settings.network.wifiSsid));
-    _prefs.getString("wifiPass", _settings.network.wifiPassword, sizeof(_settings.network.wifiPassword));
-    _settings.network.wifiConfigured = _prefs.getBool("wifiCfg", false);
-    _prefs.getString("hostname", _settings.network.hostname, sizeof(_settings.network.hostname));
+    prefs.getString("wifiSsid", _settings.network.wifiSsid, sizeof(_settings.network.wifiSsid));
+    prefs.getString("wifiPass", _settings.network.wifiPassword, sizeof(_settings.network.wifiPassword));
+    _settings.network.wifiConfigured = prefs.getBool("wifiCfg", false);
+    prefs.getString("hostname", _settings.network.hostname, sizeof(_settings.network.hostname));
     if (strlen(_settings.network.hostname) == 0) {
         strcpy(_settings.network.hostname, "brewos");
     }
     
     // Time/NTP
-    _settings.time.useNTP = _prefs.getBool("useNTP", true);
-    _prefs.getString("ntpSrv", _settings.time.ntpServer, sizeof(_settings.time.ntpServer));
+    _settings.time.useNTP = prefs.getBool("useNTP", true);
+    prefs.getString("ntpSrv", _settings.time.ntpServer, sizeof(_settings.time.ntpServer));
     if (strlen(_settings.time.ntpServer) == 0) {
         strcpy(_settings.time.ntpServer, "pool.ntp.org");
     }
-    _settings.time.utcOffsetMinutes = _prefs.getShort("utcOff", 0);
-    _settings.time.dstEnabled = _prefs.getBool("dstEn", false);
-    _settings.time.dstOffsetMinutes = _prefs.getShort("dstOff", 60);
+    _settings.time.utcOffsetMinutes = prefs.getShort("utcOff", 0);
+    _settings.time.dstEnabled = prefs.getBool("dstEn", false);
+    _settings.time.dstOffsetMinutes = prefs.getShort("dstOff", 60);
     
     // MQTT
-    _settings.mqtt.enabled = _prefs.getBool("mqttEn", false);
-    _prefs.getString("mqttBrk", _settings.mqtt.broker, sizeof(_settings.mqtt.broker));
-    _settings.mqtt.port = _prefs.getUShort("mqttPort", 1883);
-    _prefs.getString("mqttUser", _settings.mqtt.username, sizeof(_settings.mqtt.username));
-    _prefs.getString("mqttPass", _settings.mqtt.password, sizeof(_settings.mqtt.password));
-    _prefs.getString("mqttTopic", _settings.mqtt.baseTopic, sizeof(_settings.mqtt.baseTopic));
+    _settings.mqtt.enabled = prefs.getBool("mqttEn", false);
+    prefs.getString("mqttBrk", _settings.mqtt.broker, sizeof(_settings.mqtt.broker));
+    _settings.mqtt.port = prefs.getUShort("mqttPort", 1883);
+    prefs.getString("mqttUser", _settings.mqtt.username, sizeof(_settings.mqtt.username));
+    prefs.getString("mqttPass", _settings.mqtt.password, sizeof(_settings.mqtt.password));
+    prefs.getString("mqttTopic", _settings.mqtt.baseTopic, sizeof(_settings.mqtt.baseTopic));
     if (strlen(_settings.mqtt.baseTopic) == 0) {
         strcpy(_settings.mqtt.baseTopic, "brewos");
     }
-    _settings.mqtt.discovery = _prefs.getBool("mqttDisc", true);
+    _settings.mqtt.discovery = prefs.getBool("mqttDisc", true);
     
     // Cloud
-    _settings.cloud.enabled = _prefs.getBool("cloudEn", false);
-    _prefs.getString("cloudUrl", _settings.cloud.serverUrl, sizeof(_settings.cloud.serverUrl));
-    _prefs.getString("devId", _settings.cloud.deviceId, sizeof(_settings.cloud.deviceId));
-    _prefs.getString("devKey", _settings.cloud.deviceKey, sizeof(_settings.cloud.deviceKey));
+    _settings.cloud.enabled = prefs.getBool("cloudEn", false);
+    prefs.getString("cloudUrl", _settings.cloud.serverUrl, sizeof(_settings.cloud.serverUrl));
+    prefs.getString("devId", _settings.cloud.deviceId, sizeof(_settings.cloud.deviceId));
+    prefs.getString("devKey", _settings.cloud.deviceKey, sizeof(_settings.cloud.deviceKey));
     
     // Scale
-    _settings.scale.enabled = _prefs.getBool("scaleEn", true);
-    _prefs.getString("scaleAddr", _settings.scale.pairedAddress, sizeof(_settings.scale.pairedAddress));
-    _prefs.getString("scaleName", _settings.scale.pairedName, sizeof(_settings.scale.pairedName));
-    _settings.scale.scaleType = _prefs.getUChar("scaleType", 0);
+    _settings.scale.enabled = prefs.getBool("scaleEn", true);
+    prefs.getString("scaleAddr", _settings.scale.pairedAddress, sizeof(_settings.scale.pairedAddress));
+    prefs.getString("scaleName", _settings.scale.pairedName, sizeof(_settings.scale.pairedName));
+    _settings.scale.scaleType = prefs.getUChar("scaleType", 0);
     
     // Display
-    _settings.display.brightness = _prefs.getUChar("dispBri", 200);
-    _settings.display.screenTimeout = _prefs.getUChar("dispTO", 30);
-    _settings.display.showShotTimer = _prefs.getBool("showTimer", true);
-    _settings.display.showWeight = _prefs.getBool("showWt", true);
-    _settings.display.showPressure = _prefs.getBool("showPres", true);
+    _settings.display.brightness = prefs.getUChar("dispBri", 200);
+    _settings.display.screenTimeout = prefs.getUChar("dispTO", 30);
+    _settings.display.showShotTimer = prefs.getBool("showTimer", true);
+    _settings.display.showWeight = prefs.getBool("showWt", true);
+    _settings.display.showPressure = prefs.getBool("showPres", true);
     
     // Machine Info
-    _prefs.getString("devName", _settings.machineInfo.deviceName, sizeof(_settings.machineInfo.deviceName));
+    prefs.getString("devName", _settings.machineInfo.deviceName, sizeof(_settings.machineInfo.deviceName));
     _settings.machineInfo.deviceName[sizeof(_settings.machineInfo.deviceName) - 1] = '\0';
     if (strlen(_settings.machineInfo.deviceName) == 0) {
         strcpy(_settings.machineInfo.deviceName, "BrewOS");
     }
-    _prefs.getString("mcBrand", _settings.machineInfo.machineBrand, sizeof(_settings.machineInfo.machineBrand));
+    prefs.getString("mcBrand", _settings.machineInfo.machineBrand, sizeof(_settings.machineInfo.machineBrand));
     _settings.machineInfo.machineBrand[sizeof(_settings.machineInfo.machineBrand) - 1] = '\0';
-    _prefs.getString("mcModel", _settings.machineInfo.machineModel, sizeof(_settings.machineInfo.machineModel));
+    prefs.getString("mcModel", _settings.machineInfo.machineModel, sizeof(_settings.machineInfo.machineModel));
     _settings.machineInfo.machineModel[sizeof(_settings.machineInfo.machineModel) - 1] = '\0';
-    _prefs.getString("mcType", _settings.machineInfo.machineType, sizeof(_settings.machineInfo.machineType));
+    prefs.getString("mcType", _settings.machineInfo.machineType, sizeof(_settings.machineInfo.machineType));
     _settings.machineInfo.machineType[sizeof(_settings.machineInfo.machineType) - 1] = '\0';
     if (strlen(_settings.machineInfo.machineType) == 0) {
         strcpy(_settings.machineInfo.machineType, "dual_boiler");
     }
     
     // Notification Preferences
-    _settings.notifications.machineReady = _prefs.getBool("notifReady", true);
-    _settings.notifications.waterEmpty = _prefs.getBool("notifWater", true);
-    _settings.notifications.descaleDue = _prefs.getBool("notifDescale", true);
-    _settings.notifications.serviceDue = _prefs.getBool("notifService", true);
-    _settings.notifications.backflushDue = _prefs.getBool("notifBackflush", true);
-    _settings.notifications.machineError = _prefs.getBool("notifError", true);
-    _settings.notifications.picoOffline = _prefs.getBool("notifPico", true);
-    _settings.notifications.scheduleTriggered = _prefs.getBool("notifSched", true);
-    _settings.notifications.brewComplete = _prefs.getBool("notifBrew", false);
+    _settings.notifications.machineReady = prefs.getBool("notifReady", true);
+    _settings.notifications.waterEmpty = prefs.getBool("notifWater", true);
+    _settings.notifications.descaleDue = prefs.getBool("notifDescale", true);
+    _settings.notifications.serviceDue = prefs.getBool("notifService", true);
+    _settings.notifications.backflushDue = prefs.getBool("notifBackflush", true);
+    _settings.notifications.machineError = prefs.getBool("notifError", true);
+    _settings.notifications.picoOffline = prefs.getBool("notifPico", true);
+    _settings.notifications.scheduleTriggered = prefs.getBool("notifSched", true);
+    _settings.notifications.brewComplete = prefs.getBool("notifBrew", false);
     
     // System
-    _settings.system.setupComplete = _prefs.getBool("setupDone", false);
+    _settings.system.setupComplete = prefs.getBool("setupDone", false);
     
     // User Preferences
-    _settings.preferences.firstDayOfWeek = _prefs.getUChar("prefDOW", 0);
-    _settings.preferences.use24HourTime = _prefs.getBool("pref24h", false);
-    _settings.preferences.temperatureUnit = _prefs.getUChar("prefTempU", 0);
-    _settings.preferences.electricityPrice = _prefs.getFloat("prefElecP", 0.15f);
-    _prefs.getString("prefCurr", _settings.preferences.currency, sizeof(_settings.preferences.currency));
+    _settings.preferences.firstDayOfWeek = prefs.getUChar("prefDOW", 0);
+    _settings.preferences.use24HourTime = prefs.getBool("pref24h", false);
+    _settings.preferences.temperatureUnit = prefs.getUChar("prefTempU", 0);
+    _settings.preferences.electricityPrice = prefs.getFloat("prefElecP", 0.15f);
+    prefs.getString("prefCurr", _settings.preferences.currency, sizeof(_settings.preferences.currency));
     if (strlen(_settings.preferences.currency) == 0) {
         strncpy(_settings.preferences.currency, "USD", sizeof(_settings.preferences.currency) - 1);
         _settings.preferences.currency[sizeof(_settings.preferences.currency) - 1] = '\0';
     }
-    _settings.preferences.lastHeatingStrategy = _prefs.getUChar("prefHeatS", 1);
-    _settings.preferences.initialized = _prefs.getBool("prefInit", false);
+    _settings.preferences.lastHeatingStrategy = prefs.getUChar("prefHeatS", 1);
+    _settings.preferences.initialized = prefs.getBool("prefInit", false);
     
-    _prefs.end();
+    Serial.println("[State] Finished reading settings, closing NVS...");
+    Serial.flush();
+    
+    prefs.end();
+    
+    Serial.println("[State] loadSettings() complete");
 }
 
 void StateManager::saveSettings() {
@@ -369,21 +403,28 @@ void StateManager::factoryReset() {
 // =============================================================================
 
 void StateManager::loadStats() {
-    _prefs.begin(NVS_STATS, true);
+    // Use a fresh Preferences object for safety
+    Preferences prefs;
+    // Try read-write first to create namespace if it doesn't exist
+    // This is normal after a fresh flash - will use defaults
+    if (!prefs.begin(NVS_STATS, false)) {
+        Serial.println("[State] No saved stats (fresh flash) - using defaults");
+        return;  // Use default values
+    }
     
-    _stats.totalShots = _prefs.getULong("totalShots", 0);
-    _stats.totalSteamCycles = _prefs.getULong("totalSteam", 0);
-    _stats.totalKwh = _prefs.getFloat("totalKwh", 0.0f);
-    _stats.totalOnTimeMinutes = _prefs.getULong("totalOn", 0);
+    _stats.totalShots = prefs.getULong("totalShots", 0);
+    _stats.totalSteamCycles = prefs.getULong("totalSteam", 0);
+    _stats.totalKwh = prefs.getFloat("totalKwh", 0.0f);
+    _stats.totalOnTimeMinutes = prefs.getULong("totalOn", 0);
     
-    _stats.shotsSinceDescale = _prefs.getULong("sinceDesc", 0);
-    _stats.shotsSinceGroupClean = _prefs.getULong("sinceGrp", 0);
-    _stats.shotsSinceBackflush = _prefs.getULong("sinceBack", 0);
-    _stats.lastDescaleTimestamp = _prefs.getULong("lastDesc", 0);
-    _stats.lastGroupCleanTimestamp = _prefs.getULong("lastGrp", 0);
-    _stats.lastBackflushTimestamp = _prefs.getULong("lastBack", 0);
+    _stats.shotsSinceDescale = prefs.getULong("sinceDesc", 0);
+    _stats.shotsSinceGroupClean = prefs.getULong("sinceGrp", 0);
+    _stats.shotsSinceBackflush = prefs.getULong("sinceBack", 0);
+    _stats.lastDescaleTimestamp = prefs.getULong("lastDesc", 0);
+    _stats.lastGroupCleanTimestamp = prefs.getULong("lastGrp", 0);
+    _stats.lastBackflushTimestamp = prefs.getULong("lastBack", 0);
     
-    _prefs.end();
+    prefs.end();
 }
 
 void StateManager::saveStats() {
@@ -438,14 +479,28 @@ void StateManager::recordMaintenance(const char* type) {
 // =============================================================================
 
 void StateManager::loadShotHistory() {
+    // Missing file is normal after fresh flash
     if (!LittleFS.exists(SHOT_HISTORY_FILE)) {
-        Serial.println("[State] No shot history file");
+        Serial.println("[State] No shot history (fresh flash) - starting empty");
+        _shotHistory.clear();  // Ensure clean state
         return;
     }
     
     File file = LittleFS.open(SHOT_HISTORY_FILE, "r");
     if (!file) {
-        Serial.println("[State] Failed to open shot history");
+        Serial.println("[State] Failed to open shot history - using defaults");
+        _shotHistory.clear();
+        return;
+    }
+    
+    // Limit file size to prevent memory issues
+    size_t fileSize = file.size();
+    if (fileSize > 50000) {  // 50KB max
+        Serial.print("[State] Shot history file too large: ");
+        Serial.print(fileSize);
+        Serial.println(" bytes - using defaults");
+        file.close();
+        _shotHistory.clear();
         return;
     }
     
@@ -454,12 +509,29 @@ void StateManager::loadShotHistory() {
     file.close();
     
     if (error) {
-        Serial.printf("[State] Shot history parse error: %s\n", error.c_str());
+        Serial.print("[State] Shot history parse error: ");
+        Serial.println(error.c_str());
+        _shotHistory.clear();  // Use defaults on parse error
         return;
     }
     
-    JsonArray arr = doc.as<JsonArray>();
-    _shotHistory.fromJson(arr);
+    // Safely parse JSON array with error handling
+    if (doc.is<JsonArray>()) {
+        JsonArray arr = doc.as<JsonArray>();
+        // Check if array is valid before parsing
+        if (!arr.isNull()) {
+            _shotHistory.fromJson(arr);
+            Serial.print("[State] Loaded shot history: ");
+            Serial.print(_shotHistory.count);
+            Serial.println(" entries");
+        } else {
+            Serial.println("[State] Shot history JSON array is null - using defaults");
+            _shotHistory.clear();
+        }
+    } else {
+        Serial.println("[State] Shot history is not an array - using defaults");
+        _shotHistory.clear();
+    }
 }
 
 void StateManager::saveShotHistory() {
@@ -795,14 +867,26 @@ void StateManager::saveScheduleSettings() {
 }
 
 void StateManager::loadScheduleSettings() {
+    // Missing file is normal after fresh flash
     if (!LittleFS.exists(SCHEDULE_FILE)) {
-        Serial.println("[State] No schedules file");
+        Serial.println("[State] No schedules (fresh flash) - using defaults");
+        // ScheduleSettings will use defaults from constructor
         return;
     }
     
     File file = LittleFS.open(SCHEDULE_FILE, "r");
     if (!file) {
-        Serial.println("[State] Failed to open schedules");
+        Serial.println("[State] Failed to open schedules - using defaults");
+        return;
+    }
+    
+    // Limit file size to prevent memory issues
+    size_t fileSize = file.size();
+    if (fileSize > 10000) {  // 10KB max for schedules
+        Serial.print("[State] Schedule file too large: ");
+        Serial.print(fileSize);
+        Serial.println(" bytes - using defaults");
+        file.close();
         return;
     }
     
@@ -811,12 +895,33 @@ void StateManager::loadScheduleSettings() {
     file.close();
     
     if (error) {
-        Serial.printf("[State] Schedule parse error: %s\n", error.c_str());
+        Serial.print("[State] Schedule parse error: ");
+        Serial.println(error.c_str());
+        // Use defaults on parse error (already initialized)
         return;
     }
     
-    _settings.schedule.fromJson(doc.as<JsonObjectConst>());
-    Serial.printf("[State] Loaded %d schedules\n", _settings.schedule.count);
+    // Safely parse JSON object with error handling
+    if (doc.is<JsonObject>()) {
+        JsonObject obj = doc.as<JsonObject>();
+        // Check if object is valid before parsing
+        if (!obj.isNull()) {
+            // Call fromJson with error checking
+            bool success = _settings.schedule.fromJson(obj);
+            if (success) {
+                Serial.print("[State] Loaded ");
+                Serial.print(_settings.schedule.count);
+                Serial.println(" schedules");
+            } else {
+                Serial.println("[State] Schedule fromJson failed - using defaults");
+            }
+        } else {
+            Serial.println("[State] Schedule JSON object is null - using defaults");
+        }
+    } else {
+        Serial.println("[State] Schedule file is not an object - using defaults");
+        // Use defaults (already initialized)
+    }
 }
 
 uint8_t StateManager::addSchedule(const ScheduleEntry& entry) {

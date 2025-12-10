@@ -9,6 +9,7 @@
 #include "ui/screen_setup.h"
 #include "display/theme.h"
 #include "display/display_config.h"
+#include "config.h"
 
 // Static elements
 static lv_obj_t* screen = nullptr;
@@ -88,7 +89,7 @@ lv_obj_t* screen_setup_create(void) {
     lv_obj_set_style_text_color(pass_key, COLOR_TEXT_MUTED, 0);
     
     password_label = lv_label_create(pass_row);
-    lv_label_set_text(password_label, "brewos123");
+    lv_label_set_text(password_label, WIFI_AP_PASSWORD);
     lv_obj_set_style_text_font(password_label, FONT_NORMAL, 0);
     lv_obj_set_style_text_color(password_label, COLOR_TEXT_PRIMARY, 0);
     

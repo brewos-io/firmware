@@ -12,8 +12,8 @@
 // Static instance for callbacks
 ScaleManager* ScaleManager::_instance = nullptr;
 
-// Global instance
-ScaleManager scaleManager;
+// Global instance - now a pointer, constructed in main.cpp setup()
+ScaleManager* scaleManager = nullptr;
 
 // =============================================================================
 // BLE UUIDs for different scale types
@@ -118,7 +118,7 @@ bool ScaleManager::begin() {
     _scan->setInterval(100);
     _scan->setWindow(99);
     
-    // Load saved scale
+    // Load saved scale from preferences
     loadSavedScale();
     
     _initialized = true;
@@ -464,19 +464,51 @@ void ScaleManager::notifyCallback(NimBLERemoteCharacteristic* chr, uint8_t* data
 // =============================================================================
 
 void ScaleManager::loadSavedScale() {
+    Serial.println("[Scale] loadSavedScale() starting...");
+    Serial.flush();
+    
     Preferences prefs;
-    prefs.begin(NVS_SCALE_NAMESPACE, true);
+    Serial.println("[Scale] Calling prefs.begin()...");
+    Serial.flush();
     
+    // Try read-write first to create namespace if it doesn't exist
+    // This is normal after a fresh flash - will use defaults
+    bool beginOk = prefs.begin(NVS_SCALE_NAMESPACE, false);
+    Serial.print("[Scale] prefs.begin() returned: ");
+    Serial.println(beginOk ? "true" : "false");
+    Serial.flush();
+    
+    if (!beginOk) {
+        Serial.println("[Scale] No saved scale (fresh flash) - using defaults");
+        Serial.flush();
+        return;  // Use default values
+    }
+    
+    Serial.println("[Scale] Reading scale data from NVS...");
+    Serial.flush();
     prefs.getString(NVS_SCALE_ADDRESS, _scaleAddress, sizeof(_scaleAddress));
-    prefs.getString(NVS_SCALE_NAME, _scaleName, sizeof(_scaleName));
-    _scaleType = (scale_type_t)prefs.getUChar(NVS_SCALE_TYPE, SCALE_TYPE_UNKNOWN);
+    Serial.println("[Scale] Read address");
+    Serial.flush();
     
+    prefs.getString(NVS_SCALE_NAME, _scaleName, sizeof(_scaleName));
+    Serial.println("[Scale] Read name");
+    Serial.flush();
+    
+    _scaleType = (scale_type_t)prefs.getUChar(NVS_SCALE_TYPE, SCALE_TYPE_UNKNOWN);
+    Serial.println("[Scale] Read type");
+    Serial.flush();
+    
+    Serial.println("[Scale] Closing NVS...");
+    Serial.flush();
     prefs.end();
+    Serial.println("[Scale] NVS closed");
+    Serial.flush();
     
     if (strlen(_scaleAddress) > 0) {
         LOG_I("Loaded saved scale: %s (%s)", _scaleName, _scaleAddress);
-        _autoReconnect = true;
     }
+    Serial.println("[Scale] loadSavedScale() complete");
+    Serial.flush();
 }
 
 void ScaleManager::saveScale() {

@@ -142,9 +142,10 @@ public:
     // Callbacks
     // =========================================================================
     
-    typedef std::function<void()> stop_callback_t;
-    typedef std::function<void()> tare_callback_t;
-    typedef std::function<void(float weight, float target)> progress_callback_t;
+    // Simple function pointers to avoid std::function PSRAM allocation issues
+    typedef void (*stop_callback_t)();
+    typedef void (*tare_callback_t)();
+    typedef void (*progress_callback_t)(float weight, float target);
     
     void onStop(stop_callback_t cb) { _onStop = cb; }
     void onTare(tare_callback_t cb) { _onTare = cb; }
@@ -170,7 +171,7 @@ private:
 };
 
 // Global instance
-extern BrewByWeight brewByWeight;
+extern BrewByWeight* brewByWeight;
 
 #endif // BREW_BY_WEIGHT_H
 

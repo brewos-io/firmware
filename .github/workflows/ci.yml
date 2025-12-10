@@ -177,6 +177,8 @@ jobs:
         run: |
           cd src/web
           npm ci
+          # Clean old files before build (prevent stale hashed assets)
+          rm -rf ../esp32/data/assets ../esp32/data/index.html ../esp32/data/*.svg ../esp32/data/*.png ../esp32/data/*.json ../esp32/data/sw.js 2>/dev/null || true
           npm run build:esp32
 
       - name: Setup Python

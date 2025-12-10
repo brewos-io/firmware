@@ -7,8 +7,8 @@
 #include <cstring>
 #include <cstdio>
 
-// Global instance
-NotificationManager notificationManager;
+// Global instance - now a pointer, constructed in main.cpp setup()
+NotificationManager* notificationManager = nullptr;
 
 // =============================================================================
 // Constructor
@@ -285,9 +285,28 @@ void NotificationManager::savePreferences() {
 }
 
 void NotificationManager::loadPreferences() {
-    Preferences nvs;
-    nvs.begin(NVS_NOTIF_NAMESPACE, true);
+    Serial.println("[Notif] loadPreferences() starting...");
+    Serial.flush();
     
+    Preferences nvs;
+    Serial.println("[Notif] Calling nvs.begin()...");
+    Serial.flush();
+    
+    // Try read-write first to create namespace if it doesn't exist
+    // This is normal after a fresh flash - will use defaults
+    bool beginOk = nvs.begin(NVS_NOTIF_NAMESPACE, false);
+    Serial.print("[Notif] nvs.begin() returned: ");
+    Serial.println(beginOk ? "true" : "false");
+    Serial.flush();
+    
+    if (!beginOk) {
+        Serial.println("[Notif] No saved preferences (fresh flash) - using defaults");
+        Serial.flush();
+        return;  // Use default values already set in constructor
+    }
+    
+    Serial.println("[Notif] Reading preferences from NVS...");
+    Serial.flush();
     _prefs.push_enabled = nvs.getBool("push_enabled", true);
     _prefs.machine_ready_push = nvs.getBool("ready_push", true);
     _prefs.water_empty_push = nvs.getBool("water_push", true);
@@ -296,7 +315,11 @@ void NotificationManager::loadPreferences() {
     _prefs.service_shots = nvs.getULong("service_shots", NOTIF_DEFAULT_SERVICE_SHOTS);
     _prefs.backflush_days = nvs.getUChar("backflush", NOTIF_BACKFLUSH_WEEKLY);
     
+    Serial.println("[Notif] Closing NVS...");
+    Serial.flush();
     nvs.end();
+    Serial.println("[Notif] loadPreferences() complete");
+    Serial.flush();
 }
 
 // =============================================================================

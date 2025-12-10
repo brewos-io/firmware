@@ -312,7 +312,7 @@ void StatisticsManager::recordMaintenance(const char* type) {
 void StatisticsManager::checkMaintenanceThresholds() {
     // Check backflush threshold (backflush + group clean every 100 shots)
     if (_maintenance.shotsSinceBackflush >= BACKFLUSH_ALERT_THRESHOLD) {
-        notificationManager.backflushDue();
+        notificationManager->backflushDue();
     }
     
     // Check descale threshold (every 500 shots)
@@ -326,7 +326,7 @@ void StatisticsManager::checkMaintenanceThresholds() {
                 daysOverdue = daysSinceLast - 60;
             }
         }
-        notificationManager.descaleDue(daysOverdue);
+        notificationManager->descaleDue(daysOverdue);
     }
 }
 

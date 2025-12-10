@@ -10,7 +10,6 @@
 
 #include <Arduino.h>
 #include <vector>
-#include <functional>
 #include <Preferences.h>
 #include "notification_types.h"
 
@@ -46,7 +45,8 @@ struct NotificationPreferences {
 // =============================================================================
 
 // Called when notification should be sent to a channel
-typedef std::function<void(const Notification&)> NotificationSendCallback;
+// Simple function pointer to avoid std::function PSRAM allocation issues
+typedef void (*NotificationSendCallback)(const Notification&);
 
 // =============================================================================
 // Notification Manager
@@ -158,6 +158,6 @@ private:
 };
 
 // Global instance
-extern NotificationManager notificationManager;
+extern NotificationManager* notificationManager;
 
 #endif // NOTIFICATION_MANAGER_H

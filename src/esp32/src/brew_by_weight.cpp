@@ -7,8 +7,8 @@
 #include "brew_by_weight.h"
 #include "config.h"
 
-// Global instance
-BrewByWeight brewByWeight;
+// Global instance - now a pointer, constructed in main.cpp setup()
+BrewByWeight* brewByWeight = nullptr;
 
 // =============================================================================
 // Constructor
@@ -234,7 +234,12 @@ void BrewByWeight::checkTarget() {
 
 void BrewByWeight::loadSettings() {
     Preferences prefs;
-    prefs.begin(NVS_BBW_NAMESPACE, true);
+    // After fresh flash, NVS namespace won't exist - this is expected
+    if (!prefs.begin(NVS_BBW_NAMESPACE, true)) {
+        LOG_I("No saved BBW settings (fresh flash) - using defaults");
+        // Settings already have defaults from constructor
+        return;
+    }
     
     _settings.target_weight = prefs.getFloat(NVS_BBW_TARGET, BBW_DEFAULT_TARGET_WEIGHT);
     _settings.dose_weight = prefs.getFloat(NVS_BBW_DOSE, BBW_DEFAULT_DOSE_WEIGHT);

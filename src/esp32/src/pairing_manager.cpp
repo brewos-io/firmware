@@ -43,7 +43,22 @@ void PairingManager::initDeviceId() {
 void PairingManager::initDeviceKey() {
     // Try to load existing key from NVS
     Preferences prefs;
-    prefs.begin(NVS_NAMESPACE, true); // Read-only first
+    // After fresh flash, NVS namespace won't exist - this is expected
+    if (!prefs.begin(NVS_NAMESPACE, true)) { // Read-only first
+        Serial.println("[Pairing] No saved device key (fresh flash) - generating new one");
+        // Generate new key on first boot
+        _deviceKey = generateRandomToken(43); // base64url of 32 bytes ≈ 43 chars
+        
+        // Try to create namespace and save
+        if (prefs.begin(NVS_NAMESPACE, false)) { // Read-write
+            prefs.putString(NVS_KEY_DEVICE_KEY, _deviceKey);
+            prefs.end();
+            Serial.println("[Pairing] Generated and stored new device key");
+        } else {
+            Serial.println("[Pairing] Failed to save device key (NVS error)");
+        }
+        return;
+    }
     
     String storedKey = prefs.getString(NVS_KEY_DEVICE_KEY, "");
     prefs.end();
@@ -57,11 +72,13 @@ void PairingManager::initDeviceKey() {
         _deviceKey = generateRandomToken(43); // base64url of 32 bytes ≈ 43 chars
         
         // Store in NVS
-        prefs.begin(NVS_NAMESPACE, false); // Read-write
-        prefs.putString(NVS_KEY_DEVICE_KEY, _deviceKey);
-        prefs.end();
-        
-        Serial.println("[Pairing] Generated and stored new device key");
+        if (prefs.begin(NVS_NAMESPACE, false)) { // Read-write
+            prefs.putString(NVS_KEY_DEVICE_KEY, _deviceKey);
+            prefs.end();
+            Serial.println("[Pairing] Generated and stored new device key");
+        } else {
+            Serial.println("[Pairing] Failed to save device key (NVS error)");
+        }
     }
 }
 

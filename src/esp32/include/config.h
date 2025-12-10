@@ -49,6 +49,13 @@
 #define WEBSOCKET_PATH          "/ws"
 
 // -----------------------------------------------------------------------------
+// UART - Debug/Serial Communication (Hardware UART adapter)
+// -----------------------------------------------------------------------------
+#define DEBUG_UART_TX_PIN       37              // Hardware UART TX (GPIO37)
+#define DEBUG_UART_RX_PIN       36              // Hardware UART RX (GPIO36)
+#define DEBUG_UART_BAUD         115200
+
+// -----------------------------------------------------------------------------
 // UART - Pico Communication (ESP32 side pins)
 // -----------------------------------------------------------------------------
 #define PICO_UART_NUM           1               // UART1
@@ -99,6 +106,9 @@
 
 // Log levels (0=ERROR only, 1=+WARN, 2=+INFO, 3=+DEBUG)
 // Using BREWOS_ prefix to avoid collision with NimBLE's LOG_LEVEL_* macros
+// Note: If platform/platform.h is included first, it defines log_level_t and LOG_* macros
+// In that case, we don't redefine the macros or enum constants to avoid conflicts
+#ifndef PLATFORM_H
 enum BrewOSLogLevel {
     BREWOS_LOG_ERROR = 0,
     BREWOS_LOG_WARN = 1,
@@ -115,11 +125,26 @@ BrewOSLogLevel getLogLevel();
 const char* logLevelToString(BrewOSLogLevel level);
 BrewOSLogLevel stringToLogLevel(const char* str);
 
-// Log macros with level checking
+// Log macros with level checking (only define if platform.h wasn't included first)
 #define LOG_TAG                 "BrewOS"
 #define LOG_E(fmt, ...)         Serial.printf("[%lu] E: " fmt "\n", millis(), ##__VA_ARGS__)
 #define LOG_W(fmt, ...)         do { if (g_brewos_log_level >= BREWOS_LOG_WARN) Serial.printf("[%lu] W: " fmt "\n", millis(), ##__VA_ARGS__); } while(0)
 #define LOG_I(fmt, ...)         do { if (g_brewos_log_level >= BREWOS_LOG_INFO) Serial.printf("[%lu] I: " fmt "\n", millis(), ##__VA_ARGS__); } while(0)
 #define LOG_D(fmt, ...)         do { if (g_brewos_log_level >= BREWOS_LOG_DEBUG) Serial.printf("[%lu] D: " fmt "\n", millis(), ##__VA_ARGS__); } while(0)
+#else
+// Platform.h was included first, so use its log_level_t and LOG_* macros
+// Define BrewOSLogLevel as an alias for backward compatibility with existing code
+// The enum constants (BREWOS_LOG_*) are already defined in platform.h
+typedef log_level_t BrewOSLogLevel;
+
+// Global log level - declared extern, defined in main.cpp
+extern log_level_t g_brewos_log_level;
+
+// Log level control functions (using log_level_t)
+void setLogLevel(log_level_t level);
+log_level_t getLogLevel();
+const char* logLevelToString(log_level_t level);
+log_level_t stringToLogLevel(const char* str);
+#endif
 
 #endif // CONFIG_H

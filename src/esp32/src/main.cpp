@@ -16,7 +16,12 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
+#include <LittleFS.h>
+#include <nvs_flash.h>  // For NVS initialization
+#include <DNSServer.h>
 #include <cmath>
+#include <esp_heap_caps.h>  // For heap_caps_malloc to avoid PSRAM
+#include <new>              // For placement new
 #include "config.h"
 #include "wifi_manager.h"
 #include "web_server.h"
@@ -27,6 +32,7 @@
 #include "display/encoder.h"
 #include "display/theme.h"
 #include "ui/ui.h"
+#include "ui/screen_setup.h"
 
 // MQTT
 #include "mqtt_client.h"
@@ -53,13 +59,18 @@
 // Power Metering
 #include "power_meter/power_meter_manager.h"
 
-// Global instances
-WiFiManager wifiManager;
-PicoUART picoUart(Serial1);
-MQTTClient mqttClient;
-PairingManager pairingManager;
-CloudConnection cloudConnection;
-WebServer webServer(wifiManager, picoUart, mqttClient, &pairingManager);
+// Global instances - use pointers to defer construction until setup()
+// This prevents crashes in constructors before Serial is initialized
+WiFiManager* wifiManager = nullptr;
+PicoUART* picoUart = nullptr;
+MQTTClient* mqttClient = nullptr;
+PairingManager* pairingManager = nullptr;
+CloudConnection* cloudConnection = nullptr;
+WebServer* webServer = nullptr;
+
+// Captive portal DNS server for AP mode
+DNSServer dnsServer;
+bool dnsServerRunning = false;
 
 // =============================================================================
 // LOG LEVEL CONTROL
@@ -98,8 +109,9 @@ BrewOSLogLevel stringToLogLevel(const char* str) {
     return BREWOS_LOG_INFO;
 }
 
-// Scale state
-static bool scaleEnabled = true;  // Can be disabled to save power
+// BLE Scale - disabled by default due to potential WiFi/BLE coexistence issues
+// Set to true to enable BLE scale support (may cause instability on some networks)
+static bool scaleEnabled = false;
 
 // Machine state from Pico
 static ui_state_t machineState = {0};
@@ -108,6 +120,10 @@ static ui_state_t machineState = {0};
 #define DEMO_MODE_TIMEOUT_MS  10000  // Enter demo after 10s without Pico
 static bool demoMode = false;
 static unsigned long demoStartTime = 0;
+static unsigned long wifiConnectedTime = 0;
+static bool mDNSStarted = false;
+static bool wifiConnectedLogSent = false;
+static bool ntpConfigured = false;
 
 // Timing
 unsigned long lastPing = 0;
@@ -119,6 +135,350 @@ unsigned long lastUIUpdate = 0;
 void parsePicoStatus(const uint8_t* payload, uint8_t length);
 void handleEncoderEvent(int32_t diff, button_state_t btn);
 void updateDemoMode();
+static void onPicoPacket(const PicoPacket& packet);
+
+// =============================================================================
+// WiFi Event Callbacks - Static functions to avoid std::function PSRAM issues
+// =============================================================================
+
+// Called when WiFi connects to an AP
+static void onWiFiConnected() {
+    LOG_I("WiFi connected!");
+    
+    // Stop captive portal DNS server if running
+    if (dnsServerRunning) {
+        dnsServer.stop();
+        dnsServerRunning = false;
+        LOG_I("Captive portal DNS server stopped");
+    }
+    
+    // Mark WiFi as connected - web server will delay serving requests
+    if (webServer) {
+        webServer->setWiFiConnected();
+    }
+    
+    // Update machine state (simple operations only, no String allocations)
+    machineState.wifi_connected = true;
+    machineState.wifi_ap_mode = false;
+    machineState.wifi_rssi = WiFi.RSSI();
+    
+    // Get WiFi SSID directly from WiFiManager's stored value
+    if (wifiManager) {
+        const char* ssid = wifiManager->getStoredSSID();
+        if (ssid && strlen(ssid) > 0) {
+            strncpy(machineState.wifi_ssid, ssid, sizeof(machineState.wifi_ssid) - 1);
+            machineState.wifi_ssid[sizeof(machineState.wifi_ssid) - 1] = '\0';
+        }
+    }
+    
+    // Get IP directly into buffer (no String allocation)
+    IPAddress ip = WiFi.localIP();
+    snprintf(machineState.wifi_ip, sizeof(machineState.wifi_ip), "%d.%d.%d.%d", 
+             ip[0], ip[1], ip[2], ip[3]);
+    
+    // Heavy operations (NTP, mDNS, broadcastLog) are done in main loop after delay
+}
+
+// Called when WiFi disconnects
+static void onWiFiDisconnected() {
+    LOG_W("WiFi disconnected");
+    machineState.wifi_connected = false;
+    // Reset WiFi connected state tracking
+    wifiConnectedTime = 0;
+    wifiConnectedLogSent = false;
+    mDNSStarted = false;
+    ntpConfigured = false;
+}
+
+// Called when AP mode starts
+static void onWiFiAPStarted() {
+    LOG_I("AP mode started - connect to: %s", WIFI_AP_SSID);
+    LOG_I("Password: %s", WIFI_AP_PASSWORD);
+    
+    // Get AP IP without String allocation in critical path
+    IPAddress apIP = WiFi.softAPIP();
+    char apIPStr[16];
+    snprintf(apIPStr, sizeof(apIPStr), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+    LOG_I("Open http://%s to configure", apIPStr);
+    
+    machineState.wifi_ap_mode = true;
+    machineState.wifi_connected = false;
+    
+    // Stop DNS server first if it was running (clean restart)
+    if (dnsServerRunning) {
+        dnsServer.stop();
+        dnsServerRunning = false;
+    }
+    
+    // Start captive portal DNS server
+    dnsServer.start(53, "*", WIFI_AP_IP);
+    dnsServerRunning = true;
+    LOG_I("Captive portal DNS server started");
+    
+    // Update setup screen with AP credentials
+    screen_setup_set_ap_info(WIFI_AP_SSID, WIFI_AP_PASSWORD, apIPStr);
+}
+
+// =============================================================================
+// Scale Callbacks - Static functions to avoid std::function PSRAM issues
+// =============================================================================
+
+static void onScaleWeight(const scale_state_t& state) {
+    machineState.scale_connected = state.connected;
+    machineState.brew_weight = state.weight;
+    machineState.flow_rate = state.flow_rate;
+}
+
+static void onScaleConnection(bool connected) {
+    LOG_I("Scale %s", connected ? "connected" : "disconnected");
+    machineState.scale_connected = connected;
+}
+
+// =============================================================================
+// Brew-by-Weight Callbacks - Static functions to avoid std::function PSRAM issues
+// =============================================================================
+
+static void onBBWStop() {
+    LOG_I("BBW: Sending WEIGHT_STOP signal to Pico");
+    if (picoUart && picoUart->isConnected()) {
+        picoUart->setWeightStop(true);
+        delay(100);
+        picoUart->setWeightStop(false);
+    } else {
+        LOG_W("BBW: Pico not connected, skipping weight stop signal");
+    }
+}
+
+static void onBBWTare() {
+    if (scaleManager && scaleManager->isConnected()) {
+        scaleManager->tare();
+    }
+}
+
+// =============================================================================
+// Schedule Callback - Static function to avoid std::function PSRAM issues
+// =============================================================================
+
+// =============================================================================
+// Cloud Notification Callback - Static function to avoid std::function PSRAM issues
+// =============================================================================
+
+// =============================================================================
+// Cloud Command Callback - Static function to avoid std::function PSRAM issues
+// =============================================================================
+
+static void onCloudCommand(const String& type, JsonDocument& doc) {
+    // Commands from cloud users are processed the same as local WebSocket
+    if (webServer) {
+        webServer->processCommand(doc);
+    }
+}
+
+static void onCloudNotification(const Notification& notif) {
+    // Check if cloud integration is enabled
+    auto& cloudSettings = State.settings().cloud;
+    if (!cloudSettings.enabled) {
+        return;
+    }
+    
+    // Get device key from pairing manager (no String capture needed)
+    String deviceKey = pairingManager ? pairingManager->getDeviceKey() : "";
+    String cloudUrl = String(cloudSettings.serverUrl);
+    String deviceId = String(cloudSettings.deviceId);
+    
+    if (!cloudUrl.isEmpty() && !deviceId.isEmpty()) {
+        sendNotificationToCloud(cloudUrl, deviceId, deviceKey, notif);
+    }
+}
+
+static void onScheduleTriggered(const BrewOS::ScheduleEntry& schedule) {
+    LOG_I("Schedule triggered: %s", schedule.name);
+    
+    // Only execute if Pico is connected
+    if (!picoUart || !picoUart->isConnected()) {
+        LOG_W("Schedule: Pico not connected, skipping action");
+        return;
+    }
+    
+    if (schedule.action == BrewOS::ACTION_TURN_ON) {
+        // Turn on machine with specified heating strategy
+        uint8_t modeCmd = 0x01;  // MODE_BREW
+        picoUart->sendCommand(MSG_CMD_MODE, &modeCmd, 1);
+        
+        // Set heating strategy if not default
+        if (schedule.strategy != BrewOS::STRATEGY_SEQUENTIAL) {
+            uint8_t strategyPayload[2] = {0x01, schedule.strategy};
+            picoUart->sendCommand(MSG_CMD_CONFIG, strategyPayload, 2);
+        }
+    } else {
+        // Turn off machine
+        uint8_t modeCmd = 0x00;  // MODE_IDLE
+        picoUart->sendCommand(MSG_CMD_MODE, &modeCmd, 1);
+    }
+}
+
+// =============================================================================
+// Pico Packet Handler - Static function to avoid std::function PSRAM issues
+// =============================================================================
+
+static void onPicoPacket(const PicoPacket& packet) {
+    LOG_D("Pico packet: type=0x%02X, len=%d, seq=%d", 
+          packet.type, packet.length, packet.seq);
+    
+    // Forward to WebSocket clients
+    if (webServer) {
+        webServer->broadcastPicoMessage(packet.type, packet.payload, packet.length);
+    }
+    
+    // Handle specific message types
+    switch (packet.type) {
+        case MSG_BOOT: {
+            LOG_I("Pico booted!");
+            if (webServer) webServer->broadcastLog("Pico booted");
+            machineState.pico_connected = true;
+            
+            // Parse boot payload (boot_payload_t structure)
+            if (packet.length >= 4) {
+                uint8_t ver_major = packet.payload[0];
+                uint8_t ver_minor = packet.payload[1];
+                uint8_t ver_patch = packet.payload[2];
+                machineState.machine_type = packet.payload[3];
+                
+                // Store in StateManager
+                State.setPicoVersion(ver_major, ver_minor, ver_patch);
+                State.setMachineType(machineState.machine_type);
+                
+                LOG_I("Pico version: %d.%d.%d, Machine type: %d", 
+                      ver_major, ver_minor, ver_patch, machineState.machine_type);
+                
+                // Parse reset reason if available (offset 7, uint8_t)
+                if (packet.length >= 8) {
+                    uint8_t reset_reason = packet.payload[7];
+                    State.setPicoResetReason(reset_reason);
+                }
+                
+                // Check for version mismatch
+                char picoVerStr[16];
+                snprintf(picoVerStr, sizeof(picoVerStr), "%d.%d.%d", ver_major, ver_minor, ver_patch);
+                if (strcmp(picoVerStr, ESP32_VERSION) != 0) {
+                    LOG_W("Internal version mismatch: %s vs %s", ESP32_VERSION, picoVerStr);
+                    if (webServer) webServer->broadcastLog("Firmware update recommended", "warn");
+                }
+            }
+            break;
+        }
+            
+        case MSG_STATUS:
+            parsePicoStatus(packet.payload, packet.length);
+            machineState.pico_connected = true;
+            break;
+        
+        case MSG_POWER_METER: {
+            if (packet.length >= sizeof(PowerMeterReading) && powerMeterManager) {
+                PowerMeterReading reading;
+                memcpy(&reading, packet.payload, sizeof(PowerMeterReading));
+                powerMeterManager->onPicoPowerData(reading);
+            }
+            break;
+        }
+        
+        case MSG_ALARM: {
+            uint8_t alarmCode = packet.payload[0];
+            LOG_W("PICO ALARM: 0x%02X", alarmCode);
+            if (webServer) webServer->broadcastLog("Pico ALARM: 0x%02X", "error", alarmCode);
+            machineState.alarm_active = true;
+            machineState.alarm_code = alarmCode;
+            break;
+        }
+        
+        case MSG_CONFIG:
+            LOG_I("Received config from Pico");
+            if (webServer) webServer->broadcastLog("Config received from Pico");
+            break;
+            
+        case MSG_ENV_CONFIG: {
+            if (packet.length >= 18) {
+                uint16_t voltage = packet.payload[0] | (packet.payload[1] << 8);
+                float max_current = 0;
+                memcpy(&max_current, &packet.payload[2], sizeof(float));
+                LOG_I("Env config: %dV, %.1fA max", voltage, max_current);
+                if (webServer) webServer->broadcastLog("Env config: %dV, %.1fA max", "info", voltage, max_current);
+            }
+            break;
+        }
+            
+        case MSG_DEBUG_RESP:
+            LOG_D("Debug response from Pico");
+            break;
+            
+        case MSG_DIAGNOSTICS: {
+            if (packet.length == 8) {
+                // Diagnostic header
+                LOG_I("Diag header: tests=%d, pass=%d, fail=%d, warn=%d, skip=%d, complete=%d",
+                      packet.payload[0], packet.payload[1], packet.payload[2],
+                      packet.payload[3], packet.payload[4], packet.payload[5]);
+                
+                #pragma GCC diagnostic push
+                #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+                StaticJsonDocument<256> doc;
+                #pragma GCC diagnostic pop
+                doc["type"] = "diagnostics_header";
+                doc["testCount"] = packet.payload[0];
+                doc["passCount"] = packet.payload[1];
+                doc["failCount"] = packet.payload[2];
+                doc["warnCount"] = packet.payload[3];
+                doc["skipCount"] = packet.payload[4];
+                doc["isComplete"] = packet.payload[5] != 0;
+                doc["durationMs"] = packet.payload[6] | (packet.payload[7] << 8);
+                
+                size_t jsonSize = measureJson(doc) + 1;
+                char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+                if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+                if (jsonBuffer && webServer) {
+                    serializeJson(doc, jsonBuffer, jsonSize);
+                    webServer->broadcastRaw(jsonBuffer);
+                    free(jsonBuffer);
+                }
+                
+                if (packet.payload[5] && webServer) {
+                    webServer->broadcastLog("Diagnostics complete");
+                }
+            } else if (packet.length >= 32) {
+                // Diagnostic result
+                LOG_I("Diag result: test=%d, status=%d", packet.payload[0], packet.payload[1]);
+                
+                #pragma GCC diagnostic push
+                #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+                StaticJsonDocument<384> doc;
+                #pragma GCC diagnostic pop
+                doc["type"] = "diagnostics_result";
+                doc["testId"] = packet.payload[0];
+                doc["status"] = packet.payload[1];
+                doc["rawValue"] = (int16_t)(packet.payload[2] | (packet.payload[3] << 8));
+                doc["expectedMin"] = (int16_t)(packet.payload[4] | (packet.payload[5] << 8));
+                doc["expectedMax"] = (int16_t)(packet.payload[6] | (packet.payload[7] << 8));
+                
+                char msg[25];
+                memcpy(msg, &packet.payload[8], 24);
+                msg[24] = '\0';
+                doc["message"] = msg;
+                
+                size_t jsonSize = measureJson(doc) + 1;
+                char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+                if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+                if (jsonBuffer && webServer) {
+                    serializeJson(doc, jsonBuffer, jsonSize);
+                    webServer->broadcastRaw(jsonBuffer);
+                    free(jsonBuffer);
+                }
+            }
+            break;
+        }
+            
+        default:
+            LOG_D("Unknown packet type: 0x%02X", packet.type);
+    }
+}
 
 /**
  * Demo mode - simulates machine behavior when Pico not connected
@@ -155,42 +515,183 @@ void updateDemoMode() {
         machineState.is_heating = false;
     }
     
-    // Simulate periodic brewing
-    static unsigned long brewStart = 0;
-    if (demoCycle > 0.5f && demoCycle < 0.7f) {
-        if (!machineState.is_brewing) {
-            brewStart = millis();
-            machineState.is_brewing = true;
-            machineState.machine_state = STATE_BREWING;
-            LOG_I("[DEMO] Simulated brew started");
-        }
-        machineState.brew_time_ms = millis() - brewStart;
-        machineState.brew_weight = machineState.brew_time_ms / 1000.0f * 1.5f;  // ~1.5g/s
-        machineState.flow_rate = 1.5f + sin(millis() / 500.0f) * 0.3f;
-    } else {
-        if (machineState.is_brewing) {
-            machineState.is_brewing = false;
-            LOG_I("[DEMO] Simulated brew ended: %.1fs, %.1fg", 
-                  machineState.brew_time_ms / 1000.0f, machineState.brew_weight);
-        }
-    }
+    // Simulate periodic brewing - DISABLED (too noisy, not needed)
+    // Users can test brewing manually via the web UI if needed
+    // static unsigned long brewStart = 0;
+    // if (demoCycle > 0.5f && demoCycle < 0.7f) {
+    //     if (!machineState.is_brewing) {
+    //         brewStart = millis();
+    //         machineState.is_brewing = true;
+    //         machineState.machine_state = STATE_BREWING;
+    //         LOG_I("[DEMO] Simulated brew started");
+    //     }
+    //     machineState.brew_time_ms = millis() - brewStart;
+    //     machineState.brew_weight = machineState.brew_time_ms / 1000.0f * 1.5f;  // ~1.5g/s
+    //     machineState.flow_rate = 1.5f + sin(millis() / 500.0f) * 0.3f;
+    // } else {
+    //     if (machineState.is_brewing) {
+    //         machineState.is_brewing = false;
+    //         LOG_I("[DEMO] Simulated brew ended: %.1fs, %.1fg", 
+    //               machineState.brew_time_ms / 1000.0f, machineState.brew_weight);
+    //     }
+    // }
+    
+    // Keep machine in ready state (not brewing) in demo mode
+    machineState.is_brewing = false;
+    machineState.brew_time_ms = 0;
+    machineState.brew_weight = 0.0f;
+    machineState.flow_rate = 0.0f;
     
     // Always connected in demo mode
     machineState.pico_connected = true;  // Pretend Pico is connected
 }
 
 void setup() {
-    // Initialize debug serial (USB)
-    Serial.begin(DEBUG_BAUD);
-    delay(1000);  // Wait for USB serial
+    // CRITICAL: Initialize serial FIRST
+    // With ARDUINO_USB_CDC_ON_BOOT=1, Serial goes to USB CDC (appears as /dev/cu.usbmodem* or /dev/cu.usbserial*)
+    // Serial0 is hardware UART (GPIO43/44 by default, or can be configured to GPIO36/37)
+    // Serial1 is used for Pico communication (GPIO17/18)
+    Serial.begin(115200);
+    delay(500);  // Give USB CDC time to enumerate
     
-    LOG_I("========================================");
-    LOG_I("BrewOS ESP32-S3 v%s", ESP32_VERSION);
-    LOG_I("UEDX48480021-MD80E Knob Display");
-    LOG_I("========================================");
-    LOG_I("Free heap: %d bytes", ESP.getFreeHeap());
-    LOG_I("PSRAM size: %d bytes", ESP.getPsramSize());
+    // Note: Watchdog is kept enabled - it helps catch hangs and crashes
+    // Attempting to disable it causes errors on ESP32-S3
     
+    // Print immediately - minimal code
+    Serial.println();
+    Serial.println("SETUP START");
+    Serial.flush();
+    delay(100);
+    
+    Serial.print("Heap: ");
+    Serial.println(ESP.getFreeHeap());
+    Serial.flush();
+    
+    Serial.print("Free heap: ");
+    Serial.print(ESP.getFreeHeap());
+    Serial.print("\n");
+    Serial.flush();
+    
+    Serial.print("Free heap: ");
+    Serial.println(ESP.getFreeHeap());
+    Serial.print("PSRAM size: ");
+    Serial.println(ESP.getPsramSize());
+    Serial.flush();
+    
+    // Verify PSRAM is disabled for heap allocations
+    void* testAlloc = malloc(64);
+    uintptr_t addr = (uintptr_t)testAlloc;
+    bool inPSRAM = (addr >= 0x3C000000 && addr < 0x3E000000);
+    Serial.printf("Malloc test: 0x%08X (%s)\n", addr, inPSRAM ? "PSRAM - ERROR!" : "Internal RAM - OK");
+    if (inPSRAM) {
+        Serial.println("ERROR: PSRAM should be disabled! Check platformio.ini");
+    }
+    free(testAlloc);
+    Serial.flush();
+    
+    // Initialize NVS (Non-Volatile Storage) FIRST
+    // This ensures Preferences library works correctly after fresh flash
+    Serial.println("[1/8] Initializing NVS...");
+    Serial.flush();
+    esp_err_t nvs_err = nvs_flash_init();
+    if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        Serial.print("NVS needs erase (err=");
+        Serial.print(nvs_err);
+        Serial.println(") - erasing...");
+        Serial.flush();
+        nvs_flash_erase();
+        nvs_err = nvs_flash_init();
+    }
+    if (nvs_err != ESP_OK) {
+        Serial.print("NVS init FAILED: ");
+        Serial.println(nvs_err);
+        Serial.flush();
+        // Continue anyway - Preferences will handle missing NVS gracefully
+    } else {
+        Serial.println("NVS initialized OK");
+        Serial.flush();
+    }
+    
+    // Initialize LittleFS (needed by State, WebServer, etc.)
+    Serial.println("[2/8] Initializing LittleFS...");
+    Serial.flush();
+    if (!LittleFS.begin(true)) {
+        Serial.println("LittleFS mount failed - formatting...");
+        Serial.flush();
+        LittleFS.format();
+        if (!LittleFS.begin(true)) {
+            Serial.println("ERROR: LittleFS format failed!");
+            Serial.flush();
+            // Continue anyway - web server will handle missing files gracefully
+        } else {
+            Serial.println("LittleFS formatted and mounted OK");
+            Serial.flush();
+        }
+    } else {
+        Serial.println("LittleFS mounted OK");
+        Serial.flush();
+    }
+    
+    // Turn on backlight so user knows device is running
+    Serial.println("[3/8] Turning on backlight...");
+    Serial.flush();
+    pinMode(7, OUTPUT);
+    digitalWrite(7, HIGH);
+    Serial.println("Backlight ON");
+    Serial.flush();
+    
+    // Construct global objects NOW (after Serial is initialized)
+    // CRITICAL: Allocate in internal RAM (not PSRAM) to avoid InstructionFetchError
+    // when callbacks are called. PSRAM pointers cause CPU crashes.
+    Serial.println("[3.5/8] Creating global objects in internal RAM...");
+    Serial.flush();
+    
+    // All objects use regular new - PSRAM is disabled so malloc uses internal RAM
+    // Placement new with heap_caps_malloc was causing memory corruption
+    wifiManager = new WiFiManager();
+    Serial.println("WiFiManager created");
+    Serial.flush();
+    
+    picoUart = new PicoUART(Serial1);
+    Serial.println("PicoUART created");
+    Serial.flush();
+    
+    mqttClient = new MQTTClient();
+    Serial.println("MQTTClient created");
+    Serial.flush();
+    
+    pairingManager = new PairingManager();
+    Serial.println("PairingManager created");
+    Serial.flush();
+    
+    cloudConnection = new CloudConnection();
+    Serial.println("CloudConnection created");
+    Serial.flush();
+    
+    webServer = new WebServer(*wifiManager, *picoUart, *mqttClient, pairingManager);
+    Serial.println("WebServer created");
+    Serial.flush();
+    
+    scaleManager = new ScaleManager();
+    Serial.println("ScaleManager created");
+    Serial.flush();
+    
+    brewByWeight = new BrewByWeight();
+    Serial.println("BrewByWeight created");
+    Serial.flush();
+    
+    powerMeterManager = new PowerMeterManager();
+    Serial.println("PowerMeterManager created");
+    Serial.flush();
+    
+    notificationManager = new NotificationManager();
+    Serial.println("NotificationManager created");
+    Serial.flush();
+    
+    Serial.println("All global objects created OK");
+    Serial.flush();
+    
+    /*
     // Initialize display
     LOG_I("Initializing display...");
     if (!display.begin()) {
@@ -209,272 +710,116 @@ void setup() {
     if (!ui.begin()) {
         LOG_E("UI initialization failed!");
     }
+    */
     
+    // UI callbacks - DISABLED (no display)
+    /*
     // Set up UI callbacks
     ui.onTurnOn([]() {
         LOG_I("UI: Turn on requested");
-        // Send turn-on command to Pico
-        uint8_t cmd = 0x01;  // Turn on
-        picoUart.sendCommand(MSG_CMD_MODE, &cmd, 1);
+        uint8_t cmd = 0x01;
+        picoUart->sendCommand(MSG_CMD_MODE, &cmd, 1);
     });
     
     ui.onTurnOff([]() {
         LOG_I("UI: Turn off requested");
-        // Send turn-off command to Pico
-        uint8_t cmd = 0x00;  // Turn off
-        picoUart.sendCommand(MSG_CMD_MODE, &cmd, 1);
+        uint8_t cmd = 0x00;
+        picoUart->sendCommand(MSG_CMD_MODE, &cmd, 1);
     });
     
     ui.onSetTemp([](bool is_steam, float temp) {
         LOG_I("UI: Set %s temp to %.1f°C", is_steam ? "steam" : "brew", temp);
-        // Send temperature set command to Pico
         uint8_t payload[5];
-        payload[0] = is_steam ? 0x02 : 0x01;  // Boiler ID
+        payload[0] = is_steam ? 0x02 : 0x01;
         memcpy(&payload[1], &temp, sizeof(float));
-        picoUart.sendCommand(MSG_CMD_SET_TEMP, payload, 5);
+        picoUart->sendCommand(MSG_CMD_SET_TEMP, payload, 5);
     });
     
     ui.onTareScale([]() {
         LOG_I("UI: Tare scale requested");
-        scaleManager.tare();
+        scaleManager->tare();
     });
     
     ui.onSetTargetWeight([](float weight) {
         LOG_I("UI: Set target weight to %.1fg", weight);
-        brewByWeight.setTargetWeight(weight);
+        brewByWeight->setTargetWeight(weight);
         machineState.target_weight = weight;
     });
     
     ui.onWifiSetup([]() {
-        LOG_I("UI: WiFi setup requested - resetting to DHCP and starting AP mode");
-        // Reset static IP to DHCP before starting AP mode
-        wifiManager.setStaticIP(false);
-        // Start AP mode for network configuration
-        wifiManager.startAP();
+        LOG_I("UI: WiFi setup requested");
+        wifiManager->setStaticIP(false);
+        wifiManager->startAP();
     });
+    */
     
     // Initialize Pico UART
-    picoUart.begin();
+    Serial.println("[4/8] Initializing Pico UART...");
+    Serial.flush();
+    picoUart->begin();
+    Serial.println("Pico UART initialized OK");
+    Serial.flush();
     
-    // Set up packet handler
-    picoUart.onPacket([](const PicoPacket& packet) {
-        LOG_D("Pico packet: type=0x%02X, len=%d, seq=%d", 
-              packet.type, packet.length, packet.seq);
-        
-        // Forward to WebSocket clients
-        webServer.broadcastPicoMessage(packet.type, packet.payload, packet.length);
-        
-        // Handle specific message types
-        switch (packet.type) {
-            case MSG_BOOT: {
-                LOG_I("Pico booted!");
-                webServer.broadcastLog("Pico booted", "info");
-                ui.showNotification("Pico Connected", 2000);
-                machineState.pico_connected = true;
-                
-                // Parse boot payload (boot_payload_t structure)
-                // version_major(1), version_minor(1), version_patch(1), machine_type(1), 
-                // pcb_type(1), pcb_version_major(1), pcb_version_minor(1), reset_reason(1)
-                if (packet.length >= 4) {
-                    uint8_t ver_major = packet.payload[0];
-                    uint8_t ver_minor = packet.payload[1];
-                    uint8_t ver_patch = packet.payload[2];
-                    machineState.machine_type = packet.payload[3];
-                    
-                    // Store in StateManager
-                    State.setPicoVersion(ver_major, ver_minor, ver_patch);
-                    State.setMachineType(machineState.machine_type);
-                    
-                    LOG_I("Pico version: %d.%d.%d, Machine type: %d", 
-                          ver_major, ver_minor, ver_patch, machineState.machine_type);
-                    
-                    // Parse reset reason if available (offset 7, uint8_t)
-                    if (packet.length >= 8) {
-                        uint8_t reset_reason = packet.payload[7];
-                        State.setPicoResetReason(reset_reason);
-                    }
-                    
-                    // Check for version mismatch (internal - don't expose to user)
-                    char picoVerStr[16];
-                    snprintf(picoVerStr, sizeof(picoVerStr), "%d.%d.%d", ver_major, ver_minor, ver_patch);
-                    if (strcmp(picoVerStr, ESP32_VERSION) != 0) {
-                        LOG_W("Internal version mismatch: %s vs %s", ESP32_VERSION, picoVerStr);
-                        // Silently suggest update - user doesn't need to know about internal modules
-                        webServer.broadcastLog("Firmware update recommended", "warning");
-                    }
-                }
-                break;
-            }
-                
-            case MSG_STATUS:
-                // Parse status and update UI
-                parsePicoStatus(packet.payload, packet.length);
-                machineState.pico_connected = true;
-                // Note: Full status broadcast is done periodically in loop()
-                break;
-            
-            case MSG_POWER_METER: {
-                // Power meter reading from Pico
-                if (packet.length >= sizeof(PowerMeterReading)) {
-                    PowerMeterReading reading;
-                    memcpy(&reading, packet.payload, sizeof(PowerMeterReading));
-                    powerMeterManager.onPicoPowerData(reading);
-                }
-                break;
-            }
-            
-            case MSG_ALARM: {
-                // Alarm - show alarm screen
-                uint8_t alarmCode = packet.payload[0];
-                LOG_W("PICO ALARM: 0x%02X", alarmCode);
-                webServer.broadcastLog("Pico ALARM: " + String(alarmCode, HEX), "error");
-                machineState.alarm_active = true;
-                machineState.alarm_code = alarmCode;
-                ui.showAlarm(alarmCode, nullptr);
-                break;
-            }
-            
-            case MSG_CONFIG:
-                LOG_I("Received config from Pico");
-                webServer.broadcastLog("Config received from Pico", "info");
-                break;
-                
-            case MSG_ENV_CONFIG: {
-                // Environmental configuration (voltage, current limits)
-                if (packet.length >= 18) {
-                    uint16_t voltage = packet.payload[0] | (packet.payload[1] << 8);
-                    float max_current = 0;
-                    memcpy(&max_current, &packet.payload[2], sizeof(float));
-                    LOG_I("Env config: %dV, %.1fA max", voltage, max_current);
-                    webServer.broadcastLog("Env config: " + String(voltage) + "V, " + String(max_current, 1) + "A max", "info");
-                }
-                break;
-            }
-                
-            case MSG_DEBUG_RESP:
-                LOG_D("Debug response from Pico");
-                break;
-                
-            case MSG_DIAGNOSTICS: {
-                // Diagnostic results from Pico
-                // First check if this is a header (8 bytes) or result (32 bytes)
-                if (packet.length == 8) {
-                    // Diagnostic header
-                    LOG_I("Diag header: tests=%d, pass=%d, fail=%d, warn=%d, skip=%d, complete=%d",
-                          packet.payload[0], packet.payload[1], packet.payload[2],
-                          packet.payload[3], packet.payload[4], packet.payload[5]);
-                    
-                    // Broadcast to WebSocket clients
-                    JsonDocument doc;
-                    doc["type"] = "diagnostics_header";
-                    doc["testCount"] = packet.payload[0];
-                    doc["passCount"] = packet.payload[1];
-                    doc["failCount"] = packet.payload[2];
-                    doc["warnCount"] = packet.payload[3];
-                    doc["skipCount"] = packet.payload[4];
-                    doc["isComplete"] = packet.payload[5] != 0;
-                    doc["durationMs"] = packet.payload[6] | (packet.payload[7] << 8);
-                    String json;
-                    serializeJson(doc, json);
-                    webServer.broadcastRaw(json);
-                    
-                    if (packet.payload[5]) {  // is_complete
-                        webServer.broadcastLog("Diagnostics complete", "info");
-                    }
-                } else if (packet.length >= 32) {
-                    // Diagnostic result
-                    LOG_I("Diag result: test=%d, status=%d", packet.payload[0], packet.payload[1]);
-                    
-                    // Broadcast to WebSocket clients
-                    JsonDocument doc;
-                    doc["type"] = "diagnostics_result";
-                    doc["testId"] = packet.payload[0];
-                    doc["status"] = packet.payload[1];
-                    doc["rawValue"] = (int16_t)(packet.payload[2] | (packet.payload[3] << 8));
-                    doc["expectedMin"] = (int16_t)(packet.payload[4] | (packet.payload[5] << 8));
-                    doc["expectedMax"] = (int16_t)(packet.payload[6] | (packet.payload[7] << 8));
-                    
-                    // Extract message (remaining bytes, null-terminated)
-                    char msg[25];
-                    memcpy(msg, &packet.payload[8], 24);
-                    msg[24] = '\0';
-                    doc["message"] = msg;
-                    
-                    String json;
-                    serializeJson(doc, json);
-                    webServer.broadcastRaw(json);
-                }
-                break;
-            }
-                
-            default:
-                LOG_D("Unknown packet type: 0x%02X", packet.type);
+    // Wait a bit to see if Pico connects (sends boot message)
+    Serial.println("[4.5/8] Waiting for Pico connection (2 seconds)...");
+    Serial.flush();
+    unsigned long picoWaitStart = millis();
+    bool picoConnected = false;
+    while (millis() - picoWaitStart < 2000) {
+        picoUart->loop();  // Process any incoming packets
+        if (picoUart->isConnected()) {
+            picoConnected = true;
+            Serial.println("Pico connected!");
+            Serial.flush();
+            break;
         }
-    });
+        delay(10);
+    }
+    if (!picoConnected) {
+        Serial.println("Pico not connected - continuing without Pico");
+        Serial.flush();
+    }
     
-    // Initialize WiFi
-    wifiManager.onConnected([]() {
-        LOG_I("WiFi connected!");
-        webServer.broadcastLog("WiFi connected: " + wifiManager.getIP(), "info");
-        machineState.wifi_connected = true;
-        machineState.wifi_ap_mode = false;
-        // Get WiFi SSID from status
-        WiFiStatus ws = wifiManager.getStatus();
-        strncpy(machineState.wifi_ssid, ws.ssid.c_str(), sizeof(machineState.wifi_ssid) - 1);
-        strncpy(machineState.wifi_ip, ws.ip.c_str(), sizeof(machineState.wifi_ip) - 1);
-        machineState.wifi_rssi = WiFi.RSSI();
-        ui.showNotification("WiFi Connected", 2000);
-        
-        // Configure and sync NTP
-        auto& timeSettings = State.settings().time;
-        wifiManager.configureNTP(
-            timeSettings.ntpServer,
-            timeSettings.utcOffsetMinutes,
-            timeSettings.dstEnabled,
-            timeSettings.dstOffsetMinutes
-        );
-        
-        // Start mDNS responder for brewos.local
-        if (MDNS.begin("brewos")) {
-            LOG_I("mDNS started: http://brewos.local");
-            MDNS.addService("http", "tcp", 80);
-            webServer.broadcastLog("Access via: http://brewos.local", "info");
-        } else {
-            LOG_W("mDNS failed to start");
-        }
-        
-        // Try MQTT connection if enabled
-        if (mqttClient.getConfig().enabled) {
-            mqttClient.testConnection();
-        }
-    });
+    // Set up packet handler using static function to avoid PSRAM issues
+    Serial.println("[4.6/8] Setting up Pico packet handler...");
+    Serial.flush();
+    picoUart->onPacket(onPicoPacket);
     
-    wifiManager.onDisconnected([]() {
-        LOG_W("WiFi disconnected");
-        machineState.wifi_connected = false;
-    });
+    // Initialize WiFi callbacks using static function pointers
+    // This avoids std::function which allocates in PSRAM and causes InstructionFetchError
+    wifiManager->onConnected(onWiFiConnected);
+    wifiManager->onDisconnected(onWiFiDisconnected);
+    wifiManager->onAPStarted(onWiFiAPStarted);
     
-    wifiManager.onAPStarted([]() {
-        LOG_I("AP mode started - connect to: %s", WIFI_AP_SSID);
-        LOG_I("Open http://%s to configure", WIFI_AP_IP.toString().c_str());
-        machineState.wifi_ap_mode = true;
-        machineState.wifi_connected = false;
-        ui.showScreen(SCREEN_SETUP);
-    });
-    
-    wifiManager.begin();
+    Serial.println("[5/8] Initializing WiFi Manager...");
+    Serial.flush();
+    wifiManager->begin();
+    Serial.println("WiFi Manager initialized OK");
+    Serial.flush();
     
     // Start web server
-    webServer.begin();
+    Serial.println("[6/8] Starting web server...");
+    Serial.flush();
+    webServer->begin();
+    Serial.println("Web server started OK");
+    Serial.flush();
     
     // Initialize MQTT
-    mqttClient.begin();
+    Serial.println("[7/8] Initializing MQTT...");
+    Serial.flush();
+    mqttClient->begin();
+    Serial.println("MQTT initialized OK");
+    Serial.flush();
     
     // Initialize Power Meter Manager
-    powerMeterManager.begin();
+    Serial.println("[7.5/8] Initializing Power Meter...");
+    Serial.flush();
+    powerMeterManager->begin();
+    Serial.println("Power Meter initialized OK");
+    Serial.flush();
     
     // Set up MQTT command handler
-    mqttClient.onCommand([](const char* cmd, const JsonDocument& doc) {
+    mqttClient->onCommand([](const char* cmd, const JsonDocument& doc) {
         String cmdStr = cmd;
         
         if (cmdStr == "set_temp") {
@@ -484,7 +829,7 @@ void setup() {
             uint8_t payload[5];
             payload[0] = (boiler == "steam") ? 0x02 : 0x01;
             memcpy(&payload[1], &temp, sizeof(float));
-            picoUart.sendCommand(MSG_CMD_SET_TEMP, payload, 5);
+            picoUart->sendCommand(MSG_CMD_SET_TEMP, payload, 5);
         }
         else if (cmdStr == "set_mode") {
             String mode = doc["mode"] | "";
@@ -495,19 +840,23 @@ void setup() {
             } else if (mode == "off" || mode == "standby") {
                 modeCmd = 0x00;
             }
-            picoUart.sendCommand(MSG_CMD_MODE, &modeCmd, 1);
+            picoUart->sendCommand(MSG_CMD_MODE, &modeCmd, 1);
         }
         else if (cmdStr == "tare") {
-            scaleManager.tare();
+            scaleManager->tare();
         }
         else if (cmdStr == "set_target_weight") {
             float weight = doc["weight"] | 0.0f;
             if (weight > 0) {
-                brewByWeight.setTargetWeight(weight);
+                brewByWeight->setTargetWeight(weight);
                 machineState.target_weight = weight;
             }
         }
         else if (cmdStr == "set_eco") {
+            if (!picoUart->isConnected()) {
+                LOG_W("MQTT command set_eco: Pico not connected");
+                return;
+            }
             // Set eco mode config
             bool enabled = doc["enabled"] | true;
             float brewTemp = doc["brewTemp"] | 80.0f;
@@ -522,36 +871,38 @@ void setup() {
             payload[3] = (timeout >> 8) & 0xFF;
             payload[4] = timeout & 0xFF;
             
-            picoUart.sendCommand(MSG_CMD_SET_ECO, payload, 5);
+            picoUart->sendCommand(MSG_CMD_SET_ECO, payload, 5);
         }
         else if (cmdStr == "enter_eco") {
+            if (!picoUart->isConnected()) {
+                LOG_W("MQTT command enter_eco: Pico not connected");
+                return;
+            }
             uint8_t payload[1] = {1};  // 1 = enter eco
-            picoUart.sendCommand(MSG_CMD_SET_ECO, payload, 1);
+            picoUart->sendCommand(MSG_CMD_SET_ECO, payload, 1);
         }
         else if (cmdStr == "exit_eco") {
+            if (!picoUart->isConnected()) {
+                LOG_W("MQTT command exit_eco: Pico not connected");
+                return;
+            }
             uint8_t payload[1] = {0};  // 0 = exit eco
-            picoUart.sendCommand(MSG_CMD_SET_ECO, payload, 1);
+            picoUart->sendCommand(MSG_CMD_SET_ECO, payload, 1);
         }
     });
     
     // Initialize BLE Scale Manager
     if (scaleEnabled) {
         LOG_I("Initializing BLE Scale Manager...");
-        if (scaleManager.begin()) {
-            // Set up scale callbacks - just update state, unified broadcast handles web clients
-            scaleManager.onWeight([](const scale_state_t& state) {
-                machineState.scale_connected = state.connected;
-                machineState.brew_weight = state.weight;
-                machineState.flow_rate = state.flow_rate;
-            });
-            
-            scaleManager.onConnection([](bool connected) {
-                LOG_I("Scale %s", connected ? "connected" : "disconnected");
-                machineState.scale_connected = connected;
-                if (connected) {
-                    ui.showNotification("Scale Connected", 2000);
-                }
-            });
+        Serial.flush();
+        LOG_I("About to call scaleManager.begin()...");
+        Serial.flush();
+        if (scaleManager->begin()) {
+            LOG_I("scaleManager.begin() returned true");
+            Serial.flush();
+            // Set up scale callbacks using static functions to avoid PSRAM issues
+            scaleManager->onWeight(onScaleWeight);
+            scaleManager->onConnection(onScaleConnection);
             
             LOG_I("Scale Manager ready");
         } else {
@@ -561,46 +912,45 @@ void setup() {
     
     // Initialize Brew-by-Weight controller
     LOG_I("Initializing Brew-by-Weight...");
-    brewByWeight.begin();
+    brewByWeight->begin();
     
-    // Connect brew-by-weight callbacks
-    brewByWeight.onStop([]() {
-        LOG_I("BBW: Sending WEIGHT_STOP signal to Pico");
-        picoUart.setWeightStop(true);
-        ui.showNotification("Target Reached!", 2000);
-        
-        // Clear stop signal after a short delay
-        // (Pico will latch the stop, we just pulse the signal)
-        delay(100);
-        picoUart.setWeightStop(false);
-    });
-    
-    brewByWeight.onTare([]() {
-        scaleManager.tare();
-    });
+    // Connect brew-by-weight callbacks using static functions to avoid PSRAM issues
+    brewByWeight->onStop(onBBWStop);
+    brewByWeight->onTare(onBBWTare);
     
     // Set default state values from BBW settings
+    LOG_I("Setting default machine state values...");
+    Serial.flush();
     machineState.brew_setpoint = 93.0f;
     machineState.steam_setpoint = 145.0f;
-    machineState.target_weight = brewByWeight.getTargetWeight();
-    machineState.dose_weight = brewByWeight.getDoseWeight();
+    machineState.target_weight = brewByWeight->getTargetWeight();
+    machineState.dose_weight = brewByWeight->getDoseWeight();
     machineState.brew_max_temp = 105.0f;
     machineState.steam_max_temp = 160.0f;
     machineState.dose_weight = 18.0f;
+    LOG_I("Default values set");
+    Serial.flush();
     
     // Initialize State Manager (schedules, settings persistence)
-    LOG_I("Initializing State Manager...");
+    Serial.println("[8/8] Initializing State Manager...");
+    Serial.print("Free heap before State: ");
+    Serial.println(ESP.getFreeHeap());
+    Serial.flush();
     State.begin();
+    Serial.print("Free heap after State: ");
+    Serial.println(ESP.getFreeHeap());
+    Serial.println("State Manager initialized OK");
+    Serial.flush();
     
     // Initialize Pairing Manager and Cloud Connection if cloud is enabled
     auto& cloudSettings = State.settings().cloud;
     if (cloudSettings.enabled && strlen(cloudSettings.serverUrl) > 0) {
         LOG_I("Initializing Pairing Manager...");
-        pairingManager.begin(String(cloudSettings.serverUrl));
+        pairingManager->begin(String(cloudSettings.serverUrl));
         
         // Get device ID and key from pairing manager (it manages these securely)
-        String deviceId = pairingManager.getDeviceId();
-        String deviceKey = pairingManager.getDeviceKey();
+        String deviceId = pairingManager->getDeviceId();
+        String deviceKey = pairingManager->getDeviceKey();
         
         // Sync device ID to cloud settings if different (for display purposes)
         if (String(cloudSettings.deviceId) != deviceId) {
@@ -611,144 +961,142 @@ void setup() {
         // Initialize Cloud Connection for real-time state relay
         // Uses pairing manager's device key for secure authentication
         LOG_I("Initializing Cloud Connection...");
-        cloudConnection.begin(
+        cloudConnection->begin(
             String(cloudSettings.serverUrl),
             deviceId,
             deviceKey
         );
         
-        // Set up command handler - forward cloud commands to WebServer
-        // Note: webServer is a global, no capture needed
-        cloudConnection.onCommand([](const String& type, JsonDocument& doc) {
-            // Commands from cloud users are processed the same as local WebSocket
-            webServer.processCommand(doc);
-        });
+        // Set up command handler using static function to avoid PSRAM issues
+        cloudConnection->onCommand(onCloudCommand);
         
         // Connect cloud to WebServer for state broadcasting
-        webServer.setCloudConnection(&cloudConnection);
+        webServer->setCloudConnection(cloudConnection);
     }
     
     // Initialize Notification Manager
-    LOG_I("Initializing Notification Manager...");
-    notificationManager.begin();
+    Serial.println("[8.5/8] Initializing Notification Manager...");
+    Serial.flush();
+    notificationManager->begin();
+    Serial.println("Notification Manager initialized OK");
+    Serial.flush();
     
-    // Set up cloud notification callback
-    // Capture device key from pairing manager for authenticated notifications
-    String cloudDeviceKey = cloudSettings.enabled ? pairingManager.getDeviceKey() : "";
-    notificationManager.onCloud([cloudDeviceKey](const Notification& notif) {
-        // Check if cloud integration is enabled
-        auto& cloudSettings = State.settings().cloud;
-        if (!cloudSettings.enabled) {
-            return;
-        }
-        
-        String cloudUrl = String(cloudSettings.serverUrl);
-        String deviceId = String(cloudSettings.deviceId);
-        
-        if (!cloudUrl.isEmpty() && !deviceId.isEmpty()) {
-            sendNotificationToCloud(cloudUrl, deviceId, cloudDeviceKey, notif);
-        }
-    });
+    // Set up cloud notification callback using static function to avoid PSRAM issues
+    notificationManager->onCloud(onCloudNotification);
     
-    // Set up schedule callback
-    State.onScheduleTriggered([](const BrewOS::ScheduleEntry& schedule) {
-        LOG_I("Schedule triggered: %s", schedule.name);
-        
-        if (schedule.action == BrewOS::ACTION_TURN_ON) {
-            // Turn on machine with specified heating strategy
-            uint8_t modeCmd = 0x01;  // MODE_BREW
-            picoUart.sendCommand(MSG_CMD_MODE, &modeCmd, 1);
-            
-            // Set heating strategy if not default
-            if (schedule.strategy != BrewOS::STRATEGY_SEQUENTIAL) {
-                uint8_t strategyPayload[2] = {0x01, schedule.strategy};  // CONFIG_HEATING_STRATEGY
-                picoUart.sendCommand(MSG_CMD_CONFIG, strategyPayload, 2);
-            }
-            
-            ui.showNotification("Schedule: ON", 3000);
-        } else {
-            // Turn off machine
-            uint8_t modeCmd = 0x00;  // MODE_IDLE
-            picoUart.sendCommand(MSG_CMD_MODE, &modeCmd, 1);
-            
-            ui.showNotification("Schedule: OFF", 3000);
-        }
-    });
+    // Set up schedule callback using static function to avoid PSRAM issues
+    State.onScheduleTriggered(onScheduleTriggered);
     
-    LOG_I("Setup complete. Free heap: %d bytes", ESP.getFreeHeap());
+    Serial.println("========================================");
+    Serial.println("SETUP COMPLETE!");
+    Serial.print("Free heap: ");
+    Serial.print(ESP.getFreeHeap());
+    Serial.println(" bytes");
+    Serial.println("Entering main loop...");
+    Serial.println("========================================");
+    Serial.flush();
+    Serial.flush();
 }
 
+// =============================================================================
+// MAIN LOOP - Robust state management with error handling
+// =============================================================================
+
 void loop() {
-    // Update display (calls LVGL timer handler)
-    display.update();
+    // Feed watchdog at start of every loop iteration
+    // This prevents watchdog reset if any single component takes too long
+    yield();
     
-    // Update encoder
-    encoder.update();
     
-    // Update WiFi manager
-    wifiManager.loop();
-    
-    // Process Pico UART
-    picoUart.loop();
-    
-    // Update web server
-    webServer.loop();
-    
-    // Update cloud connection (WebSocket to cloud relay)
-    cloudConnection.loop();
-    
-    // Update MQTT
-    mqttClient.loop();
-    
-    // Update Power Meter
-    powerMeterManager.loop();
-    
-    // Update BLE Scale
-    if (scaleEnabled) {
-        scaleManager.loop();
+    // =========================================================================
+    // PHASE 1: Critical object validation
+    // Skip iteration if core objects failed to initialize
+    // =========================================================================
+    if (!wifiManager || !picoUart || !webServer) {
+        static unsigned long lastWarning = 0;
+        if (millis() - lastWarning > 5000) {
+            Serial.println("[FATAL] Core objects not initialized - check heap allocation");
+            lastWarning = millis();
+        }
+        delay(100);
+        return;
     }
     
-    // Update Brew-by-Weight controller
-    brewByWeight.update(
-        machineState.is_brewing,
-        scaleManager.getState().weight,
-        scaleManager.isConnected()
-    );
+    // =========================================================================
+    // PHASE 2: Core system updates (always run)
+    // These are essential for basic operation
+    // =========================================================================
     
-    // Update State Manager (schedules, auto power-off)
-    State.loop();
+    // WiFi management - handles connection state machine
+    wifiManager->loop();
+    yield();  // Feed watchdog
     
-    // Reset idle timer on user activity (brewing, encoder, etc.)
-    static bool lastPressed = false;
-    bool currentPressed = encoder.isPressed();
-    if (machineState.is_brewing || (currentPressed && !lastPressed) || encoder.getPosition() != 0) {
-        State.resetIdleTimer();
-        encoder.resetPosition();  // Reset so we detect the next movement
-    }
-    lastPressed = currentPressed;
-    
-    // Sync BBW state to machine state
-    if (brewByWeight.isActive()) {
-        machineState.brew_weight = brewByWeight.getState().current_weight;
-        machineState.target_weight = brewByWeight.getTargetWeight();
-        machineState.dose_weight = brewByWeight.getDoseWeight();
+    // Captive portal DNS (only in AP mode)
+    if (dnsServerRunning) {
+        dnsServer.processNextRequest();
     }
     
-    // Update Pico connection status
-    bool picoConnected = picoUart.isConnected();
-    machineState.mqtt_connected = mqttClient.isConnected();
-    machineState.scale_connected = scaleManager.isConnected();
-    machineState.cloud_connected = cloudConnection.isConnected();
+    // Pico UART communication
+    picoUart->loop();
+    yield();  // Feed watchdog
     
-    // Demo mode: If Pico not connected for DEMO_MODE_TIMEOUT_MS, simulate data
-    if (!picoConnected && picoUart.getPacketsReceived() == 0) {
+    // Web server request handling
+    webServer->loop();
+    yield();  // Feed watchdog after web server (handles HTTP requests)
+    
+    // =========================================================================
+    // PHASE 3: Optional service updates
+    // =========================================================================
+    
+    // Cloud connection (handles WebSocket to cloud server)
+    if (cloudConnection) {
+        cloudConnection->loop();
+    }
+    yield();  // Feed watchdog
+    
+    // MQTT client (for Home Assistant integration)
+    if (mqttClient) {
+        mqttClient->loop();
+    }
+    
+    // Power meter (Shelly/Tasmota integration)
+    if (powerMeterManager) {
+        powerMeterManager->loop();
+    }
+    yield();  // Feed watchdog
+    
+    // BLE Scale - disabled until WiFi/BLE coexistence issue is resolved
+    // TODO: Re-enable after fixing potential WiFi/BLE conflict causing watchdog resets
+    if (scaleEnabled && scaleManager) {
+        scaleManager->loop();
+        yield();
+    }
+    
+    // =========================================================================
+    // PHASE 4: State synchronization
+    // Update machine state from various sources
+    // =========================================================================
+    
+    // Connection states (defensive - default to false if object missing)
+    bool picoConnected = picoUart->isConnected();
+    machineState.mqtt_connected = mqttClient ? mqttClient->isConnected() : false;
+    machineState.scale_connected = (scaleEnabled && scaleManager) ? scaleManager->isConnected() : false;
+    machineState.cloud_connected = cloudConnection ? cloudConnection->isConnected() : false;
+    
+    // =========================================================================
+    // PHASE 5: Demo mode management
+    // Provides simulated data when Pico is not connected
+    // =========================================================================
+    
+    if (!picoConnected && picoUart->getPacketsReceived() == 0) {
+        // No Pico detected - enter demo mode after timeout
         if (!demoMode && millis() > DEMO_MODE_TIMEOUT_MS) {
             demoMode = true;
             demoStartTime = millis();
             LOG_I("=== DEMO MODE ENABLED (no Pico detected) ===");
-            ui.showNotification("Demo Mode", 3000);
         }
     } else {
+        // Pico connected - exit demo mode
         if (demoMode) {
             demoMode = false;
             LOG_I("=== DEMO MODE DISABLED (Pico connected) ===");
@@ -756,31 +1104,75 @@ void loop() {
         machineState.pico_connected = picoConnected;
     }
     
-    // Update demo simulation if active
+    // Update demo simulation (sets is_brewing = false, prevents false triggers)
     if (demoMode) {
         updateDemoMode();
     }
     
-    // Update UI state periodically
-    if (millis() - lastUIUpdate > 100) {  // 10Hz UI update
-        lastUIUpdate = millis();
-        ui.update(machineState);
+    // =========================================================================
+    // PHASE 6: Brew-by-Weight (only when actively brewing with scale)
+    // This is DISABLED when:
+    // - Scale not enabled or not connected
+    // - Not brewing
+    // - In demo mode (is_brewing is always false)
+    // =========================================================================
+    
+    // Only process BBW if we're actually brewing with a connected scale
+    // This prevents any callbacks from firing when not needed
+    bool shouldUpdateBBW = brewByWeight && 
+                           scaleEnabled && 
+                           scaleManager && 
+                           scaleManager->isConnected() &&
+                           machineState.is_brewing;
+    
+    // Update BBW with current brewing state and scale weight
+    if (shouldUpdateBBW) {
+        brewByWeight->update(
+            machineState.is_brewing,
+            scaleManager->getState().weight,
+            true
+        );
     }
     
-    // Publish MQTT status periodically (every 1 second)
+    // State Manager - handles schedules, idle timeout, etc.
+    State.loop();
+    
+    // Reset idle timer on user activity (brewing, encoder, etc.)
+    // Encoder disabled - just check brewing
+    if (machineState.is_brewing) {
+        State.resetIdleTimer();
+    }
+    /*
+    static bool lastPressed = false;
+    bool currentPressed = encoder.isPressed();
+    if (machineState.is_brewing || (currentPressed && !lastPressed) || encoder.getPosition() != 0) {
+        State.resetIdleTimer();
+        encoder.resetPosition();
+    }
+    lastPressed = currentPressed;
+    */
+    
+    // Sync BBW state to machine state (with null check)
+    if (brewByWeight && brewByWeight->isActive()) {
+        machineState.brew_weight = brewByWeight->getState().current_weight;
+        machineState.target_weight = brewByWeight->getTargetWeight();
+        machineState.dose_weight = brewByWeight->getDoseWeight();
+    }
+    
+    // Publish MQTT status periodically (1 second interval)
     static unsigned long lastMQTTPublish = 0;
     if (millis() - lastMQTTPublish > 1000) {
         lastMQTTPublish = millis();
-        if (mqttClient.isConnected()) {
-            mqttClient.publishStatus(machineState);
+        if (mqttClient && mqttClient->isConnected()) {
+            mqttClient->publishStatus(machineState);
         }
     }
     
-    // Periodic ping to Pico
+    // Periodic ping to Pico for connection monitoring
     if (millis() - lastPing > 5000) {
         lastPing = millis();
-        if (picoUart.isConnected() || picoUart.getPacketsReceived() == 0) {
-            picoUart.sendPing();
+        if (picoUart->isConnected() || picoUart->getPacketsReceived() == 0) {
+            picoUart->sendPing();
         }
     }
     
@@ -789,15 +1181,15 @@ void loop() {
         lastStatusBroadcast = millis();
         
         // Broadcast if we have local clients OR cloud connection
-        if (webServer.getClientCount() > 0 || cloudConnection.isConnected()) {
+        if (webServer->getClientCount() > 0 || cloudConnection->isConnected()) {
             // Update connection status in machineState
-            machineState.pico_connected = picoUart.isConnected();
-            machineState.wifi_connected = wifiManager.isConnected();
-            machineState.mqtt_connected = mqttClient.isConnected();
-            machineState.cloud_connected = cloudConnection.isConnected();
+            machineState.pico_connected = picoUart->isConnected();
+            machineState.wifi_connected = wifiManager->isConnected();
+            machineState.mqtt_connected = mqttClient->isConnected();
+            machineState.cloud_connected = cloudConnection->isConnected();
             
             // Broadcast unified status (goes to both local and cloud clients)
-            webServer.broadcastFullStatus(machineState);
+            webServer->broadcastFullStatus(machineState);
         }
     }
     
@@ -805,18 +1197,56 @@ void loop() {
     if (millis() - lastPowerMeterBroadcast > 5000) {
         lastPowerMeterBroadcast = millis();
         
-        if (powerMeterManager.getSource() != PowerMeterSource::NONE) {
+        if (powerMeterManager->getSource() != PowerMeterSource::NONE) {
             // Broadcast to WebSocket clients
-            if (webServer.getClientCount() > 0 || cloudConnection.isConnected()) {
-                webServer.broadcastPowerMeterStatus();
+            if (webServer->getClientCount() > 0 || cloudConnection->isConnected()) {
+                webServer->broadcastPowerMeterStatus();
             }
             
             // Publish to MQTT if connected
             PowerMeterReading reading;
-            if (mqttClient.isConnected() && powerMeterManager.getReading(reading)) {
-                mqttClient.publishPowerMeter(reading);
+            if (mqttClient->isConnected() && powerMeterManager->getReading(reading)) {
+                mqttClient->publishPowerMeter(reading);
             }
         }
+    }
+    
+    // Handle WiFi connected tasks
+    if (machineState.wifi_connected && wifiConnectedTime == 0) {
+        wifiConnectedTime = millis();
+    }
+    if (wifiConnectedTime > 0 && millis() - wifiConnectedTime > 2000 && !ntpConfigured) {
+        auto& timeSettings = State.settings().time;
+        wifiManager->configureNTP(
+            timeSettings.ntpServer,
+            timeSettings.utcOffsetMinutes,
+            timeSettings.dstEnabled,
+            timeSettings.dstOffsetMinutes
+        );
+        ntpConfigured = true;
+    }
+    if (wifiConnectedTime > 0 && millis() - wifiConnectedTime > 3000 && !wifiConnectedLogSent) {
+        // Send log message after WiFi is stable (3 seconds)
+        webServer->broadcastLog("WiFi connected");
+        wifiConnectedLogSent = true;
+    }
+    if (wifiConnectedTime > 0 && millis() - wifiConnectedTime > 3000 && !mDNSStarted) {
+        // Start mDNS after WiFi is stable (3 seconds)
+        if (MDNS.begin("brewos")) {
+            LOG_I("mDNS started: http://brewos.local");
+            MDNS.addService("http", "tcp", 80);
+            mDNSStarted = true;
+        } else {
+            LOG_W("mDNS failed to start");
+            mDNSStarted = true;  // Don't retry
+        }
+    }
+    if (!machineState.wifi_connected) {
+        // Reset when WiFi disconnects
+        wifiConnectedTime = 0;
+        wifiConnectedLogSent = false;
+        mDNSStarted = false;
+        ntpConfigured = false;
     }
 }
 
@@ -901,23 +1331,24 @@ void parsePicoStatus(const uint8_t* payload, uint8_t length) {
 }
 
 /**
- * Handle encoder rotation and button events
+ * Handle encoder rotation and button events - DISABLED
  */
 void handleEncoderEvent(int32_t diff, button_state_t btn) {
-    // Log significant events
+    // Encoder/UI disabled
+    (void)diff;
+    (void)btn;
+    /*
     if (diff != 0) {
         LOG_D("Encoder: %+d", diff);
         ui.handleEncoder(diff);
     }
     
     if (btn == BTN_PRESSED) {
-        LOG_D("Button: short press");
         ui.handleButtonPress();
     } else if (btn == BTN_LONG_PRESSED) {
-        LOG_D("Button: long press");
         ui.handleLongPress();
     } else if (btn == BTN_DOUBLE_PRESSED) {
-        LOG_D("Button: double press");
         ui.handleDoublePress();
     }
+    */
 }

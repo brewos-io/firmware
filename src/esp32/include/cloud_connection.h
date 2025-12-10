@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
-#include <functional>
 
 /**
  * CloudConnection
@@ -22,7 +21,8 @@
 class CloudConnection {
 public:
     // Command handler callback - receives commands from cloud users
-    using CommandCallback = std::function<void(const String& type, JsonDocument& doc)>;
+    // Simple function pointer to avoid std::function PSRAM allocation issues
+    typedef void (*CommandCallback)(const String& type, JsonDocument& doc);
     
     CloudConnection();
     
@@ -48,6 +48,7 @@ public:
      * Send JSON message to cloud (broadcast to all connected cloud users)
      */
     void send(const String& json);
+    void send(const char* json);  // Overload to avoid String allocation
     
     /**
      * Send typed message to cloud

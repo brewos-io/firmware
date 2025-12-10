@@ -45,25 +45,41 @@ done
 # Note: Web files will be built during firmware build if needed
 
 # Always build firmware to ensure latest code is flashed
-echo -e "${BLUE}Building firmware...${NC}"
+echo -e "${BLUE}Building firmware (always rebuild to ensure latest code)...${NC}"
 cd "$ESP32_DIR"
 
-# Build web UI if not firmware-only and not already built
-if [ "$FIRMWARE_ONLY" = false ] && ([ ! -d "$WEB_DATA_DIR" ] || [ -z "$(ls -A "$WEB_DATA_DIR" 2>/dev/null)" ]); then
+# Build web UI if not firmware-only (always clean and rebuild for consistency)
+if [ "$FIRMWARE_ONLY" = false ]; then
     if command -v npm &> /dev/null; then
         cd "$WEB_DIR"
         if [ ! -d "node_modules" ]; then
             echo -e "${BLUE}Installing web dependencies...${NC}"
             npm install
         fi
+        # Always clean old files before building (prevent stale hashed assets)
+        echo -e "${BLUE}Cleaning old web files...${NC}"
+        rm -rf "$WEB_DATA_DIR/assets" 2>/dev/null || true
+        rm -f "$WEB_DATA_DIR/index.html" "$WEB_DATA_DIR/favicon.svg" \
+              "$WEB_DATA_DIR/logo.png" "$WEB_DATA_DIR/logo-icon.svg" \
+              "$WEB_DATA_DIR/manifest.json" "$WEB_DATA_DIR/sw.js" \
+              "$WEB_DATA_DIR/version-manifest.json" 2>/dev/null || true
+        rm -rf "$WEB_DATA_DIR/.well-known" 2>/dev/null || true
+        
         echo -e "${BLUE}Building web UI for ESP32...${NC}"
         npm run build:esp32
         cd "$ESP32_DIR"
+    else
+        echo -e "${YELLOW}⚠ npm not found - skipping web build${NC}"
     fi
 fi
 
-# Build firmware
-pio run -e esp32s3
+# Always build firmware (PlatformIO will rebuild only changed files, but ensures latest code)
+# Use --verbose to see what's being rebuilt
+echo -e "${BLUE}Running PlatformIO build...${NC}"
+if ! pio run -e esp32s3; then
+    echo -e "${RED}✗ Build failed!${NC}"
+    exit 1
+fi
 
 # Build LittleFS image if not firmware-only
 if [ "$FIRMWARE_ONLY" = false ]; then
@@ -97,11 +113,34 @@ if [ -z "$PORT" ]; then
         # Look for common ESP32-S3 USB patterns
         # Exclude debug-console (native USB CDC, not for programming)
         # Prioritize usbserial over usbmodem (more reliable for ESP32-S3)
-        PORT=$(ls /dev/cu.usbserial* /dev/cu.usbmodem* /dev/cu.wchusbserial* 2>/dev/null | grep -v "debug-console" | head -1)
+        AVAILABLE_PORTS=($(ls /dev/cu.usbserial* /dev/cu.usbmodem* /dev/cu.wchusbserial* 2>/dev/null | grep -v "debug-console"))
     else
         # Linux - exclude ttyACM0 if it's the debug console
         # ESP32-S3 programming port is usually ttyUSB* or ttyACM1
-        PORT=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | grep -v "ttyACM0" | head -1)
+        AVAILABLE_PORTS=($(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | grep -v "ttyACM0"))
+    fi
+    
+    # If multiple ports found, let user choose
+    if [ ${#AVAILABLE_PORTS[@]} -gt 1 ]; then
+        echo -e "${YELLOW}Multiple serial ports found:${NC}"
+        for i in "${!AVAILABLE_PORTS[@]}"; do
+            echo -e "  ${CYAN}[$((i+1))]${NC} ${AVAILABLE_PORTS[$i]}"
+        done
+        echo ""
+        echo -e "${YELLOW}Please select a port (1-${#AVAILABLE_PORTS[@]}):${NC}"
+        read -r SELECTION
+        if [[ "$SELECTION" =~ ^[0-9]+$ ]] && [ "$SELECTION" -ge 1 ] && [ "$SELECTION" -le ${#AVAILABLE_PORTS[@]} ]; then
+            PORT="${AVAILABLE_PORTS[$((SELECTION-1))]}"
+            echo -e "${GREEN}Selected: $PORT${NC}"
+        else
+            echo -e "${RED}✗ Invalid selection${NC}"
+            exit 1
+        fi
+    elif [ ${#AVAILABLE_PORTS[@]} -eq 1 ]; then
+        PORT="${AVAILABLE_PORTS[0]}"
+        echo -e "${BLUE}Auto-detected port: ${GREEN}$PORT${NC}"
+    else
+        PORT=""
     fi
 fi
 
@@ -228,10 +267,6 @@ if [ "$FIRMWARE_ONLY" = false ] && [ -f "$LITTLEFS_IMAGE" ]; then
         LITTLEFS_ADDR="0x670000"
     fi
     
-    # Use esptool.py to flash both partitions in one session
-    # Firmware goes to 0x10000 (app partition), LittleFS goes to 0x670000 (for 8MB flash with default partition table)
-    echo -e "${BLUE}Flashing firmware to 0x10000 and filesystem to $LITTLEFS_ADDR...${NC}"
-    
     # Verify Python has pyserial before attempting flash
     if ! "$PYTHON_CMD" -c "import serial" 2>/dev/null; then
         echo -e "${RED}✗ pyserial not available in Python environment${NC}"
@@ -239,27 +274,98 @@ if [ "$FIRMWARE_ONLY" = false ] && [ -f "$LITTLEFS_IMAGE" ]; then
         exit 1
     fi
     
-    # Use esptool.py directly to flash both partitions in one command
-    # This keeps the ESP32 in bootloader mode for both operations
-    if "$PYTHON_CMD" "$ESPTOOL_PY" \
-        --chip esp32s3 \
-        --port "$PORT" \
-        --baud 921600 \
-        write_flash \
-        --flash_mode dio \
-        --flash_freq 80m \
-        --flash_size 8MB \
-        0x10000 "$FIRMWARE" \
-        "$LITTLEFS_ADDR" "$LITTLEFS_IMAGE"; then
+    # Verify firmware files exist
+    if [ ! -f "$FIRMWARE" ]; then
+        echo -e "${RED}✗ Firmware file not found: $FIRMWARE${NC}"
+        exit 1
+    fi
+    if [ ! -f "$LITTLEFS_IMAGE" ]; then
+        echo -e "${RED}✗ LittleFS image not found: $LITTLEFS_IMAGE${NC}"
+        exit 1
+    fi
+    
+    echo -e "${BLUE}Firmware size: $(du -h "$FIRMWARE" | cut -f1)${NC}"
+    echo -e "${BLUE}LittleFS size: $(du -h "$LITTLEFS_IMAGE" | cut -f1)${NC}"
+    echo ""
+    
+    # Use esptool.py to flash both partitions in one session
+    # Firmware goes to 0x10000 (app partition), LittleFS goes to 0x670000 (for 8MB flash with default partition table)
+    # write_flash automatically erases sectors before writing, so no explicit erase needed
+    echo -e "${BLUE}Flashing firmware to 0x10000 and filesystem to $LITTLEFS_ADDR...${NC}"
+    echo -e "${YELLOW}(Sectors will be automatically erased before writing)${NC}"
+    
+    # Check if bootloader, partition table, and other required files exist
+    BOOTLOADER="$ESP32_DIR/.pio/build/esp32s3/bootloader.bin"
+    PARTITION_TABLE="$ESP32_DIR/.pio/build/esp32s3/partitions.bin"
+    BOOTLOADER_ADDR="0x0"
+    PARTITION_TABLE_ADDR="0x8000"
+    
+    # Use esptool.py directly to flash partitions in one command
+    # This keeps the ESP32 in bootloader mode for the entire operation
+    # Add --verify to ensure flash succeeded
+    # Use --after no_reset to prevent RTS reset (we don't have RTS pin)
+    echo -e "${YELLOW}⚠ Make sure ESP32 is in bootloader mode before continuing!${NC}"
+    echo -e "${CYAN}If not in bootloader mode:${NC}"
+    echo "  1. Hold the BOOT button"
+    echo "  2. Press and release the RESET button"
+    echo "  3. Release the BOOT button"
+    echo ""
+    sleep 2
+    
+    echo -e "${BLUE}Starting flash operation...${NC}"
+    
+    # Build flash command arguments
+    FLASH_ARGS="--chip esp32s3 --port $PORT --baud 921600 --after no_reset write_flash --verify --flash_mode dio --flash_freq 80m --flash_size 8MB"
+    
+    # Include bootloader if it exists (at 0x0) - REQUIRED for ESP32-S3
+    BOOTLOADER="$ESP32_DIR/.pio/build/esp32s3/bootloader.bin"
+    if [ -f "$BOOTLOADER" ]; then
+        echo -e "${BLUE}Including bootloader at 0x0...${NC}"
+        FLASH_ARGS="$FLASH_ARGS 0x0 $BOOTLOADER"
+    else
+        echo -e "${YELLOW}⚠ Warning: Bootloader not found at $BOOTLOADER${NC}"
+        echo -e "${YELLOW}  This may cause boot issues. Continuing anyway...${NC}"
+    fi
+    
+    # Include partition table if it exists (at 0x8000)
+    if [ -f "$PARTITION_TABLE" ]; then
+        echo -e "${BLUE}Including partition table at $PARTITION_TABLE_ADDR...${NC}"
+        FLASH_ARGS="$FLASH_ARGS $PARTITION_TABLE_ADDR $PARTITION_TABLE"
+    else
+        echo -e "${YELLOW}⚠ Warning: Partition table not found at $PARTITION_TABLE${NC}"
+        echo -e "${YELLOW}  This may cause boot issues. Continuing anyway...${NC}"
+    fi
+    
+    # Add firmware and filesystem
+    FLASH_ARGS="$FLASH_ARGS 0x10000 $FIRMWARE $LITTLEFS_ADDR $LITTLEFS_IMAGE"
+    
+    if "$PYTHON_CMD" "$ESPTOOL_PY" $FLASH_ARGS 2>&1 | tee /tmp/flash_output.log; then
         echo ""
-        echo -e "${GREEN}✓ Firmware and filesystem flashed successfully in one session!${NC}"
+        echo -e "${GREEN}✓ Firmware and filesystem flashed and verified successfully!${NC}"
+        echo ""
+        echo -e "${YELLOW}⚠ IMPORTANT: Manually reset the ESP32 now!${NC}"
+        echo -e "${CYAN}Press and release the RESET button on the ESP32 to boot.${NC}"
+        echo ""
     else
         echo ""
         echo -e "${RED}✗ Flash failed!${NC}"
+        echo -e "${YELLOW}Check the output above for errors.${NC}"
+        echo -e "${YELLOW}Common issues:${NC}"
+        echo "  - ESP32 not in bootloader mode (put it in bootloader mode and try again)"
+        echo "  - Wrong serial port"
+        echo "  - USB cable issues"
+        echo ""
+        echo -e "${CYAN}To put ESP32 in bootloader mode:${NC}"
+        echo "  1. Hold the BOOT button"
+        echo "  2. Press and release the RESET button"
+        echo "  3. Release the BOOT button"
+        echo "  4. Run the flash script again"
         exit 1
     fi
 else
     # Flash firmware only (either firmware-only flag or LittleFS not available)
+    # Use PlatformIO which handles erase automatically
+    echo -e "${YELLOW}⚡ Flashing firmware (with auto-erase)...${NC}"
     if pio run -e esp32s3 -t upload --upload-port "$PORT"; then
         echo ""
         echo -e "${GREEN}✓ Firmware flashed successfully!${NC}"

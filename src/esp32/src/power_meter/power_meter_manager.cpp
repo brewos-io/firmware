@@ -356,6 +356,6 @@ void PowerMeterManager::resetDailyEnergy() {
     LOG_I("Daily energy reset: day start = %.3f kWh", _dayStartKwh);
 }
 
-// Global instance
-PowerMeterManager powerMeterManager;
+// Global instance - now a pointer, constructed in main.cpp setup()
+PowerMeterManager* powerMeterManager = nullptr;
 

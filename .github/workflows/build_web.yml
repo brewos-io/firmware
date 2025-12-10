@@ -6,8 +6,8 @@ on:
   pull_request:
     branches: ["main"]
     paths:
-      - 'src/web/**'
-      - 'src/cloud/**'
+      - "src/web/**"
+      - "src/cloud/**"
   workflow_dispatch:
 
 # Cancel in-progress runs for the same PR
@@ -19,7 +19,7 @@ jobs:
   build-web:
     name: Build Web UI
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -27,8 +27,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: src/web/package-lock.json
 
       - name: Install Dependencies
@@ -45,7 +45,10 @@ jobs:
 
       - name: Build for ESP32
         working-directory: src/web
-        run: npm run build:esp32
+        run: |
+          # Clean old files before build (prevent stale hashed assets)
+          rm -rf ../esp32/data/assets ../esp32/data/index.html ../esp32/data/*.svg ../esp32/data/*.png ../esp32/data/*.json ../esp32/data/sw.js 2>/dev/null || true
+          npm run build:esp32
 
       - name: Verify Build Output
         run: |
@@ -76,7 +79,7 @@ jobs:
   build-cloud:
     name: Build Cloud Service
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -84,8 +87,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: src/cloud/package-lock.json
 
       - name: Install Dependencies
@@ -104,11 +107,10 @@ jobs:
         run: |
           echo "=== Cloud Service Build ==="
           ls -lh src/cloud/dist/
-          
+
       - name: Upload Cloud Service
         uses: actions/upload-artifact@v5
         with:
           name: cloud-service-build
           path: src/cloud/dist/
           retention-days: 30
-
