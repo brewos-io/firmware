@@ -671,12 +671,6 @@ bool state_set_mode(machine_mode_t mode) {
         LOG_PRINT("State: Mode change: %d -> %d\n", g_mode, mode);
     }
     
-    // Defensive mode: ESP32 not connected - only allow IDLE mode
-    // Allow setting IDLE mode even in defensive mode (for safety system to force it)
-    if (safety_is_defensive_mode() && mode != MODE_IDLE) {
-        DEBUG_PRINT("Mode change blocked: ESP32 not connected (defensive mode)\n");
-        return false;
-    }
     
     // If entering IDLE from defensive mode, allow it (safety system needs this)
     DEBUG_PRINT("Mode: %d -> %d\n", g_mode, mode);
