@@ -1,59 +1,93 @@
-import { WebSocketServer, WebSocket, RawData } from 'ws';
-import { IncomingMessage } from 'http';
-import type { DeviceMessage } from './types.js';
-import { verifyDeviceKey, updateDeviceStatus } from './services/device.js';
+import { WebSocketServer, WebSocket, RawData } from "ws";
+import { IncomingMessage } from "http";
+import type { DeviceMessage } from "./types.js";
+import { verifyDeviceKey, updateDeviceStatus } from "./services/device.js";
 
 interface DeviceConnection {
   ws: WebSocket;
   deviceId: string;
   connectedAt: Date;
   lastSeen: Date;
+  isAlive: boolean;
 }
+
+// Ping interval for keep-alive (30 seconds)
+const PING_INTERVAL_MS = 30000;
 
 /**
  * Device Relay
- * 
+ *
  * Handles WebSocket connections from ESP32 devices.
  * Each device maintains a persistent connection to the cloud.
  */
 export class DeviceRelay {
   private devices = new Map<string, DeviceConnection>();
-  private messageHandlers = new Set<(deviceId: string, message: DeviceMessage) => void>();
+  private messageHandlers = new Set<
+    (deviceId: string, message: DeviceMessage) => void
+  >();
+  private pingInterval: NodeJS.Timeout | null = null;
 
   constructor(wss: WebSocketServer) {
-    wss.on('connection', (ws, req) => this.handleConnection(ws, req));
+    wss.on("connection", (ws, req) => this.handleConnection(ws, req));
+
+    // Start ping interval to keep connections alive
+    this.pingInterval = setInterval(() => {
+      this.pingAllDevices();
+    }, PING_INTERVAL_MS);
+  }
+
+  /**
+   * Ping all connected devices to keep connections alive
+   */
+  private pingAllDevices(): void {
+    this.devices.forEach((connection, deviceId) => {
+      if (!connection.isAlive) {
+        // Device didn't respond to last ping - disconnect
+        console.log(`[Device] ${deviceId} ping timeout - disconnecting`);
+        connection.ws.terminate();
+        return;
+      }
+
+      // Mark as not alive until we receive pong
+      connection.isAlive = false;
+      connection.ws.ping();
+    });
   }
 
   private handleConnection(ws: WebSocket, req: IncomingMessage): void {
-    const url = new URL(req.url || '', `http://${req.headers.host}`);
-    const deviceId = url.searchParams.get('id');
-    const deviceKey = url.searchParams.get('key');
+    const url = new URL(req.url || "", `http://${req.headers.host}`);
+    const deviceId = url.searchParams.get("id");
+    const deviceKey = url.searchParams.get("key");
 
     // Validate required parameters
     if (!deviceId || !deviceKey) {
       console.warn(`[Device] Connection rejected: missing ID or key`);
-      ws.close(4001, 'Missing device ID or key');
+      ws.close(4001, "Missing device ID or key");
       return;
     }
 
     // Validate device ID format (BRW-XXXXXXXX)
     if (!/^BRW-[A-F0-9]{8}$/i.test(deviceId)) {
-      console.warn(`[Device] Connection rejected: invalid ID format: ${deviceId}`);
-      ws.close(4001, 'Invalid device ID format');
+      console.warn(
+        `[Device] Connection rejected: invalid ID format: ${deviceId}`
+      );
+      ws.close(4001, "Invalid device ID format");
       return;
     }
 
     // Validate device key (base64url, 32 bytes = ~43 chars)
     if (deviceKey.length < 32 || deviceKey.length > 64) {
-      console.warn(`[Device] Connection rejected: invalid key length for ${deviceId}`);
-      ws.close(4003, 'Invalid device key format');
+      console.warn(
+        `[Device] Connection rejected: invalid key length for ${deviceId}`
+      );
+      ws.close(4003, "Invalid device key format");
       return;
     }
 
     // Verify device key against database
     if (!verifyDeviceKey(deviceId, deviceKey)) {
       console.warn(`[Device] Connection rejected: invalid key for ${deviceId}`);
-      ws.close(4003, 'Invalid device credentials');
+      ws.close(4003, "Invalid device credentials");
       return;
     }
 
@@ -61,7 +95,7 @@ export class DeviceRelay {
     const existing = this.devices.get(deviceId);
     if (existing) {
       console.log(`[Device] Replacing connection for ${deviceId}`);
-      existing.ws.close(4002, 'Replaced by new connection');
+      existing.ws.close(4002, "Replaced by new connection");
     }
 
     const connection: DeviceConnection = {
@@ -69,10 +103,17 @@ export class DeviceRelay {
       deviceId,
       connectedAt: new Date(),
       lastSeen: new Date(),
+      isAlive: true,
     };
 
     this.devices.set(deviceId, connection);
     console.log(`[Device] Connected: ${deviceId} (authenticated)`);
+
+    // Handle pong responses for keep-alive
+    ws.on("pong", () => {
+      connection.isAlive = true;
+      connection.lastSeen = new Date();
+    });
 
     // Update device online status in database
     try {
@@ -82,8 +123,9 @@ export class DeviceRelay {
     }
 
     // Handle messages from device
-    ws.on('message', (data: RawData) => {
+    ws.on("message", (data: RawData) => {
       connection.lastSeen = new Date();
+      connection.isAlive = true; // Any message means device is alive
       try {
         const message: DeviceMessage = JSON.parse(data.toString());
         this.handleDeviceMessage(deviceId, message);
@@ -93,30 +135,30 @@ export class DeviceRelay {
     });
 
     // Handle disconnect
-    ws.on('close', () => {
+    ws.on("close", () => {
       this.devices.delete(deviceId);
       console.log(`[Device] Disconnected: ${deviceId}`);
-      
+
       // Update device offline status in database
       try {
         updateDeviceStatus(deviceId, false);
       } catch (err) {
         console.error(`[Device] Failed to update status for ${deviceId}:`, err);
       }
-      
+
       // Notify handlers of disconnect
-      this.notifyHandlers(deviceId, { type: 'device_offline' });
+      this.notifyHandlers(deviceId, { type: "device_offline" });
     });
 
-    ws.on('error', (err) => {
+    ws.on("error", (err) => {
       console.error(`[Device] Error from ${deviceId}:`, err);
     });
 
     // Send welcome
-    this.sendToDevice(deviceId, { type: 'connected', timestamp: Date.now() });
-    
+    this.sendToDevice(deviceId, { type: "connected", timestamp: Date.now() });
+
     // Notify handlers of connection
-    this.notifyHandlers(deviceId, { type: 'device_online' });
+    this.notifyHandlers(deviceId, { type: "device_online" });
   }
 
   private handleDeviceMessage(deviceId: string, message: DeviceMessage): void {
@@ -129,13 +171,15 @@ export class DeviceRelay {
   }
 
   private notifyHandlers(deviceId: string, message: DeviceMessage): void {
-    this.messageHandlers.forEach(handler => handler(deviceId, message));
+    this.messageHandlers.forEach((handler) => handler(deviceId, message));
   }
 
   /**
    * Subscribe to messages from devices
    */
-  onDeviceMessage(handler: (deviceId: string, message: DeviceMessage) => void): () => void {
+  onDeviceMessage(
+    handler: (deviceId: string, message: DeviceMessage) => void
+  ): () => void {
     this.messageHandlers.add(handler);
     return () => this.messageHandlers.delete(handler);
   }
@@ -171,7 +215,11 @@ export class DeviceRelay {
   /**
    * Get list of connected devices
    */
-  getConnectedDevices(): Array<{ id: string; connectedAt: Date; lastSeen: Date }> {
+  getConnectedDevices(): Array<{
+    id: string;
+    connectedAt: Date;
+    lastSeen: Date;
+  }> {
     return Array.from(this.devices.entries()).map(([id, conn]) => ({
       id,
       connectedAt: conn.connectedAt,
@@ -179,4 +227,3 @@ export class DeviceRelay {
     }));
   }
 }
-
