@@ -13,6 +13,7 @@ import { Logo } from "./Logo";
 import { InstallPrompt, usePWAInstall } from "./InstallPrompt";
 import { ConnectionOverlay } from "./ConnectionOverlay";
 import { DeviceOfflineBanner } from "./DeviceOfflineBanner";
+import { DeviceOfflineOverlay } from "./DeviceOfflineOverlay";
 import { VersionWarning } from "./VersionWarning";
 import { UserMenu } from "./UserMenu";
 import { BrewingModeOverlay } from "./BrewingModeOverlay";
@@ -225,6 +226,11 @@ export function Layout({ onExitDemo }: LayoutProps) {
         {/* Connection Overlay - Only for local mode (not demo) */}
         {!isCloud && !isDemo && <ConnectionOverlay />}
 
+        {/* Device Offline Overlay - Cloud mode when device is offline */}
+        {isCloud && selectedDevice && !selectedDevice.isOnline && (
+          <DeviceOfflineOverlay deviceName={selectedDevice.name} />
+        )}
+
         {/* Brewing Mode Overlay */}
         <BrewingModeOverlay />
       </div>
@@ -374,6 +380,11 @@ export function Layout({ onExitDemo }: LayoutProps) {
 
       {/* Connection Overlay - Only for local mode (not demo) */}
       {!isCloud && !isDemo && <ConnectionOverlay />}
+
+      {/* Device Offline Overlay - Cloud mode when device is offline */}
+      {isCloud && selectedDevice && !selectedDevice.isOnline && (
+        <DeviceOfflineOverlay deviceName={selectedDevice.name} />
+      )}
 
       {/* Brewing Mode Overlay - Shows full-screen brewing UI during extraction */}
       <BrewingModeOverlay />

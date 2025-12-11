@@ -72,6 +72,9 @@ WebServer* webServer = nullptr;
 DNSServer dnsServer;
 bool dnsServerRunning = false;
 
+// Pre-infusion default pause time (ms) when enabled but no specific pause time is saved
+static constexpr uint16_t DEFAULT_PREINFUSION_PAUSE_MS = 5000;
+
 // =============================================================================
 // LOG LEVEL CONTROL
 // =============================================================================
@@ -435,7 +438,7 @@ static void onPicoPacket(const PicoPacket& packet) {
             if (brewSettings.preinfusionTime > 0 || brewSettings.preinfusionPressure > 0) {
                 bool enabled = brewSettings.preinfusionPressure > 0;
                 uint16_t onTimeMs = (uint16_t)(brewSettings.preinfusionTime * 1000);
-                uint16_t pauseTimeMs = enabled ? 5000 : 0;  // Default pause time
+                uint16_t pauseTimeMs = enabled ? DEFAULT_PREINFUSION_PAUSE_MS : 0;
                 
                 uint8_t preinfPayload[6];
                 preinfPayload[0] = CONFIG_PREINFUSION;
