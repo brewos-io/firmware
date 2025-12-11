@@ -412,7 +412,7 @@ static bool downloadToFile(const char* url, const char* filePath,
                 }
                 
                 // Update WebSocket progress (limit frequency to avoid flooding)
-                if (ws && millis() - lastProgressUpdate > 1000) {  // Changed from 500ms to 1000ms
+                if (ws && millis() - lastProgressUpdate > 1000) {  // Limit to once per second
                     int progress = progressStart + (written * (progressEnd - progressStart)) / contentLength;
                     if (progress > lastProgress) {
                         lastProgress = progress;
@@ -422,7 +422,7 @@ static bool downloadToFile(const char* url, const char* filePath,
                 }
             }
         } else {
-            delay(10);  // Increased from 1ms
+            delay(10);  // Reduce CPU spinning while waiting for data
             feedWatchdog();
         }
     }
@@ -746,13 +746,13 @@ void WebServer::startGitHubOTA(const String& version) {
                 
                 // Progress 70-95% (only broadcast every 5%)
                 int progress = 70 + (written * 25) / contentLength;
-                if (progress >= lastProgress + 5) {  // Changed from 3 to 5 to reduce WebSocket flooding
+                if (progress >= lastProgress + 5) {  // Report every 5% to limit message frequency
                     lastProgress = progress;
                     broadcastOtaProgress(&_ws, "download", progress, "Installing...");
                 }
             }
         } else {
-            delay(10);  // Increased from 1ms to reduce CPU spin
+            delay(10);  // Reduce CPU spinning while waiting for data
             feedWatchdog();
         }
     }
