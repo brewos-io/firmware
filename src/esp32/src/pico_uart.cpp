@@ -11,7 +11,8 @@ PicoUART::PicoUART(HardwareSerial& serial)
     , _packetsReceived(0)
     , _packetErrors(0)
     , _lastPacketTime(0)
-    , _connected(false) {
+    , _connected(false)
+    , _paused(false) {
 }
 
 void PicoUART::begin() {
@@ -37,6 +38,12 @@ void PicoUART::begin() {
 }
 
 void PicoUART::loop() {
+    // Skip processing if paused (during OTA)
+    // This prevents the packet handler from consuming bootloader ACK bytes
+    if (_paused) {
+        return;
+    }
+    
     // Update connection status first (safe operation)
     if (_lastPacketTime > 0) {
         _connected = (millis() - _lastPacketTime) < 2000;
@@ -267,41 +274,28 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
     // 2. Raw bootloader ACK (0xAA 0x55)
     
     unsigned long startTime = millis();
-    uint8_t expected[2] = {0xAA, 0x55};
     uint8_t index = 0;
-    
-    // Wait a moment for Pico to process command and enter bootloader
-    // (Pico has 50ms delay before sending ACK)
-    delay(100);
-    
-    // Clear any pending data from normal protocol (status packets, etc)
-    int drained = 0;
-    while (Serial1.available()) {
-        Serial1.read();
-        drained++;
-    }
-    if (drained > 0) {
-        LOG_I("Drained %d bytes from UART buffer", drained);
-    }
+    int bytesRead = 0;
     
     // Reset packet state machine to avoid interference
-    // (We're reading raw bytes, not packets)
     RxState savedState = _rxState;
     _rxState = RxState::WAIT_START;
     
     LOG_I("Waiting for bootloader ACK (0xAA 0x55)...");
-    int bytesRead = 0;
+    
+    // DON'T drain buffer - the ACK might already be there!
+    // Instead, look for 0xAA 0x55 pattern in ALL incoming data
     
     while ((millis() - startTime) < timeoutMs) {
         if (Serial1.available()) {
             uint8_t byte = Serial1.read();
             bytesRead++;
             
-            if (index == 0 && byte == expected[0]) {
+            if (index == 0 && byte == 0xAA) {
                 // Got first byte (0xAA) - could be protocol sync or bootloader ACK
                 index = 1;
             } else if (index == 1) {
-                if (byte == expected[1]) {
+                if (byte == 0x55) {
                     // Got second byte (0x55) - this is the bootloader ACK!
                     LOG_I("Bootloader ACK received after %d bytes, %lu ms", 
                           bytesRead, millis() - startTime);
@@ -312,14 +306,16 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
                     if (bytesRead < 50) {  // Only log first few bytes to avoid spam
                         LOG_D("Got 0xAA then 0x%02X (not ACK)", byte);
                     }
-                    index = (byte == expected[0]) ? 1 : 0;
+                    index = (byte == 0xAA) ? 1 : 0;
                 }
             } else {
-                // Reset
-                index = (byte == expected[0]) ? 1 : 0;
+                // Check if this byte starts a new potential ACK
+                index = (byte == 0xAA) ? 1 : 0;
             }
+        } else {
+            // Small delay to avoid busy-waiting
+            delay(1);
         }
-        delay(1);
     }
     
     // Restore state

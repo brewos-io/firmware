@@ -2222,10 +2222,26 @@ void WebServer::handleStartOTA(AsyncWebServerRequest* request) {
     
     broadcastLogLevel("info", "Starting Pico firmware update...");
     
+    // IMPORTANT: Pause packet processing BEFORE sending bootloader command
+    // This prevents the main loop's picoUart.loop() from consuming the bootloader ACK bytes
+    _picoUart.pause();
+    
     // Step 1: Send bootloader command via UART (serial bootloader - preferred method)
+    // Retry up to 3 times if command fails
     broadcastLogLevel("info", "Sending bootloader command to Pico...");
-    if (!_picoUart.sendCommand(MSG_CMD_BOOTLOADER, nullptr, 0)) {
-        broadcastLogLevel("error", "Failed to send bootloader command");
+    bool commandSent = false;
+    for (int attempt = 1; attempt <= 3 && !commandSent; attempt++) {
+        if (_picoUart.sendCommand(MSG_CMD_BOOTLOADER, nullptr, 0)) {
+            commandSent = true;
+        } else if (attempt < 3) {
+            broadcastLogLevel("warning", "Retry sending bootloader command...");
+            delay(100);
+        }
+    }
+    
+    if (!commandSent) {
+        broadcastLogLevel("error", "Failed to send bootloader command after 3 attempts");
+        _picoUart.resume();
         firmwareFile.close();
         return;
     }
@@ -2233,8 +2249,9 @@ void WebServer::handleStartOTA(AsyncWebServerRequest* request) {
     // Step 2: Wait for bootloader ACK (0xAA 0x55)
     // The bootloader sends this ACK to confirm it's ready to receive firmware
     broadcastLogLevel("info", "Waiting for bootloader ACK...");
-    if (!_picoUart.waitForBootloaderAck(2000)) {
+    if (!_picoUart.waitForBootloaderAck(3000)) {
         broadcastLogLevel("error", "Bootloader ACK timeout - bootloader may not be ready");
+        _picoUart.resume();
         firmwareFile.close();
         return;
     }
@@ -2248,6 +2265,7 @@ void WebServer::handleStartOTA(AsyncWebServerRequest* request) {
     
     if (!success) {
         broadcastLogLevel("error", "Firmware update failed");
+        _picoUart.resume();
         // Fallback: Try hardware bootloader entry
         broadcastLogLevel("info", "Attempting hardware bootloader entry (fallback)...");
         _picoUart.enterBootloader();
@@ -2261,6 +2279,9 @@ void WebServer::handleStartOTA(AsyncWebServerRequest* request) {
     delay(1000);
     broadcastLogLevel("info", "Resetting Pico...");
     _picoUart.resetPico();
+    
+    // Resume packet processing to receive boot info from Pico
+    _picoUart.resume();
     
     broadcastLogLevel("info", "Firmware update complete. Pico should boot with new firmware.");
 }

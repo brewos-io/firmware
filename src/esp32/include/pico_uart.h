@@ -44,6 +44,11 @@ public:
     size_t streamFirmwareChunk(const uint8_t* data, size_t len, uint32_t chunkNumber);
     bool waitForBootloaderAck(uint32_t timeoutMs = 1000);  // Wait for 0xAA 0x55 ACK from bootloader
     
+    // Pause/resume packet processing (for OTA)
+    void pause() { _paused = true; }    // Stop loop() from processing packets
+    void resume() { _paused = false; _rxState = RxState::WAIT_START; }  // Resume packet processing
+    bool isPaused() { return _paused; }
+    
     // Brew-by-weight control
     void setWeightStop(bool active);       // Set WEIGHT_STOP signal (HIGH = stop brew)
     
@@ -81,6 +86,7 @@ private:
     uint32_t _packetErrors;
     unsigned long _lastPacketTime;
     bool _connected;
+    bool _paused;  // When true, loop() won't process incoming data (for OTA)
     
     // CRC calculation
     uint16_t calculateCRC(const uint8_t* data, size_t length);

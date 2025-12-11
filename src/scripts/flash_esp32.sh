@@ -1,9 +1,11 @@
 #!/bin/bash
 # Flash ESP32 firmware and web files via USB
-# Usage: ./scripts/flash_esp32.sh [port] [--skip-prompt] [--firmware-only]
+# Usage: ./scripts/flash_esp32.sh [port] [--skip-prompt] [--firmware-only] [--no-clean] [--factory-reset]
 #   port: Serial port (optional, auto-detects if not provided)
 #   --skip-prompt: Skip the bootloader mode prompt (for automated scripts)
 #   --firmware-only: Only flash firmware, skip web files (default: flash both)
+#   --no-clean: Skip clean rebuild (faster, but may use cached code)
+#   --factory-reset: Erase entire flash before flashing (complete clean slate)
 
 set -e
 set -o pipefail  # Make pipes fail if any command in the pipeline fails
@@ -32,6 +34,8 @@ echo -e "${NC}"
 # Check flags
 FIRMWARE_ONLY=false
 SKIP_PROMPT=false
+DO_CLEAN=true  # Default: always clean build to ensure latest code
+FACTORY_RESET=false
 for arg in "$@"; do
     case "$arg" in
         --firmware-only)
@@ -39,6 +43,12 @@ for arg in "$@"; do
             ;;
         --skip-prompt)
             SKIP_PROMPT=true
+            ;;
+        --no-clean)
+            DO_CLEAN=false
+            ;;
+        --factory-reset)
+            FACTORY_RESET=true
             ;;
     esac
 done
@@ -57,14 +67,21 @@ if [ "$FIRMWARE_ONLY" = false ]; then
             echo -e "${BLUE}Installing web dependencies...${NC}"
             npm install
         fi
-        # Always clean old files before building (prevent stale hashed assets)
-        echo -e "${BLUE}Cleaning old web files...${NC}"
-        rm -rf "$WEB_DATA_DIR/assets" 2>/dev/null || true
-        rm -f "$WEB_DATA_DIR/index.html" "$WEB_DATA_DIR/favicon.svg" \
-              "$WEB_DATA_DIR/logo.png" "$WEB_DATA_DIR/logo-icon.svg" \
-              "$WEB_DATA_DIR/manifest.json" "$WEB_DATA_DIR/sw.js" \
-              "$WEB_DATA_DIR/version-manifest.json" 2>/dev/null || true
-        rm -rf "$WEB_DATA_DIR/.well-known" 2>/dev/null || true
+        # Completely clear data directory before building (prevent ANY stale files)
+        echo -e "${BLUE}Clearing data directory (removing all old web files)...${NC}"
+        if [ -d "$WEB_DATA_DIR" ]; then
+            # Remove entire directory and recreate to ensure ALL files are gone (including hidden)
+            rm -rf "$WEB_DATA_DIR"
+            mkdir -p "$WEB_DATA_DIR"
+            echo -e "${GREEN}✓ Data directory cleared${NC}"
+        else
+            mkdir -p "$WEB_DATA_DIR"
+            echo -e "${GREEN}✓ Data directory created${NC}"
+        fi
+        
+        # Also clear the web build output to ensure fresh build
+        echo -e "${BLUE}Clearing web build cache...${NC}"
+        rm -rf "$WEB_DIR/dist"
         
         echo -e "${BLUE}Building web UI for ESP32...${NC}"
         if ! npm run build:esp32; then
@@ -101,7 +118,18 @@ if [ "$FIRMWARE_ONLY" = false ]; then
         fi
         
         WEB_FILE_COUNT=$(find "$WEB_DATA_DIR" -type f | wc -l | tr -d ' ')
-        echo -e "${GREEN}✓ Web files verified: $WEB_FILE_COUNT files in $WEB_DATA_DIR${NC}"
+        WEB_DATA_SIZE=$(du -sh "$WEB_DATA_DIR" | cut -f1)
+        
+        # Check that files are fresh (modified within last 60 seconds)
+        NEWEST_FILE=$(find "$WEB_DATA_DIR" -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+        if [ -n "$NEWEST_FILE" ]; then
+            NEWEST_AGE=$(($(date +%s) - $(stat -f "%m" "$NEWEST_FILE" 2>/dev/null || echo 0)))
+            if [ "$NEWEST_AGE" -gt 60 ]; then
+                echo -e "${YELLOW}⚠ Warning: Web files may be stale (newest file is ${NEWEST_AGE}s old)${NC}"
+            fi
+        fi
+        
+        echo -e "${GREEN}✓ Web files verified: $WEB_FILE_COUNT files ($WEB_DATA_SIZE) in $WEB_DATA_DIR${NC}"
         cd "$ESP32_DIR"
     else
         echo -e "${YELLOW}⚠ npm not found - skipping web build${NC}"
@@ -113,13 +141,22 @@ if [ "$FIRMWARE_ONLY" = false ]; then
     fi
 fi
 
-# Always build firmware (PlatformIO will rebuild only changed files, but ensures latest code)
-# Use --verbose to see what's being rebuilt
+# Clean build by default (ensures fresh compile of all files)
+if [ "$DO_CLEAN" = true ]; then
+    echo -e "${BLUE}Cleaning previous build (use --no-clean to skip)...${NC}"
+    pio run -e esp32s3 -t clean
+fi
+
+# Build firmware (PlatformIO will rebuild only changed files unless --clean was used)
 echo -e "${BLUE}Running PlatformIO build...${NC}"
 if ! pio run -e esp32s3; then
     echo -e "${RED}✗ Build failed!${NC}"
     exit 1
 fi
+
+# Show firmware hash for verification
+FIRMWARE_HASH=$(shasum -a 256 "$FIRMWARE" 2>/dev/null | head -c 16)
+echo -e "${GREEN}✓ Build complete - Firmware hash: ${CYAN}$FIRMWARE_HASH${NC}"
 
 # Build LittleFS image if not firmware-only
 if [ "$FIRMWARE_ONLY" = false ]; then
@@ -165,7 +202,7 @@ echo -e "${BLUE}Detecting serial port...${NC}"
 PORT=""
 for arg in "$@"; do
     case "$arg" in
-        --skip-prompt|--firmware-only)
+        --skip-prompt|--firmware-only|--no-clean|--factory-reset)
             # Skip flags
             ;;
         *)
@@ -293,6 +330,9 @@ if [ "$FIRMWARE_ONLY" = false ]; then
         echo -e "📦 Web Files: ${YELLOW}(not found)${NC}"
     fi
 fi
+if [ "$FACTORY_RESET" = true ]; then
+    echo -e "🔄 Mode: ${YELLOW}FACTORY RESET (full flash erase)${NC}"
+fi
 echo ""
 
 if [ "$SKIP_PROMPT" = false ]; then
@@ -353,6 +393,38 @@ fi
 
 # Track flash success across both paths
 FLASH_SUCCESS=false
+
+# OTA data partition address and size (from ESP32 partition table)
+# This partition stores which OTA slot to boot from
+OTADATA_ADDR="0xd000"
+OTADATA_SIZE="0x2000"
+
+# Factory reset: erase entire flash first
+if [ "$FACTORY_RESET" = true ]; then
+    echo -e "${YELLOW}🔄 Factory reset: Erasing entire flash...${NC}"
+    echo -e "${BLUE}This will take about 30-60 seconds...${NC}"
+    
+    if ! "$PYTHON_CMD" "$ESPTOOL_PY" --chip esp32s3 --port "$PORT" erase_flash; then
+        echo -e "${RED}✗ Flash erase failed!${NC}"
+        echo -e "${YELLOW}Make sure ESP32 is in bootloader mode and try again${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ Flash erased successfully${NC}"
+    echo ""
+else
+    # Always erase OTA data partition to ensure new firmware boots
+    # This clears the boot selection, forcing boot from the primary app partition
+    echo -e "${YELLOW}🔄 Erasing OTA data partition (ensures fresh firmware boots)...${NC}"
+    echo -e "${BLUE}Erasing ${OTADATA_SIZE} bytes at ${OTADATA_ADDR}...${NC}"
+    
+    if ! "$PYTHON_CMD" "$ESPTOOL_PY" --chip esp32s3 --port "$PORT" erase_region "$OTADATA_ADDR" "$OTADATA_SIZE" 2>&1; then
+        echo -e "${YELLOW}⚠ OTA data erase failed (may need bootloader mode), continuing...${NC}"
+        # Don't exit - this is not fatal, the device may not be in bootloader mode yet
+    else
+        echo -e "${GREEN}✓ OTA data partition erased${NC}"
+    fi
+    echo ""
+fi
 
 # Flash firmware and filesystem together if not firmware-only
 if [ "$FIRMWARE_ONLY" = false ] && [ -f "$LITTLEFS_IMAGE" ]; then
@@ -501,6 +573,7 @@ fi
 if [ "$FLASH_SUCCESS" = true ]; then
     echo ""
     echo -e "${GREEN}✓ Flash complete!${NC}"
+    echo -e "${CYAN}Firmware hash: $FIRMWARE_HASH${NC}"
     echo ""
     echo "Monitor serial output with:"
     echo -e "  ${CYAN}cd src/esp32 && pio device monitor -p $PORT${NC}"
@@ -510,4 +583,3 @@ else
     echo -e "${RED}✗ Flash did not complete successfully${NC}"
     exit 1
 fi
-

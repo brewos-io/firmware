@@ -174,37 +174,68 @@ static inline void feedWatchdog() {
  * Disable the Task Watchdog Timer for OTA operations
  * OTA can involve long-blocking operations (SSL, flash erase) that would trigger WDT
  * 
- * We need to disable WDT for multiple tasks:
- * - Current task (loopTask) - main Arduino loop
- * - async_tcp task - AsyncWebServer/AsyncTCP runs on CPU 1
+ * Strategy: 
+ * 1. Remove current task (loopTask) from WDT monitoring
+ * 2. Try to remove async_tcp from WDT (may fail - owned by AsyncTCP library)
+ * 3. Try to deinit WDT completely
+ * 4. If deinit fails, reinit with longer timeout (60 seconds)
+ * 
+ * Note: ESP-IDF 4.4 doesn't have esp_task_wdt_reconfigure(), so we use deinit+init
  */
 static void disableWatchdogForOTA() {
-    // Disable watchdog for current task (loopTask)
+    LOG_I("Disabling watchdog for OTA...");
+    
+    // First, try to remove current task from WDT
     esp_err_t err = esp_task_wdt_delete(NULL);
     if (err == ESP_OK) {
-        LOG_I("Task watchdog disabled for loopTask");
+        LOG_I("Removed loopTask from WDT");
     } else if (err == ESP_ERR_NOT_FOUND) {
-        LOG_I("loopTask watchdog not active");
+        LOG_D("loopTask not subscribed to WDT");
+    } else {
+        LOG_D("loopTask WDT delete returned: %d", err);
     }
     
-    // Try to find and disable watchdog for async_tcp task
+    // Try to remove async_tcp task from WDT
     // This task is created by AsyncTCP library and runs on CPU 1
     TaskHandle_t asyncTcpTask = xTaskGetHandle("async_tcp");
     if (asyncTcpTask != NULL) {
         err = esp_task_wdt_delete(asyncTcpTask);
         if (err == ESP_OK) {
-            LOG_I("Task watchdog disabled for async_tcp");
+            LOG_I("Removed async_tcp from WDT");
         } else if (err == ESP_ERR_NOT_FOUND) {
-            LOG_I("async_tcp watchdog not active");
+            LOG_D("async_tcp not subscribed to WDT");
         } else {
-            LOG_W("Could not disable async_tcp watchdog: %d", err);
+            LOG_W("Could not remove async_tcp from WDT: %d", err);
         }
+    } else {
+        LOG_D("async_tcp task not found");
     }
     
-    // Also try to deinit the entire watchdog timer as a fallback
-    // This is aggressive but ensures no WDT triggers during OTA
-    esp_task_wdt_deinit();
-    LOG_I("Task watchdog fully disabled for OTA");
+    // Try to deinit the WDT completely
+    err = esp_task_wdt_deinit();
+    if (err == ESP_OK) {
+        LOG_I("WDT deinitialized successfully");
+        _watchdogDisabled = true;
+        return;
+    }
+    
+    // Deinit failed - tasks still subscribed. Try to reinit with longer timeout.
+    // Note: This requires deinit to succeed first, so we'll try a workaround
+    LOG_W("WDT deinit failed (err=%d) - tasks still subscribed", err);
+    
+    // Last resort: try to reinit with longer timeout (this usually fails if already init)
+    // But we try anyway in case the state is inconsistent
+    err = esp_task_wdt_init(60, false);  // 60 second timeout, no panic
+    if (err == ESP_OK) {
+        LOG_I("WDT reinitialized with 60 second timeout");
+    } else if (err == ESP_ERR_INVALID_STATE) {
+        // Already initialized - this is expected. The WDT is still active with
+        // its original timeout. We've removed loopTask, so it won't trigger for us.
+        // The async_tcp might still trigger, but we've done what we can.
+        LOG_W("WDT already initialized - async_tcp may still trigger WDT during long downloads");
+    } else {
+        LOG_W("WDT init returned: %d", err);
+    }
     
     _watchdogDisabled = true;
 }
@@ -212,19 +243,25 @@ static void disableWatchdogForOTA() {
 /**
  * Re-enable the Task Watchdog Timer after OTA
  * Note: After successful OTA, the device restarts so this is mainly for failed OTA recovery
- * We don't fully reinit the WDT - just re-add the current task and let the system recover on reboot
  */
 static void enableWatchdogAfterOTA() {
     _watchdogDisabled = false;
     
-    // Re-add current task to watchdog (best effort)
-    // Full WDT recovery happens on device restart
+    // Try to re-add current task to watchdog
+    // Note: Full WDT recovery happens on device restart
     esp_err_t err = esp_task_wdt_add(NULL);
     if (err == ESP_OK) {
         LOG_I("Task watchdog re-enabled for current task");
+    } else if (err == ESP_ERR_INVALID_STATE) {
+        // WDT not initialized - try to init with default settings
+        err = esp_task_wdt_init(5, true);  // 5 second timeout, panic on trigger
+        if (err == ESP_OK) {
+            LOG_I("WDT reinitialized with default config");
+            esp_task_wdt_add(NULL);
+        }
     } else {
         // Don't worry about errors - device will restart anyway
-        LOG_D("Watchdog re-enable returned: %d (device will restart)", err);
+        LOG_D("WDT add returned: %d (device will restart)", err);
     }
 }
 
@@ -412,7 +449,8 @@ static bool downloadToFile(const char* url, const char* filePath,
                 }
                 
                 // Update WebSocket progress (limit frequency to avoid flooding)
-                if (ws && millis() - lastProgressUpdate > 1000) {  // Limit to once per second
+                // Broadcast at most every 2 seconds to prevent WebSocket queue overflow
+                if (ws && millis() - lastProgressUpdate > 2000) {
                     int progress = progressStart + (written * (progressEnd - progressStart)) / contentLength;
                     if (progress > lastProgress) {
                         lastProgress = progress;
@@ -519,10 +557,16 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
     broadcastOtaProgress(&_ws, "flash", 42, "Preparing device...");
     feedWatchdog();
     
+    // IMPORTANT: Pause packet processing BEFORE sending bootloader command
+    // This prevents the main loop's picoUart.loop() from consuming the bootloader ACK bytes
+    _picoUart.pause();
+    LOG_I("Paused UART packet processing for bootloader handshake");
+    
     if (!_picoUart.sendCommand(MSG_CMD_BOOTLOADER, nullptr, 0)) {
         LOG_E("Failed to send bootloader command");
         broadcastLogLevel("error", "Update error: Device not responding");
         broadcastOtaProgress(&_ws, "error", 0, "Device not responding");
+        _picoUart.resume();  // Resume on failure
         flashFile.close();
         cleanupOtaFiles();
         return false;
@@ -540,6 +584,7 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
         LOG_E("Bootloader ACK timeout");
         broadcastLogLevel("error", "Update error: Device not ready");
         broadcastOtaProgress(&_ws, "error", 0, "Device not ready");
+        _picoUart.resume();  // Resume on failure
         flashFile.close();
         cleanupOtaFiles();
         return false;
@@ -559,6 +604,7 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
         LOG_E("Pico firmware streaming failed");
         broadcastLogLevel("error", "Update error: Installation failed");
         broadcastOtaProgress(&_ws, "error", 0, "Installation failed");
+        _picoUart.resume();  // Resume on failure
         return false;
     }
     
@@ -568,6 +614,11 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
     delay(500);
     feedWatchdog();
     _picoUart.resetPico();
+    
+    // Resume packet processing BEFORE waiting for Pico to boot
+    // so we can receive the boot info packets
+    _picoUart.resume();
+    LOG_I("Resumed UART packet processing");
     
     // Wait for Pico to boot
     LOG_I("Waiting for Pico to boot...");
@@ -744,9 +795,9 @@ void WebServer::startGitHubOTA(const String& version) {
                     lastProgressLog = millis();
                 }
                 
-                // Progress 70-95% (only broadcast every 5%)
+                // Progress 70-95% (only broadcast every 10% to avoid WebSocket queue overflow)
                 int progress = 70 + (written * 25) / contentLength;
-                if (progress >= lastProgress + 5) {  // Report every 5% to limit message frequency
+                if (progress >= lastProgress + 10) {  // Report every 10% to limit message frequency
                     lastProgress = progress;
                     broadcastOtaProgress(&_ws, "download", progress, "Installing...");
                 }
@@ -903,6 +954,9 @@ void WebServer::updateLittleFS(const char* tag) {
 
 void WebServer::startCombinedOTA(const String& version) {
     LOG_I("Starting combined OTA for version: %s", version.c_str());
+    
+    // IMMEDIATELY tell UI that OTA is starting - this triggers the overlay
+    broadcastOtaProgress(&_ws, "download", 0, "Starting update...");
     broadcastLog("Starting BrewOS update to v%s...", version.c_str());
     
     unsigned long otaStart = millis();
