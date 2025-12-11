@@ -1170,11 +1170,21 @@ void WebServer::startCombinedOTA(const String& version) {
     if (picoVersion && picoVersion[0] != '\0') {
         LOG_I("Pico version after update: %s (expected: %s)", picoVersion, version.c_str());
         if (strcmp(picoVersion, version.c_str()) != 0) {
-            LOG_W("Pico version mismatch! Got %s, expected %s", picoVersion, version.c_str());
-            // Continue anyway - the Pico firmware might have different versioning
+            LOG_E("Pico update FAILED! Got %s, expected %s", picoVersion, version.c_str());
+            broadcastLogLevel("error", "Internal controller update failed");
+            broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
+            cleanupOtaFiles();
+            handleOTAFailure(&_ws);  // Will restart device
+            return;  // Won't reach here due to restart
         }
+        LOG_I("Pico version verified: %s", picoVersion);
     } else {
-        LOG_W("Could not verify Pico version after update");
+        LOG_E("Could not verify Pico version after update - aborting");
+        broadcastLogLevel("error", "Internal controller not responding");
+        broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
+        cleanupOtaFiles();
+        handleOTAFailure(&_ws);  // Will restart device
+        return;  // Won't reach here due to restart
     }
     
     // Check total timeout

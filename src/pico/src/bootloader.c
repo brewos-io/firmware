@@ -143,61 +143,77 @@ static bool flash_write_page(uint32_t offset, const uint8_t* data) {
  * 
  * This function does not return on success - it reboots the device.
  */
+/**
+ * Copy firmware from staging area to main area.
+ * 
+ * CRITICAL SAFETY REQUIREMENTS (all code must be in RAM):
+ * 1. NO memcpy() - it's in flash and will crash after erase
+ * 2. NO watchdog_reboot() - it's in flash and will crash after erase
+ * 3. NO flash_safe_*() - they call flash functions that may be erased
+ * 4. Use timeout for multicore lockout to prevent hangs
+ * 
+ * After erasing main flash, we can ONLY use:
+ * - Direct register writes
+ * - ROM functions (flash_range_erase, flash_range_program)
+ * - Code in RAM (this function + static data)
+ */
 static void __not_in_flash_func(copy_firmware_to_main)(uint32_t firmware_size) {
-    // XIP_BASE is where flash is memory-mapped for execution
     #ifndef XIP_BASE
     #define XIP_BASE 0x10000000
     #endif
     
-    // Round up to page size
+    // PPB_BASE is always defined, but just in case
+    #ifndef PPB_BASE
+    #define PPB_BASE 0xe0000000
+    #endif
+    
     uint32_t size_pages = (firmware_size + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE;
     uint32_t size_sectors = (firmware_size + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
     
-    // CRITICAL: Kick watchdog to give us full timeout budget (2000ms)
-    // The flash copy takes time:
-    //   - Erasing 512KB: ~200-400ms
-    //   - Programming 512KB: ~200-300ms
-    // If watchdog fires during copy, device will be bricked!
+    // Kick watchdog BEFORE any flash operations (SDK function still in flash)
     watchdog_update();
     
-    // Pause Core 0 (we're on Core 1) for the entire copy operation
-    multicore_lockout_start_blocking();
+    // Try to pause Core 1 with timeout (100ms)
+    // If Core 1 doesn't respond, proceed anyway - we're about to reboot
+    multicore_lockout_start_timeout_us(100000);
     
-    // Disable interrupts for the entire copy (this is a long operation!)
+    // Disable interrupts for the entire critical operation
     uint32_t ints = save_and_disable_interrupts();
     
-    // Erase main firmware area
+    // Static buffer in RAM (BSS section)
+    static uint8_t page_buffer[FLASH_PAGE_SIZE];
+    const uint8_t* staging_addr = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
+    
+    // 1. Erase main firmware area (ROM function - always available)
     for (uint32_t sector = 0; sector < size_sectors; sector++) {
         uint32_t offset = FLASH_MAIN_OFFSET + (sector * FLASH_SECTOR_SIZE);
         flash_range_erase(offset, FLASH_SECTOR_SIZE);
     }
     
-    // Copy from staging to main, page by page
-    const uint8_t* staging_addr = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
-    
+    // 2. Copy from staging to main, page by page
     for (uint32_t page = 0; page < size_pages; page++) {
         uint32_t offset = FLASH_MAIN_OFFSET + (page * FLASH_PAGE_SIZE);
+        const uint8_t* src = staging_addr + (page * FLASH_PAGE_SIZE);
         
-        // Read page from staging area (memory-mapped read is safe)
-        // But we need to copy to a RAM buffer first because flash_range_program
-        // reads from the source while programming, which won't work during erase
-        static uint8_t page_buffer[FLASH_PAGE_SIZE];
-        memcpy(page_buffer, staging_addr + (page * FLASH_PAGE_SIZE), FLASH_PAGE_SIZE);
+        // CRITICAL: Manual byte copy - DO NOT use memcpy (it's in flash!)
+        for (uint32_t i = 0; i < FLASH_PAGE_SIZE; i++) {
+            page_buffer[i] = src[i];
+        }
         
-        // Write to main area
+        // Write to main area (ROM function - always available)
         flash_range_program(offset, page_buffer, FLASH_PAGE_SIZE);
     }
     
-    restore_interrupts(ints);
-    multicore_lockout_end_blocking();
+    // 3. Trigger reset via AIRCR register
+    // DO NOT use watchdog_reboot() - it's in the flash we just erased!
+    // AIRCR: Application Interrupt and Reset Control Register
+    // Write VECTKEY (0x05FA) and SYSRESETREQ (bit 2)
+    volatile uint32_t* aircr = (volatile uint32_t*)(PPB_BASE + 0xED0C);
+    *aircr = 0x05FA0004;
     
-    // Reboot to run new firmware
-    // Use AIRCR (Application Interrupt and Reset Control Register) for clean reset
-    watchdog_reboot(0, 0, 0);
-    
-    // Should never reach here
+    // Spin until reset happens
     while (1) {
-        tight_loop_contents();
+        __asm volatile("nop");
     }
 }
 
