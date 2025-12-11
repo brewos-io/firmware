@@ -52,16 +52,17 @@ export interface WebSocketMessage {
 }
 
 // Machine state
+// MUST match Pico state values exactly!
 export type MachineState =
   | "unknown"
-  | "init"
-  | "idle"
-  | "heating"
-  | "ready"
-  | "brewing"
-  | "steaming"
-  | "cooldown"
-  | "fault";
+  | "init"    // 0: Initializing
+  | "idle"    // 1: Machine on but not heating
+  | "heating" // 2: Actively heating to setpoint
+  | "ready"   // 3: At temperature, ready to brew
+  | "brewing" // 4: Brewing in progress
+  | "fault"   // 5: Fault condition
+  | "safe"    // 6: Safe state (all outputs off)
+  | "eco";    // 7: Eco mode (reduced temperature)
 
 export type MachineMode = "standby" | "on" | "eco";
 

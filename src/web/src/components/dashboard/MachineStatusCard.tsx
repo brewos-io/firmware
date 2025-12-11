@@ -126,7 +126,8 @@ export const MachineStatusCard = memo(function MachineStatusCard({
           state === "ready" && "bg-emerald-500",
           state === "heating" && "bg-amber-500",
           state === "brewing" && "bg-accent",
-          state === "steaming" && "bg-blue-500",
+          state === "safe" && "bg-red-500",
+          state === "eco" && "bg-blue-400",
           // Cooling state: standby but still hot
           mode === "standby" && heatingProgress > 10 && "bg-blue-400",
           // Fully cooled or never heated
@@ -268,8 +269,9 @@ function getStatusDescription(
     return "Perfect temperature reached. Ready to brew!";
   }
   if (state === "brewing") return "Extraction in progress...";
-  if (state === "steaming") return "Steam wand active.";
-  if (state === "cooldown") return "Cooling down to target temperature.";
+  if (state === "fault") return "Fault detected. Check machine.";
+  if (state === "safe") return "Safe mode - all outputs disabled.";
+  if (state === "eco") return "Eco mode - reduced temperature to save power.";
   return "Monitoring your espresso machine.";
 }
 
@@ -307,7 +309,7 @@ const StatusRing = memo(function StatusRing({
   const isActive = mode !== "standby";
   const isReady = state === "ready";
   const isHeating = state === "heating";
-  const isBrewing = state === "brewing" || state === "steaming";
+  const isBrewing = state === "brewing";
   // Standby but still hot (cooling down)
   const isCooling = mode === "standby" && heatingProgress > 10;
 

@@ -119,10 +119,39 @@ void core1_main(void) {
 }
 
 // -----------------------------------------------------------------------------
+// Command name lookup for logging
+// -----------------------------------------------------------------------------
+static const char* get_msg_name(uint8_t type) {
+    switch (type) {
+        case MSG_PING:                    return "PING";
+        case MSG_STATUS:                  return "STATUS";
+        case MSG_CMD_SET_TEMP:            return "SET_TEMP";
+        case MSG_CMD_SET_PID:             return "SET_PID";
+        case MSG_CMD_BREW:                return "BREW";
+        case MSG_CMD_MODE:                return "MODE";
+        case MSG_CMD_CONFIG:              return "CONFIG";
+        case MSG_CMD_GET_CONFIG:          return "GET_CONFIG";
+        case MSG_CMD_GET_ENV_CONFIG:      return "GET_ENV_CONFIG";
+        case MSG_CMD_CLEANING_START:      return "CLEANING_START";
+        case MSG_CMD_CLEANING_STOP:       return "CLEANING_STOP";
+        case MSG_CMD_CLEANING_RESET:      return "CLEANING_RESET";
+        case MSG_CMD_CLEANING_SET_THRESHOLD: return "CLEANING_SET_THRESHOLD";
+        case MSG_CMD_GET_STATISTICS:      return "GET_STATISTICS";
+        case MSG_CMD_DEBUG:               return "DEBUG";
+        case MSG_CMD_SET_ECO:             return "SET_ECO";
+        case MSG_CMD_BOOTLOADER:          return "BOOTLOADER";
+        case MSG_CMD_DIAGNOSTICS:         return "DIAGNOSTICS";
+        case MSG_CMD_POWER_METER_CONFIG:  return "POWER_METER_CONFIG";
+        case MSG_CMD_POWER_METER_DISCOVER: return "POWER_METER_DISCOVER";
+        default:                          return "UNKNOWN";
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Packet Handler (called from Core 1)
 // -----------------------------------------------------------------------------
 void handle_packet(const packet_t* packet) {
-    DEBUG_PRINT("RX packet: type=0x%02X len=%d\n", packet->type, packet->length);
+    LOG_PRINT("CMD: %s (0x%02X) len=%d\n", get_msg_name(packet->type), packet->type, packet->length);
     
     // Register heartbeat from ESP32
     safety_esp32_heartbeat();

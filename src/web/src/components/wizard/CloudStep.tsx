@@ -23,6 +23,7 @@ interface CloudStepProps {
   onCopy: () => void;
   onSkip: () => void;
   onCloudEnabledChange: (enabled: boolean) => void;
+  onRetry?: () => void;
 }
 
 export function CloudStep({
@@ -36,6 +37,7 @@ export function CloudStep({
   onCopy,
   onSkip,
   onCloudEnabledChange,
+  onRetry,
 }: CloudStepProps) {
   const isMobileLandscape = useMobileLandscape();
 
@@ -71,8 +73,13 @@ export function CloudStep({
                   <Check className="w-14 h-14 text-emerald-500" />
                 </div>
               ) : (
-                <div className="w-36 h-36 flex items-center justify-center bg-theme-secondary rounded-xl">
-                  <AlertCircle className="w-8 h-8 text-theme-muted" />
+                <div className="w-36 h-36 flex flex-col items-center justify-center bg-theme-secondary rounded-xl p-3">
+                  <AlertCircle className="w-8 h-8 text-theme-muted mb-2" />
+                  {onRetry && (
+                    <Button variant="secondary" size="sm" onClick={onRetry}>
+                      Retry
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -84,31 +91,38 @@ export function CloudStep({
                   <p className="text-base font-medium text-emerald-500">✓ Cloud Connected</p>
                   <p className="text-sm text-theme-muted">Accessible from cloud.brewos.io</p>
                 </div>
-              ) : (
+              ) : pairing ? (
                 <>
                   <p className="text-sm text-theme-muted">
                     Scan with your phone or visit{" "}
                     <a href="https://cloud.brewos.io" className="text-accent font-semibold hover:underline">cloud.brewos.io</a>
                   </p>
-                  {pairing && (
-                    <div className="space-y-2">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted">
-                        Manual Code
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 bg-theme-secondary px-4 py-3 rounded-xl text-lg font-mono text-theme text-center font-semibold tracking-wider">
-                          {pairing.manualCode || pairing.deviceId.substring(0, 8)}
-                        </code>
-                        <Button variant="secondary" onClick={onCopy}>
-                          {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                        </Button>
-                      </div>
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-theme-muted">
+                      Manual Code
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-theme-secondary px-4 py-3 rounded-xl text-lg font-mono text-theme text-center font-semibold tracking-wider">
+                        {pairing.manualCode || pairing.deviceId.substring(0, 8)}
+                      </code>
+                      <Button variant="secondary" onClick={onCopy}>
+                        {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                      </Button>
                     </div>
-                  )}
+                  </div>
                   <button onClick={onSkip} className="text-sm text-theme-muted hover:text-theme">
                     Skip for now — complete later in Settings
                   </button>
                 </>
+              ) : !loading && (
+                <div className="space-y-3">
+                  <p className="text-sm text-theme-muted">
+                    {error || "Could not generate pairing code"}
+                  </p>
+                  <button onClick={onSkip} className="text-sm text-theme-muted hover:text-theme">
+                    Skip for now — complete later in Settings
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -233,9 +247,14 @@ export function CloudStep({
                 ) : (
                   <div className="text-center py-4 xs:py-8">
                     <AlertCircle className="w-8 h-8 xs:w-12 xs:h-12 text-theme-muted mx-auto mb-2 xs:mb-3 opacity-50" />
-                    <p className="text-theme-muted font-medium text-xs xs:text-base">
-                      Could not generate pairing code
+                    <p className="text-theme-muted font-medium text-xs xs:text-base mb-3">
+                      {error || "Could not generate pairing code"}
                     </p>
+                    {onRetry && (
+                      <Button variant="secondary" size="sm" onClick={onRetry}>
+                        Try Again
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

@@ -71,15 +71,18 @@ void WebServer::processCommand(JsonDocument& doc) {
     String type = doc["type"] | "";
     
     if (type == "ping") {
+        LOG_I("Command: ping");
         _picoUart.sendPing();
     } 
     else if (type == "getConfig") {
+        LOG_I("Command: getConfig");
         _picoUart.requestConfig();
     }
     else if (type == "setLogLevel") {
         // Set log level from WebSocket command
         // Expected payload: { type: "setLogLevel", level: "debug" | "info" | "warn" | "error" }
         String levelStr = doc["level"] | "info";
+        LOG_I("Command: setLogLevel=%s", levelStr.c_str());
         BrewOSLogLevel level = stringToLogLevel(levelStr.c_str());
         setLogLevel(level);
         broadcastLog("Log level set to: %s", logLevelToString(level));
@@ -87,6 +90,7 @@ void WebServer::processCommand(JsonDocument& doc) {
     else if (type == "command") {
         // Handle commands from web UI
         String cmd = doc["cmd"] | "";
+        LOG_I("Command: %s", cmd.c_str());
         
         if (cmd == "set_eco") {
             // Set eco mode configuration

@@ -37,8 +37,9 @@ const meta: Meta<typeof MockMachineStatusCard> = {
         "heating",
         "ready",
         "brewing",
-        "steaming",
-        "cooldown",
+        "fault",
+        "safe",
+        "eco",
       ],
     },
     heatingStrategy: {
@@ -96,12 +97,12 @@ export const Brewing: Story = {
   },
 };
 
-export const Steaming: Story = {
+export const SafeMode: Story = {
   args: {
-    mode: "on",
-    state: "steaming",
+    mode: "standby",
+    state: "safe",
     isDualBoiler: true,
-    heatingStrategy: 2,
+    heatingStrategy: null,
   },
 };
 

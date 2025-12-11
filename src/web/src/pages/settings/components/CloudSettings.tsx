@@ -238,7 +238,7 @@ export function CloudSettings() {
         connected: cloudConfig?.connected || false,
         serverUrl: cloudUrl,
       });
-      
+
       // If enabling cloud, fetch pairing QR after a short delay to allow backend to process
       if (cloudEnabled) {
         setTimeout(() => {
@@ -309,7 +309,54 @@ export function CloudSettings() {
   return (
     <div className="space-y-6">
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        {/* Pairing QR Code */}
+        {/* Cloud Status - Left column, row 1 */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-accent/10 rounded-lg">
+              <Cloud className="w-5 h-5 text-accent" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-theme">Cloud Status</h2>
+              <p className="text-sm text-theme-muted">
+                Connection to BrewOS Cloud
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Wifi className="w-4 h-4 text-theme-muted" />
+                <span className="text-sm text-theme-secondary">
+                  Cloud Connection
+                </span>
+              </div>
+              <Badge variant={cloudConfig?.connected ? "success" : "default"}>
+                {cloudConfig?.connected ? "Connected" : "Disconnected"}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-theme-muted" />
+                <span className="text-sm text-theme-secondary">Server</span>
+              </div>
+              <span className="text-sm text-theme-muted font-mono">
+                {cloudConfig?.serverUrl || "Not configured"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-theme-muted" />
+                <span className="text-sm text-theme-secondary">Machine ID</span>
+              </div>
+              <span className="text-sm text-theme-muted font-mono">
+                {pairing?.deviceId || "—"}
+              </span>
+            </div>
+          </div>
+        </Card>
+
+        {/* Pairing QR Code - Right column, spans 2 rows */}
         <Card className="lg:row-span-2">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-accent/10 rounded-lg">
@@ -445,56 +492,7 @@ export function CloudSettings() {
           )}
         </Card>
 
-        {/* Cloud Status */}
-        <Card>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-accent/10 rounded-lg">
-              <Cloud className="w-5 h-5 text-accent" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-theme">Cloud Status</h2>
-              <p className="text-sm text-theme-muted">
-                Connection to BrewOS Cloud
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2">
-                <Wifi className="w-4 h-4 text-theme-muted" />
-                <span className="text-sm text-theme-secondary">
-                  Cloud Connection
-                </span>
-              </div>
-              <Badge variant={cloudConfig?.connected ? "success" : "default"}>
-                {cloudConfig?.connected ? "Connected" : "Disconnected"}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-theme-muted" />
-                <span className="text-sm text-theme-secondary">Server</span>
-              </div>
-              <span className="text-sm text-theme-muted font-mono">
-                {cloudConfig?.serverUrl || "Not configured"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-theme-muted" />
-                <span className="text-sm text-theme-secondary">
-                  Machine ID
-                </span>
-              </div>
-              <span className="text-sm text-theme-muted font-mono">
-                {pairing?.deviceId || "—"}
-              </span>
-            </div>
-          </div>
-        </Card>
-
-        {/* Cloud Settings */}
+        {/* Cloud Settings - Left column, row 2 */}
         <Card className="flex flex-col">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-theme-secondary rounded-lg">
@@ -528,9 +526,7 @@ export function CloudSettings() {
               </label>
               <div className="flex flex-wrap gap-2">
                 {(Object.keys(CLOUD_ENVIRONMENTS) as CloudEnvironment[])
-                  .filter(
-                    (env) => !CLOUD_ENVIRONMENTS[env].devOnly || devMode
-                  )
+                  .filter((env) => !CLOUD_ENVIRONMENTS[env].devOnly || devMode)
                   .map((env) => (
                     <button
                       key={env}

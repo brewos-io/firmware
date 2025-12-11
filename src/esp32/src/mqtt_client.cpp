@@ -242,10 +242,9 @@ void MQTTClient::publishStatus(const ui_state_t& state) {
         case UI_STATE_HEATING: stateStr = "heating"; modeStr = "on"; break;
         case UI_STATE_READY: stateStr = "ready"; modeStr = "on"; break;
         case UI_STATE_BREWING: stateStr = "brewing"; modeStr = "on"; break;
-        case UI_STATE_STEAMING: stateStr = "steaming"; modeStr = "on"; break;
-        case UI_STATE_COOLDOWN: stateStr = "cooldown"; modeStr = "on"; break;
         case UI_STATE_FAULT: stateStr = "fault"; modeStr = "standby"; break;
         case UI_STATE_SAFE: stateStr = "safe"; modeStr = "standby"; break;
+        case UI_STATE_ECO: stateStr = "eco"; modeStr = "eco"; break;
     }
     doc["state"] = stateStr;
     doc["mode"] = modeStr;

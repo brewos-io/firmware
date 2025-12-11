@@ -94,11 +94,12 @@ export function Stats() {
       const response = await fetch("/api/stats/extended");
       if (response.ok) {
         const data: ExtendedStatsResponse = await response.json();
-        if (data.weekly) setWeeklyData(data.weekly);
-        if (data.hourlyDistribution) setHourlyData(data.hourlyDistribution);
-        if (data.powerHistory) setPowerHistory(data.powerHistory);
-        if (data.dailyHistory) setDailyHistory(data.dailyHistory);
-        if (data.brewHistory) setBrewHistory(data.brewHistory);
+        // Only set chart data if arrays are returned (not summary objects)
+        if (Array.isArray(data.weekly)) setWeeklyData(data.weekly);
+        if (Array.isArray(data.hourlyDistribution)) setHourlyData(data.hourlyDistribution);
+        if (Array.isArray(data.powerHistory)) setPowerHistory(data.powerHistory);
+        if (Array.isArray(data.dailyHistory)) setDailyHistory(data.dailyHistory);
+        if (Array.isArray(data.brewHistory)) setBrewHistory(data.brewHistory);
       }
     } catch {
       generateWeeklyEstimate();

@@ -38,11 +38,15 @@ export function SystemSettings() {
   const navigate = useNavigate();
   const esp32 = useStore((s) => s.esp32);
   const pico = useStore((s) => s.pico);
+  const connectionState = useStore((s) => s.connectionState);
   const clearLogs = useStore((s) => s.clearLogs);
   const { sendCommandWithConfirm } = useCommand();
+  
+  const isConnected = connectionState === "connected";
   const devMode = useDevMode();
 
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(
     null
   );
@@ -52,14 +56,17 @@ export function SystemSettings() {
   const [showBetaWarning, setShowBetaWarning] = useState(false);
 
   const handleCheckForUpdates = useCallback(async () => {
-    if (!esp32.version) return;
+    // Use a fallback version if not yet received from device
+    const version = esp32.version || "0.0.0";
 
     setCheckingUpdate(true);
+    setUpdateError(null);
     try {
-      const result = await checkForUpdates(esp32.version);
+      const result = await checkForUpdates(version);
       setUpdateResult(result);
     } catch (error) {
       console.error("Failed to check for updates:", error);
+      setUpdateError("Failed to check for updates. Please try again.");
     } finally {
       setCheckingUpdate(false);
     }
@@ -67,10 +74,9 @@ export function SystemSettings() {
 
   // Check for updates on mount or when channel changes
   useEffect(() => {
-    if (esp32.version) {
-      handleCheckForUpdates();
-    }
-  }, [esp32.version, channel, handleCheckForUpdates]);
+    // Auto-check for updates when component mounts
+    handleCheckForUpdates();
+  }, [channel, handleCheckForUpdates]);
 
   const [showDevWarning, setShowDevWarning] = useState(false);
 
@@ -145,13 +151,13 @@ export function SystemSettings() {
   const factoryReset = async () => {
     await sendCommandWithConfirm(
       "factory_reset",
-      "This will erase all settings including WiFi, schedules, and preferences. This action cannot be undone.",
+      "This will erase ALL settings including WiFi credentials, machine configuration, schedules, statistics, and cloud pairing. The device will restart in setup mode. You'll need to reconnect to the BrewOS-Setup WiFi network to reconfigure. This action cannot be undone.",
       undefined,
       {
         title: "Factory Reset?",
         variant: "danger",
         confirmText: "Reset Everything",
-        successMessage: "Factory reset initiated...",
+        successMessage: "Factory reset initiated. Device is restarting in setup mode...",
       }
     );
   };
@@ -163,7 +169,9 @@ export function SystemSettings() {
         <Card>
           <CardHeader>
             <CardTitle icon={<Cpu className="w-5 h-5" />}>ESP32-S3</CardTitle>
-            <Badge variant="success">Online</Badge>
+            <Badge variant={isConnected ? "success" : "error"}>
+              {isConnected ? "Online" : "Offline"}
+            </Badge>
           </CardHeader>
           <div className="space-y-3">
             <StatusRow
@@ -349,6 +357,26 @@ export function SystemSettings() {
             )}
           </div>
         </div>
+
+        {/* Update Check Error */}
+        {updateError && (
+          <div className="p-4 rounded-xl border border-error bg-error-soft mb-4">
+            <div className="flex items-center gap-2 text-error">
+              <AlertTriangle className="w-4 h-4" />
+              <span className="text-sm">{updateError}</span>
+            </div>
+          </div>
+        )}
+
+        {/* No Releases Found */}
+        {updateResult && !updateResult.stable && !updateResult.beta && !updateResult.dev && (
+          <div className="p-4 rounded-xl border border-theme bg-theme-secondary mb-4">
+            <div className="flex items-center gap-2 text-theme-muted">
+              <Info className="w-4 h-4" />
+              <span className="text-sm">No releases found. Check your internet connection or try again later.</span>
+            </div>
+          </div>
+        )}
 
         {/* Available Updates */}
         {updateResult && (

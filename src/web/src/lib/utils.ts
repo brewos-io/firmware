@@ -62,6 +62,7 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
+// MUST match Pico state values exactly!
 export function getMachineStateLabel(state: string): string {
   const labels: Record<string, string> = {
     unknown: 'Unknown',
@@ -70,9 +71,9 @@ export function getMachineStateLabel(state: string): string {
     heating: 'Heating',
     ready: 'Ready',
     brewing: 'Brewing',
-    steaming: 'Steaming',
-    cooldown: 'Cooling Down',
     fault: 'Fault',
+    safe: 'Safe Mode',
+    eco: 'Eco Mode',
   };
   return labels[state] || state;
 }
@@ -85,9 +86,9 @@ export function getMachineStateColor(state: string): string {
     heating: 'badge-warning',
     ready: 'badge-success',
     brewing: 'bg-accent/20 text-accent',
-    steaming: 'badge-info',
-    cooldown: 'badge-info',
     fault: 'badge-error',
+    safe: 'badge-error',
+    eco: 'badge-info',
   };
   return colors[state] || 'badge-info';
 }

@@ -31,18 +31,18 @@ typedef enum {
 // =============================================================================
 // Machine States (from Pico)
 // Note: Using UI_ prefix to avoid conflict with protocol_defs.h macros
+// IMPORTANT: These values MUST match Pico's state.h exactly!
 // =============================================================================
 
 typedef enum {
-    UI_STATE_INIT = 0,
-    UI_STATE_IDLE = 1,
-    UI_STATE_HEATING = 2,
-    UI_STATE_READY = 3,
-    UI_STATE_BREWING = 4,
-    UI_STATE_STEAMING = 5,
-    UI_STATE_COOLDOWN = 6,
-    UI_STATE_FAULT = 7,
-    UI_STATE_SAFE = 8
+    UI_STATE_INIT = 0,      // Initializing
+    UI_STATE_IDLE = 1,      // Machine on but not heating (MODE_IDLE)
+    UI_STATE_HEATING = 2,   // Actively heating to setpoint
+    UI_STATE_READY = 3,     // At temperature, ready to brew
+    UI_STATE_BREWING = 4,   // Brewing in progress
+    UI_STATE_FAULT = 5,     // Fault condition
+    UI_STATE_SAFE = 6,      // Safe state (all outputs off)
+    UI_STATE_ECO = 7        // Eco mode (reduced temperature)
 } machine_state_t;
 
 // =============================================================================

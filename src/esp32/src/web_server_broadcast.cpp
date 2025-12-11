@@ -164,8 +164,8 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     static uint64_t lastShotTimestamp = 0;
     static bool wasOn = false;
     
-    // Machine is "on" when in active states (heating through cooldown)
-    bool isOn = state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_COOLDOWN;
+    // Machine is "on" when in active states (heating, ready, brewing)
+    bool isOn = state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_BREWING;
     
     // Track when machine turns on (Unix timestamp in milliseconds)
     // Bounds: year 2020 (1577836800) to year 2100 (4102444800) for overflow protection
@@ -202,6 +202,7 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     JsonObject machine = doc["machine"].to<JsonObject>();
     
     // Machine state - convert to string for web client
+    // MUST match Pico state values exactly!
     const char* stateStr = "unknown";
     switch (state.machine_state) {
         case UI_STATE_INIT: stateStr = "init"; break;
@@ -209,17 +210,18 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
         case UI_STATE_HEATING: stateStr = "heating"; break;
         case UI_STATE_READY: stateStr = "ready"; break;
         case UI_STATE_BREWING: stateStr = "brewing"; break;
-        case UI_STATE_STEAMING: stateStr = "steaming"; break;
-        case UI_STATE_COOLDOWN: stateStr = "cooldown"; break;
         case UI_STATE_FAULT: stateStr = "fault"; break;
         case UI_STATE_SAFE: stateStr = "safe"; break;
+        case UI_STATE_ECO: stateStr = "eco"; break;
     }
     machine["state"] = stateStr;
     
     // Machine mode - derive from state
     const char* modeStr = "standby";
-    if (state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_COOLDOWN) {
+    if (state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_BREWING) {
         modeStr = "on";
+    } else if (state.machine_state == UI_STATE_ECO) {
+        modeStr = "eco";
     }
     machine["mode"] = modeStr;
     machine["isHeating"] = state.is_heating;

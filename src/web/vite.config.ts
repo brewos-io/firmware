@@ -125,7 +125,10 @@ export default defineConfig(({ mode, command }) => {
 
   // Version from RELEASE_VERSION env var (set by CI) or 'dev' for local builds
   const version = process.env.RELEASE_VERSION || "dev";
-  const environment = env.VITE_ENVIRONMENT || "development";
+  // ESP32 builds should use "production" mode (not mock data), cloud defaults to env var or "development"
+  const environment = isEsp32 
+    ? "production" 
+    : (env.VITE_ENVIRONMENT || "development");
 
   return {
     plugins: [

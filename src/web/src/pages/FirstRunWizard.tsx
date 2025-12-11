@@ -91,25 +91,43 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
     setCheckingCloudStatus(false);
   }, []);
 
+  const [pairingError, setPairingError] = useState<string | null>(null);
+  
   const fetchPairingQR = useCallback(async () => {
     setLoadingQR(true);
+    setPairingError(null);
     try {
       const response = await fetch("/api/pairing/qr");
       if (response.ok) {
         const data = await response.json();
         setPairing(data);
+      } else {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        console.error("Failed to fetch pairing QR:", response.status, errorData);
+        setPairingError(errorData.error || `HTTP ${response.status}`);
       }
-    } catch {
-      console.log("Failed to fetch pairing QR");
+    } catch (err) {
+      console.error("Failed to fetch pairing QR:", err);
+      setPairingError("Network error - please try again");
     }
     setLoadingQR(false);
   }, []);
 
-  // Fetch pairing QR and check cloud status on cloud step
+  // Enable cloud and fetch pairing QR when entering cloud step
   useEffect(() => {
     if (STEPS[currentStep].id === "cloud") {
       if (cloudEnabled) {
-        fetchPairingQR();
+        // Send command to ESP32 to enable cloud (in case it wasn't enabled yet)
+        sendCommand("set_cloud_config", {
+          enabled: true,
+          serverUrl: "wss://cloud.brewos.io",
+        });
+        
+        // Fetch QR after a delay to allow ESP32 to process the cloud enable command
+        const fetchTimeout = setTimeout(() => {
+          fetchPairingQR();
+        }, 1500);
+        
         checkCloudStatus();
 
         // Poll cloud status every 3 seconds to detect when pairing completes
@@ -117,12 +135,15 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
           checkCloudStatus();
         }, 3000);
 
-        return () => clearInterval(interval);
+        return () => {
+          clearTimeout(fetchTimeout);
+          clearInterval(interval);
+        };
       } else {
         setCloudConnected(false);
       }
     }
-  }, [currentStep, cloudEnabled, fetchPairingQR, checkCloudStatus]);
+  }, [currentStep, cloudEnabled, fetchPairingQR, checkCloudStatus, sendCommand]);
 
   const copyPairingCode = () => {
     if (pairing) {
@@ -287,7 +308,32 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
     setCurrentStep((prev) => Math.max(prev - 1, 0));
   };
 
+  // Handle cloud toggle - must send command to ESP32 before QR can be fetched
+  const handleCloudEnabledChange = useCallback((enabled: boolean) => {
+    setCloudEnabled(enabled);
+    
+    // Send command to ESP32 to enable/disable cloud
+    sendCommand("set_cloud_config", {
+      enabled,
+      serverUrl: "wss://cloud.brewos.io",
+    });
+    
+    if (enabled) {
+      // Clear any previous pairing data
+      setPairing(null);
+      // Fetch QR after a delay to allow ESP32 to process the command
+      setTimeout(() => {
+        fetchPairingQR();
+      }, 1000);
+    } else {
+      // Clear pairing data when disabling
+      setPairing(null);
+    }
+  }, [sendCommand, fetchPairingQR]);
+
   const skipCloud = () => {
+    // Disable cloud on ESP32 when skipping
+    sendCommand("set_cloud_config", { enabled: false });
     setCloudEnabled(false);
     setCurrentStep(STEPS.length - 1);
   };
@@ -330,10 +376,11 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
             cloudEnabled={cloudEnabled}
             cloudConnected={cloudConnected}
             checkingStatus={checkingCloudStatus}
-            error={errors.cloudNotPaired}
+            error={pairingError || errors.cloudNotPaired}
             onCopy={copyPairingCode}
             onSkip={skipCloud}
-            onCloudEnabledChange={setCloudEnabled}
+            onCloudEnabledChange={handleCloudEnabledChange}
+            onRetry={fetchPairingQR}
           />
         );
 

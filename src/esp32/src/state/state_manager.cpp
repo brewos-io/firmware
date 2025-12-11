@@ -384,21 +384,33 @@ void StateManager::resetSettings() {
 }
 
 void StateManager::factoryReset() {
+    // Clear all settings
     _prefs.begin(NVS_SETTINGS, false);
     _prefs.clear();
     _prefs.end();
     
+    // Clear statistics
     _prefs.begin(NVS_STATS, false);
     _prefs.clear();
     _prefs.end();
     
+    // Clear MQTT settings (separate namespace)
+    _prefs.begin("mqtt", false);
+    _prefs.clear();
+    _prefs.end();
+    
+    // Note: WiFi credentials are cleared separately by WiFiManager::clearCredentials()
+    // which is called by the factory_reset command handler
+    
+    // Remove shot history file
     LittleFS.remove(SHOT_HISTORY_FILE);
     
+    // Reset in-memory state to defaults
     _settings = Settings();
     _stats = Statistics();
     _shotHistory.clear();
     
-    Serial.println("[State] Factory reset complete");
+    Serial.println("[State] Factory reset complete - all settings and stats cleared");
 }
 
 // =============================================================================

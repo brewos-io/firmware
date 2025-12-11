@@ -617,10 +617,9 @@ const char* UI::getStateText(uint8_t state) {
         case UI_STATE_HEATING: return "HEATING";
         case UI_STATE_READY: return "READY";
         case UI_STATE_BREWING: return "BREWING";
-        case UI_STATE_STEAMING: return "STEAMING";
-        case UI_STATE_COOLDOWN: return "COOLING";
         case UI_STATE_FAULT: return "FAULT";
         case UI_STATE_SAFE: return "SAFE MODE";
+        case UI_STATE_ECO: return "ECO";
         default: return "UNKNOWN";
     }
 }
@@ -642,10 +641,9 @@ lv_color_t UI::getStateColor(uint8_t state) {
         case UI_STATE_HEATING: return COLOR_WARNING;
         case UI_STATE_READY: return COLOR_SUCCESS;
         case UI_STATE_BREWING: return COLOR_ACCENT_ORANGE;
-        case UI_STATE_STEAMING: return COLOR_TEMP_HOT;
-        case UI_STATE_COOLDOWN: return COLOR_INFO;
         case UI_STATE_FAULT: return COLOR_ERROR;
         case UI_STATE_SAFE: return COLOR_ERROR;
+        case UI_STATE_ECO: return COLOR_INFO;
         default: return COLOR_TEXT_MUTED;
     }
 }
