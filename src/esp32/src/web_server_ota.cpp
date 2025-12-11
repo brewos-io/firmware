@@ -102,6 +102,8 @@ static void pauseServicesForOTA(CloudConnection* cloudConnection) {
  * Handle OTA failure - restart device to ensure clean state
  * After a failed OTA attempt, the device may be in an inconsistent state.
  * Restarting ensures all services are properly re-initialized.
+ * 
+ * Note: _otaInProgress flag is reset on device restart, no explicit reset needed here.
  */
 static void handleOTAFailure(AsyncWebSocket* ws) {
     LOG_E("OTA failed - restarting device to restore clean state");
