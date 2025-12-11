@@ -227,8 +227,8 @@ if (isProduction && sslCertPath && sslKeyPath) {
     const sslOptions: SecureContextOptions = {
       cert: readFileSync(sslCertPath),
       key: readFileSync(sslKeyPath),
-      // Require TLS 1.2 or higher
-      minVersion: "TLSv1.2",
+      // Require TLS 1.3 or higher
+      minVersion: "TLSv1.3",
     };
 
     // Optional: Add CA certificate for client certificate validation
