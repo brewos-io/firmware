@@ -60,6 +60,9 @@ public:
     uint32_t getPacketErrors() { return _packetErrors; }
     bool isConnected() { return _connected; }
     int bytesAvailable() { return Serial1.available(); }  // Check if any raw bytes are available
+    
+    // Reset connection state (used during OTA to properly detect reconnection)
+    void clearConnectionState() { _connected = false; _lastPacketTime = 0; }
 
 private:
     HardwareSerial& _serial;

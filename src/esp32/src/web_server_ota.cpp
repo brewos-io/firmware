@@ -709,6 +709,9 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
         Serial1.read();
     }
     
+    // Clear connection state so we can detect when Pico actually reconnects
+    _picoUart.clearConnectionState();
+    
     // Wait for Pico to self-reset and reconnect
     // The bootloader copies firmware (~1-3s) then resets via AIRCR register
     // Don't blindly reset - wait for it to come back on its own
