@@ -1715,28 +1715,32 @@ void WebServer::setupRoutes() {
             return;
         }
         
-        // Try to serve static file from LittleFS
+        // Check if URL has a file extension (likely a static file request)
+        // SPA routes like /brewing, /stats, /settings don't have extensions
         String path = url;
         if (path == "/") path = "/index.html";
         
-        if (LittleFS.exists(path)) {
+        int lastSlash = path.lastIndexOf('/');
+        int lastDot = path.lastIndexOf('.');
+        bool hasFileExtension = (lastDot > lastSlash);  // Has extension after last slash
+        
+        // Only try LittleFS for paths that look like files (have extensions)
+        if (hasFileExtension && LittleFS.exists(path)) {
             String contentType = getContentType(path);
-            // Use request->send(LittleFS, path) which handles streaming correctly
             request->send(LittleFS, path, contentType);
             return;
         }
         
-        // SPA fallback - serve index.html for React Router paths
-        // (paths like /stats, /settings, etc. that don't exist as files)
-        if (!url.startsWith("/assets/")) {
-            Serial.printf("[WEB] SPA fallback: %s -> index.html\n", url.c_str());
-            request->send(LittleFS, "/index.html", "text/html");
+        // Asset files that don't exist should 404
+        if (url.startsWith("/assets/")) {
+            Serial.printf("[WEB] Asset not found: %s\n", path.c_str());
+            request->send(404, "text/plain", "Not found");
             return;
         }
         
-        // Asset file not found
-        Serial.printf("[WEB] File not found: %s\n", path.c_str());
-        request->send(404, "text/plain", "Not found");
+        // SPA fallback - serve index.html for React Router paths
+        // (paths like /brewing, /stats, /settings, etc.)
+        request->send(LittleFS, "/index.html", "text/html");
     });
     
     LOG_I("Routes setup complete");
@@ -2236,8 +2240,15 @@ String WebServer::getContentType(const String& filename) {
     if (filename.endsWith(".js")) return "application/javascript";
     if (filename.endsWith(".json")) return "application/json";
     if (filename.endsWith(".png")) return "image/png";
+    if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) return "image/jpeg";
+    if (filename.endsWith(".gif")) return "image/gif";
+    if (filename.endsWith(".svg")) return "image/svg+xml";
     if (filename.endsWith(".ico")) return "image/x-icon";
-    return "text/plain";
+    if (filename.endsWith(".woff")) return "font/woff";
+    if (filename.endsWith(".woff2")) return "font/woff2";
+    if (filename.endsWith(".webp")) return "image/webp";
+    if (filename.endsWith(".webmanifest")) return "application/manifest+json";
+    return "application/octet-stream";
 }
 
 bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {

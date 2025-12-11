@@ -17,8 +17,8 @@
 // Max retries before giving up for a longer period
 #define MAX_QUICK_DISCONNECT_RETRIES 3
 
-// Long backoff after too many quick disconnects (5 minutes)
-#define LONG_BACKOFF_MS 300000
+// Long backoff after too many quick disconnects (30 seconds)
+#define LONG_BACKOFF_MS 30000
 
 CloudConnection::CloudConnection() {
 }
@@ -89,7 +89,7 @@ void CloudConnection::loop() {
                           freeHeap, MIN_FREE_HEAP_FOR_SSL);
                     lowMemLogged = true;
                 }
-                // Wait much longer before retrying (5 minutes)
+                // Wait longer before retrying (30 seconds)
                 _lastConnectAttempt = now;
                 _reconnectDelay = LONG_BACKOFF_MS;
                 _inLongBackoff = true;
@@ -226,7 +226,7 @@ void CloudConnection::handleEvent(WStype_t type, uint8_t* payload, size_t length
                         
                         // Trigger long backoff immediately if too many quick disconnects
                         if (_quickDisconnectCount >= MAX_QUICK_DISCONNECT_RETRIES) {
-                            LOG_W("Too many quick disconnects - backing off for 5 minutes");
+                            LOG_W("Too many quick disconnects - backing off for 30 seconds");
                             _reconnectDelay = LONG_BACKOFF_MS;
                             _inLongBackoff = true;
                             _lastConnectAttempt = millis();  // Use fresh timestamp

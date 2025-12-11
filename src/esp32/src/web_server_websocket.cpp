@@ -185,6 +185,7 @@ void WebServer::processCommand(JsonDocument& doc) {
                 // immediate response to the user command
                 if (modeCmd == 0x00) {  // MODE_IDLE
                     // Force state to IDLE immediately - will be confirmed by next status packet
+                    extern ui_state_t machineState;
                     machineState.machine_state = UI_STATE_IDLE;
                     machineState.is_heating = false;
                 }
