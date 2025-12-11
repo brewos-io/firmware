@@ -512,93 +512,276 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
 
 # Sheet 4: SSR Drivers
 
-## 4.1 SSR Trigger Circuit
+## 4.1 External SSR System Overview
+
+**CRITICAL CONCEPT:** The PCB provides ONLY low-voltage (5V DC) control signals to external
+Solid State Relays. The SSRs are mounted externally and switch mains power directly to heaters
+using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through this PCB.
 
 ```
-                            SSR TRIGGER CIRCUIT
+    ═══════════════════════════════════════════════════════════════════════════════════════
+                        COMPLETE SSR SYSTEM WIRING DIAGRAM
+    ═══════════════════════════════════════════════════════════════════════════════════════
+
+    ┌─────────────────────────────────────────────────────────────────────────────────────┐
+    │                              CONTROL PCB (This Board)                               │
+    │                                                                                     │
+    │   J26 Terminal Block (Pins 15-18 for SSR Control)                                  │
+    │   ┌───────────────────────────────────────────────────┐                            │
+    │   │  ... │ 15  │ 16  │ 17  │ 18  │                    │                            │
+    │   │      │SSR1+│SSR1-│SSR2+│SSR2-│                    │                            │
+    │   └──────┴──┬──┴──┬──┴──┬──┴──┬──┴────────────────────┘                            │
+    │             │     │     │     │                                                     │
+    │             │     │     │     └──────── 5V DC (SSR2 control -)                     │
+    │             │     │     └────────────── 5V DC (SSR2 control +)                     │
+    │             │     └──────────────────── 5V DC (SSR1 control -)                     │
+    │             └────────────────────────── 5V DC (SSR1 control +)                     │
+    │                                                                                     │
+    │   Internal Driver Circuit (GPIO13 → SSR1, GPIO14 → SSR2)                           │
+    │                                                                                     │
+    └─────────────────────────────────────────────────────────────────────────────────────┘
+                  │     │     │     │
+                  │     │     │     │   ◄─── 4 wires to external SSRs
+                  │     │     │     │        (low voltage, ~5V DC, <20mA)
+                  ▼     ▼     ▼     ▼
+    ┌─────────────────────────────────────────────────────────────────────────────────────┐
+    │                           EXTERNAL SSR MODULES (Mounted in machine)                 │
+    │                                                                                     │
+    │   ┌─────────────────────────────┐       ┌─────────────────────────────┐            │
+    │   │   SSR1 - BREW HEATER        │       │   SSR2 - STEAM HEATER       │            │
+    │   │   KS15 D-24Z25-LQ           │       │   KS15 D-24Z25-LQ           │            │
+    │   │                             │       │                             │            │
+    │   │   DC CONTROL SIDE:          │       │   DC CONTROL SIDE:          │            │
+    │   │   ┌─────────────────────┐   │       │   ┌─────────────────────┐   │            │
+    │   │   │  (+)           (-)  │   │       │   │  (+)           (-)  │   │            │
+    │   │   │   ▲             ▲   │   │       │   │   ▲             ▲   │   │            │
+    │   │   └───┼─────────────┼───┘   │       │   └───┼─────────────┼───┘   │            │
+    │   │       │             │       │       │       │             │       │            │
+    │   │  from J26-15   from J26-16  │       │  from J26-17   from J26-18  │            │
+    │   │   (SSR1+)       (SSR1-)     │       │   (SSR2+)       (SSR2-)     │            │
+    │   │                             │       │                             │            │
+    │   │   AC LOAD SIDE:             │       │   AC LOAD SIDE:             │            │
+    │   │   ┌─────────────────────┐   │       │   ┌─────────────────────┐   │            │
+    │   │   │  (L)           (T)  │   │       │   │  (L)           (T)  │   │            │
+    │   │   │   ▲             │   │   │       │   │   ▲             │   │   │            │
+    │   │   └───┼─────────────┼───┘   │       │   └───┼─────────────┼───┘   │            │
+    │   │       │             │       │       │       │             │       │            │
+    │   └───────┼─────────────┼───────┘       └───────┼─────────────┼───────┘            │
+    │           │             │                       │             │                    │
+    │           │             ▼                       │             ▼                    │
+    │           │       To Brew Heater                │       To Steam Heater            │
+    │           │       (1300W typical)               │       (1000W typical)            │
+    │           │                                     │                                  │
+    └───────────┼─────────────────────────────────────┼──────────────────────────────────┘
+                │                                     │
+                │                                     │
+    ┌───────────┴─────────────────────────────────────┴──────────────────────────────────┐
+    │                        MACHINE MAINS WIRING (Existing in machine)                  │
+    │                                                                                     │
+    │   Machine Mains ────────────┬───────────────────┬──────────────────────────────────│
+    │   Live (220V)               │                   │                                  │
+    │                             ▼                   ▼                                  │
+    │                        SSR1 (L)            SSR2 (L)                                │
+    │                                                                                     │
+    │   Heater Return ◄───── Brew Heater ◄───── SSR1 (T)                                 │
+    │   to Neutral           Element                                                     │
+    │                                                                                     │
+    │   Heater Return ◄───── Steam Heater ◄──── SSR2 (T)                                 │
+    │   to Neutral           Element                                                     │
+    │                                                                                     │
+    └─────────────────────────────────────────────────────────────────────────────────────┘
+
+    ═══════════════════════════════════════════════════════════════════════════════════════
+                               SSR CONNECTION QUICK REFERENCE
+    ═══════════════════════════════════════════════════════════════════════════════════════
+
+    │ Function      │ PCB Terminal │ Wire To        │ Signal Type  │ Wire Gauge │
+    │───────────────│──────────────│────────────────│──────────────│────────────│
+    │ SSR1 Ctrl (+) │ J26-15       │ SSR1 DC (+)    │ +5V DC       │ 22-26 AWG  │
+    │ SSR1 Ctrl (-) │ J26-16       │ SSR1 DC (-)    │ Switched GND │ 22-26 AWG  │
+    │ SSR2 Ctrl (+) │ J26-17       │ SSR2 DC (+)    │ +5V DC       │ 22-26 AWG  │
+    │ SSR2 Ctrl (-) │ J26-18       │ SSR2 DC (-)    │ Switched GND │ 22-26 AWG  │
+    │───────────────│──────────────│────────────────│──────────────│────────────│
+    │ SSR1 Load (L) │ NOT ON PCB   │ Machine Live   │ 220V AC      │ 14-16 AWG  │
+    │ SSR1 Load (T) │ NOT ON PCB   │ Brew Heater    │ 220V AC      │ 14-16 AWG  │
+    │ SSR2 Load (L) │ NOT ON PCB   │ Machine Live   │ 220V AC      │ 14-16 AWG  │
+    │ SSR2 Load (T) │ NOT ON PCB   │ Steam Heater   │ 220V AC      │ 14-16 AWG  │
+
+    ⚠️ KEY POINTS FOR HARDWARE ENGINEER:
+    ─────────────────────────────────────
+    1. J26 pins 15-18 carry ONLY 5V DC control signals (<20mA per channel)
+    2. SSR AC terminals connect to EXISTING machine wiring, NOT to this PCB
+    3. This PCB has NO high-current traces for heaters
+    4. External SSRs must be mounted on heatsink (25A rating handles 1300W load with margin)
+    5. SSR internal optocoupler provides 3kV isolation between control and load sides
+
+```
+
+## 4.2 SSR Trigger Circuit (PCB Detail)
+
+```
+                            SSR TRIGGER CIRCUIT (On-PCB)
     ════════════════════════════════════════════════════════════════════════════
 
-    (Identical circuit for SSR1 and SSR2)
+    (Identical driver circuit for SSR1 and SSR2)
 
-    IMPORTANT: SSR has internal current limiting - NO series resistor needed!
-    SSR input spec: 4-32V DC (KS15 D-24Z25-LQ)
+    IMPORTANT: External SSR has internal current limiting - NO series resistor needed!
+    External SSR input spec: 4-32V DC (KS15 D-24Z25-LQ)
 
-                                        +5V
+                                        +5V (from PCB 5V rail)
                                          │
                ┌─────────────────────────┴─────────────────────────┐
                │                                                   │
                │                                              ┌────┴────┐
                │                                              │  330Ω   │
                │                                              │ R34/35  │
+               │                                              │ (LED)   │
                │                                              └────┬────┘
+               │                                                   │
+               │                                              ┌────┴────┐
+               │                                              │   LED   │
+               │                                              │ Orange  │
+               │                                              │ LED5/6  │
+               │                                              │ (Status)│
+               │                                              └────┬────┘
+               │                                                   │
                ▼                                                   │
-    ┌──────────────────┐                                      ┌────┴────┐
-    │  To SSR Input    │                                      │   LED   │
-    │  (+) Positive    │                                      │ Orange  │
-    │ J26-17/19 (SSR+) │                                      │ LED5/6  │
-    └────────┬─────────┘                                      └────┬────┘
-             │                                                     │
-             │    ┌───────────────────────────────┐                │
-             │    │   EXTERNAL SSR                │                │
-             │    │   (has internal LED+resistor) │                │
-             │    │   KS15 D-24Z25-LQ             │                │
-             │    └───────────────────────────────┘                │
-             │                                                     │
-    ┌────────┴─────────┐                                           │
-    │  To SSR Input    │                                           │
-    │  (-) Negative    ├───────────────────────────────────────────┤
-    │ J26-18/20 (SSR-) │                                           │
-    └────────┬─────────┘                                      ┌────┴────┐
-             │                                                │    C    │
-             │                                                │  Q5/Q6  │  MMBT2222A
-             │                                                │   NPN   │
-             └───────────────────────────────────────────────►│    E    │
+    ┌──────────────────────┐                                       │
+    │     J26-15 or J26-17 │ ◄──── Screw terminal on PCB edge      │
+    │        (SSR+)        │       Wire to External SSR (+)        │
+    │      +5V output      │                                       │
+    └──────────┬───────────┘                                       │
+               │                                                   │
+               │                                                   │
+               ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·│·  ·
+               :           EXTERNAL WIRING (to SSR module)         :
+               :                    ~50cm cable                    :
+               :                                                   :
+               :    ┌───────────────────────────────────────┐      :
+               :    │   EXTERNAL SSR MODULE                 │      :
+               :    │   (KS15 D-24Z25-LQ, mounted on        │      :
+               :    │    heatsink inside machine)           │      :
+               :    │                                       │      :
+               :    │   ┌─────┐ DC Control ┌─────┐          │      :
+               :    │   │ (+) │◄───────────│ (-) │          │      :
+               :    │   └──┬──┘            └──┬──┘          │      :
+               :    │      │    (Internal     │             │      :
+               :    │      │   LED+resistor)  │             │      :
+               :    │      │                  │             │      :
+               :    │   ═══╪══════════════════╪═══          │      :
+               :    │   ║  │  OPTOCOUPLER &   │  ║          │      :
+               :    │   ║  │  TRIAC (3kV ISO) │  ║          │      :
+               :    │   ═══╪══════════════════╪═══          │      :
+               :    │      │                  │             │      :
+               :    │   ┌──┴──┐  AC Load   ┌──┴──┐          │      :
+               :    │   │ (L) │            │ (T) │          │      :
+               :    │   └──┬──┘            └──┬──┘          │      :
+               :    │      │                  │             │      :
+               :    └──────┼──────────────────┼─────────────┘      :
+               :           │                  │                    :
+               :           │                  ▼                    :
+               :           │           To Heater Element           :
+               :           │           (NOT connected to PCB)      :
+               :           ▼                                       :
+               :      From Machine Mains Live                      :
+               :      (NOT connected to PCB)                       :
+               ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·
+                                                                   │
+    ┌──────────────────────┐                                       │
+    │     J26-16 or J26-18 │ ◄──── Screw terminal on PCB edge      │
+    │        (SSR-)        │       Wire to External SSR (-)        │
+    │    Switched ground   │                                       │
+    └──────────┬───────────┘                                       │
+               │                                                   │
+               └───────────────────────────────────────────────────┤
+                                                                   │
+                                                              ┌────┴────┐
+                                                              │    C    │
+                                                              │ Q5 or Q6│  MMBT2222A
+                                                              │   NPN   │  SOT-23
+                                                              │    E    │
                                                               └────┬────┘
                                                                    │
-    GPIO (13/14) ───────[470Ω R24/25]─────────────────────────────►B
+    GPIO (13 or 14) ──────[470Ω R24/25]────────────────────────────┤►B (Base)
                                   │                                │
                              ┌────┴────┐                          ─┴─
-                             │  4.7kΩ  │                          GND
-                             │ R14/15  │
+                             │  4.7kΩ  │ Pull-down                GND
+                             │ R14/15  │ (RP2350 E9 errata)
                              └────┬────┘
                                  ─┴─
                                  GND
 
-    OPERATION:
-    ──────────
-    GPIO LOW  → Transistor OFF → SSR- floating → SSR OFF (no current path)
-    GPIO HIGH → Transistor ON  → SSR- to GND   → SSR ON  (~4.8V across SSR)
+    ═══════════════════════════════════════════════════════════════════════════
+                                 OPERATION
+    ═══════════════════════════════════════════════════════════════════════════
 
-    Voltage at SSR = 5V - Vce(sat) = 5V - 0.2V = 4.8V  ✓ (exceeds 4V minimum)
+    │ GPIO State │ Transistor │ SSR- Pin     │ SSR State │ Heater   │
+    │────────────│────────────│──────────────│───────────│──────────│
+    │ LOW (0V)   │ OFF        │ Floating     │ OFF       │ OFF      │
+    │ HIGH (3.3V)│ ON         │ GND (via Vce)│ ON        │ ON       │
 
-    External SSR Connections:
-    ─────────────────────────
-    SSR1 (Brew Heater):
-        J26-17 (SSR1+) ── SSR Input (+) ── from 5V rail
-        J26-18 (SSR1-) ── SSR Input (-) ── to transistor collector
-        SSR AC Load side: Connected via EXISTING MACHINE WIRING (not through PCB)
+    When GPIO goes HIGH:
+    1. Transistor Q5/Q6 saturates (Vce ≈ 0.2V)
+    2. Current flows: +5V → J26-15 → External SSR (+) → SSR (-) → J26-16 → Q5 → GND
+    3. External SSR internal LED lights (about 10-15mA)
+    4. SSR's optocoupler triggers internal TRIAC
+    5. TRIAC closes AC circuit: Mains Live → SSR → Heater → Neutral
+    6. On-board orange LED (LED5/6) also lights to indicate SSR is active
 
-    SSR2 (Steam Heater):
-        J26-19 (SSR2+) ── SSR Input (+) ── from 5V rail
-        J26-20 (SSR2-) ── SSR Input (-) ── to transistor collector
-        SSR AC Load side: Connected via EXISTING MACHINE WIRING (not through PCB)
+    Voltage across External SSR = 5V - Vce(sat) = 5V - 0.2V = 4.8V ✓
+    (Exceeds minimum 4V trigger requirement of KS15 D-24Z25-LQ)
 
-    ⚠️ IMPORTANT: NO HIGH CURRENT THROUGH PCB
-    ────────────────────────────────────────
-    The PCB provides ONLY 5V control signals to the SSRs.
-    Mains power to SSRs uses the machine's existing wiring:
-    • Machine mains Live → SSR AC input
-    • SSR AC output → Heater element
-    • Heater return → Machine mains Neutral
 
-    Component Values:
+    ═══════════════════════════════════════════════════════════════════════════
+                         J26 TERMINAL BLOCK LAYOUT (SSR Section)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    J26 Pins 15-18 (SSR Control - part of 18-position unified terminal block):
+
+         ┌────────────────────────────────────────────────────┐
+         │   ...   │  15   │  16   │  17   │  18   │         │
+         │         │ SSR1+ │ SSR1- │ SSR2+ │ SSR2- │         │
+         │         │  +5V  │ TRIG  │  +5V  │ TRIG  │         │
+         └─────────┴───┬───┴───┬───┴───┬───┴───┬───┴─────────┘
+                       │       │       │       │
+                       │       │       │       └─► To SSR2 (-) terminal
+                       │       │       └─────────► To SSR2 (+) terminal
+                       │       └─────────────────► To SSR1 (-) terminal
+                       └─────────────────────────► To SSR1 (+) terminal
+
+    Wire Colors (Suggested):
+    ────────────────────────
+    • SSR+ wires: RED (both can share same wire gauge, 22-26 AWG)
+    • SSR- wires: BLACK or BLUE
+
+
+    ═══════════════════════════════════════════════════════════════════════════
+                              COMPONENT VALUES
+    ═══════════════════════════════════════════════════════════════════════════
+
+    EXTERNAL COMPONENTS (User provides):
+    ────────────────────────────────────
+    SSR1, SSR2: KS15 D-24Z25-LQ (25A, 4-32V DC input, 24-280V AC output)
+                Or equivalent: Crydom D2425, Fotek SSR-25DA
+                Mount on aluminum heatsink (>100cm² per SSR for 10A continuous)
+
+    ON-PCB COMPONENTS:
+    ──────────────────
+    Q5:     MMBT2222A, SOT-23 (SSR1 driver transistor)
+    Q6:     MMBT2222A, SOT-23 (SSR2 driver transistor)
+    R24:    470Ω 5% 0805 (Q5 base drive, GPIO13)
+    R25:    470Ω 5% 0805 (Q6 base drive, GPIO14)
+    R34:    330Ω 5% 0805 (LED5 current limit, ~8mA)
+    R35:    330Ω 5% 0805 (LED6 current limit, ~8mA)
+    R14:    4.7kΩ 5% 0805 (Q5 base pull-down, RP2350 errata E9)
+    R15:    4.7kΩ 5% 0805 (Q6 base pull-down, RP2350 errata E9)
+    LED5:   Orange 0805, Vf~2.0V (SSR1 status indicator)
+    LED6:   Orange 0805, Vf~2.0V (SSR2 status indicator)
+
+    GPIO ASSIGNMENTS:
     ─────────────────
-    External SSRs: KS15 D-24Z25-LQ (25A, 4-32V DC input, 24-280V AC output)
-    R24-25: 470Ω 5% 0805 (transistor base drive)
-    R34-35: 330Ω 5% 0805 (LED current limit, ~8mA brighter indicator)
-    R14-15: 4.7kΩ 5% 0805 (pull-down per RP2350 errata E9)
-    Q5-Q6:  MMBT2222A (SOT-23), Vce(sat) < 0.3V @ 100mA
-    LED5-6: Orange 0805, Vf~2.0V
+    GPIO13 → SSR1 (Brew Heater)
+    GPIO14 → SSR2 (Steam Heater)
 ```
 
 ---
@@ -681,7 +864,7 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
     • Steam (135°C): ~25 ADC counts/°C → 0.04°C resolution
 ```
 
-## 5.2 Pressure Transducer Input (J26 Pin 14-16 - Amplified 0.5-4.5V)
+## 5.2 Pressure Transducer Input (J26 Pin 12-14 - Amplified 0.5-4.5V)
 
 **⚠️ SENSOR RESTRICTION:** Circuit designed for **0.5-4.5V ratiometric ONLY**.
 
@@ -693,19 +876,19 @@ The LM4040 is buffered by an op-amp to drive the NTC pull-up network without vol
                     PRESSURE TRANSDUCER INPUT (AMPLIFIED TYPE)
     ════════════════════════════════════════════════════════════════════════════
 
-    J26-14/15/16: Pressure transducer (part of unified 24-pos terminal)
+    J26-12/13/14: Pressure transducer (part of unified 18-pos terminal)
 
                             +5V
                              │
-    J26-14 (P-5V)────────────┴────────────────────────────────── Transducer VCC
+    J26-12 (P-5V)────────────┴────────────────────────────────── Transducer VCC
     (5V)                                                         (Red wire)
 
-    J26-15 (P-GND)─────────────────────────────────────────────── Transducer GND
+    J26-13 (P-GND)─────────────────────────────────────────────── Transducer GND
     (GND)           │                                            (Black wire)
                    ─┴─
                    GND
 
-    J26-16 (P-SIG)──────────────────────┬─────────────────────── Transducer Signal
+    J26-14 (P-SIG)──────────────────────┬─────────────────────── Transducer Signal
     (Signal)                            │                        (Yellow/White wire)
     0.5V - 4.5V                         │
                                    ┌────┴────┐

@@ -2,9 +2,10 @@
 
 ## Revision History
 
-| Rev      | Date           | Description                                                                               |
-| -------- | -------------- | ----------------------------------------------------------------------------------------- |
-| **2.26** | **Dec 9 2025** | **CURRENT** - SPARE1/SPARE2 both connect ESP32↔Pico (GPIO16/22), added R74/R75 pull-downs |
+| Rev        | Date            | Description                                                                               |
+| ---------- | --------------- | ----------------------------------------------------------------------------------------- |
+| **2.26.1** | **Dec 11 2025** | **CURRENT** - Improved SSR wiring diagrams, fixed J26 pin number inconsistencies          |
+| 2.26       | Dec 9 2025      | SPARE1/SPARE2 both connect ESP32↔Pico (GPIO16/22), added R74/R75 pull-downs               |
 | 2.25     | Dec 9 2025     | J15 Pin 6 SPARE1, removed SW2/R72 (BOOTSEL not available on Pico header)                  |
 | 2.24.2   | Dec 7 2025     | 🔴 SAFETY FIXES: Wien gain corrected, MOV relocated, JP5 added                            |
 | 2.24.1   | Dec 7 2025     | CRITICAL FIXES: Buck feedback, Wien gain (wrong value), VREF isolation (DO NOT FABRICATE) |
@@ -17,6 +18,70 @@
 | 2.19     | Dec 2025       | Removed spare relay K4                                                                    |
 | 2.17     | Nov 2025       | Brew-by-weight support (J15 8-pin)                                                        |
 | 2.16     | Nov 2025       | Production-ready specification                                                            |
+
+---
+
+## v2.26.1 (December 11, 2025) - SSR Documentation Improvements
+
+**Improved external SSR relay wiring documentation for hardware engineer clarity**
+
+### Documentation Changes
+
+| File                            | Change                                              |
+| ------------------------------- | --------------------------------------------------- |
+| `Schematic_Reference.md`        | Added complete SSR system wiring diagram            |
+| `Schematic_Reference.md`        | Fixed J26 SSR pin numbers (15-18, not 17-20)        |
+| `Schematic_Reference.md`        | Fixed J26 pressure pin numbers (12-14, not 14-16)   |
+| `spec/04-Outputs.md`            | Corrected SSR trigger circuit diagram topology      |
+
+### SSR Section Improvements (Schematic_Reference.md)
+
+1. **Added Complete System Overview Diagram**
+   - Shows control PCB, external SSR modules, and machine mains wiring
+   - Clear separation between 5V DC control signals and 220V AC load paths
+   - Visual representation of what connects where
+
+2. **Added Quick Reference Wiring Table**
+
+   | Function      | PCB Terminal | Wire To        | Signal Type  | Wire Gauge |
+   | ------------- | ------------ | -------------- | ------------ | ---------- |
+   | SSR1 Ctrl (+) | J26-15       | SSR1 DC (+)    | +5V DC       | 22-26 AWG  |
+   | SSR1 Ctrl (-) | J26-16       | SSR1 DC (-)    | Switched GND | 22-26 AWG  |
+   | SSR2 Ctrl (+) | J26-17       | SSR2 DC (+)    | +5V DC       | 22-26 AWG  |
+   | SSR2 Ctrl (-) | J26-18       | SSR2 DC (-)    | Switched GND | 22-26 AWG  |
+   | SSR Load (L)  | NOT ON PCB   | Machine Live   | 220V AC      | 14-16 AWG  |
+   | SSR Load (T)  | NOT ON PCB   | Heater Element | 220V AC      | 14-16 AWG  |
+
+3. **Added Key Points for Hardware Engineer**
+   - J26 pins 15-18 carry ONLY 5V DC control signals (<20mA per channel)
+   - SSR AC terminals connect to existing machine wiring, NOT to this PCB
+   - External SSRs must be mounted on heatsink
+   - SSR optocoupler provides 3kV isolation between control and load
+
+4. **Improved PCB Detail Diagram**
+   - Clear J26 terminal block layout for SSR pins
+   - Operation state table (GPIO HIGH/LOW → SSR ON/OFF)
+   - Visual separation between on-board components and external wiring
+
+### Pin Number Corrections
+
+| Section              | Old (Incorrect)    | New (Correct)      |
+| -------------------- | ------------------ | ------------------ |
+| SSR1 Control         | J26-17/18          | J26-15/16          |
+| SSR2 Control         | J26-19/20          | J26-17/18          |
+| Pressure Transducer  | J26-14/15/16       | J26-12/13/14       |
+
+### 04-Outputs.md Fix
+
+**Problem:** SSR trigger circuit diagram showed LED and external SSR in series topology.
+
+**Fix:** Corrected to parallel topology matching Schematic_Reference.md:
+- Path 1: +5V → J26-15 (SSR+) → External SSR → J26-16 (SSR-) → Transistor → GND
+- Path 2: +5V → R34 (330Ω) → LED → Transistor → GND
+
+### No Hardware Changes
+
+This revision contains **documentation improvements only**. No component values, footprints, or netlist changes.
 
 ---
 
