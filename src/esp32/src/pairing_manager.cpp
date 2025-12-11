@@ -157,32 +157,55 @@ bool PairingManager::registerTokenWithCloud() {
         generateToken();
     }
     
-    HTTPClient http;
-    String url = _cloudUrl + "/api/devices/register-claim";
+    // Retry up to 3 times with delay (network stack may need time after WiFi connects)
+    const int maxRetries = 3;
+    const int retryDelayMs = 1000;
     
-    http.begin(url);
-    http.addHeader("Content-Type", "application/json");
-    
-    // Create request body - include device key for authentication setup
-    JsonDocument doc;
-    doc["deviceId"] = _deviceId;
-    doc["token"] = _currentToken;
-    doc["deviceKey"] = _deviceKey;  // Send device key for cloud to store
-    
-    String body;
-    serializeJson(doc, body);
-    
-    int httpCode = http.POST(body);
-    
-    if (httpCode == 200) {
-        Serial.println("[Pairing] Token and device key registered with cloud");
-        http.end();
-        return true;
-    } else {
-        Serial.printf("[Pairing] Failed to register token: %d\n", httpCode);
-        http.end();
-        return false;
+    // Convert WebSocket URL to HTTP URL
+    // wss://cloud.brewos.io -> https://cloud.brewos.io
+    // ws://cloud.brewos.io -> http://cloud.brewos.io
+    String httpUrl = _cloudUrl;
+    if (httpUrl.startsWith("wss://")) {
+        httpUrl.replace("wss://", "https://");
+    } else if (httpUrl.startsWith("ws://")) {
+        httpUrl.replace("ws://", "http://");
     }
+    
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        HTTPClient http;
+        String url = httpUrl + "/api/devices/register-claim";
+        
+        http.begin(url);
+        http.addHeader("Content-Type", "application/json");
+        http.setTimeout(10000);  // 10 second timeout
+        
+        // Create request body - include device key for authentication setup
+        JsonDocument doc;
+        doc["deviceId"] = _deviceId;
+        doc["token"] = _currentToken;
+        doc["deviceKey"] = _deviceKey;  // Send device key for cloud to store
+        
+        String body;
+        serializeJson(doc, body);
+        
+        int httpCode = http.POST(body);
+        http.end();
+        
+        if (httpCode == 200) {
+            Serial.println("[Pairing] Token and device key registered with cloud");
+            return true;
+        }
+        
+        Serial.printf("[Pairing] Registration attempt %d/%d failed: %d\n", attempt, maxRetries, httpCode);
+        
+        if (attempt < maxRetries) {
+            Serial.printf("[Pairing] Retrying in %dms...\n", retryDelayMs);
+            delay(retryDelayMs);
+        }
+    }
+    
+    Serial.println("[Pairing] All registration attempts failed");
+    return false;
 }
 
 void PairingManager::onPairingSuccess(std::function<void(const String& userId)> callback) {

@@ -27,7 +27,7 @@ export interface IConnection {
   getState(): ConnectionState;
 }
 
-// Message types from ESP32
+// Message types from ESP32 and cloud
 export type MessageType =
   | "status"
   | "esp_status"
@@ -44,7 +44,11 @@ export type MessageType =
   | "scan_complete"
   | "device_info"
   | "diagnostics_header"
-  | "diagnostics_result";
+  | "diagnostics_result"
+  // Cloud-specific message types
+  | "connected"      // Cloud tells client if device is online
+  | "device_online"  // Device came online
+  | "device_offline"; // Device went offline
 
 export interface WebSocketMessage {
   type: MessageType;

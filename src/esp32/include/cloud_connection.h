@@ -24,6 +24,9 @@ public:
     // Simple function pointer to avoid std::function PSRAM allocation issues
     typedef void (*CommandCallback)(const String& type, JsonDocument& doc);
     
+    // Registration callback - called before first connect to register device with cloud
+    typedef bool (*RegisterCallback)();
+    
     CloudConnection();
     
     /**
@@ -61,6 +64,12 @@ public:
     void onCommand(CommandCallback callback);
     
     /**
+     * Set callback for registering device with cloud before connecting
+     * Called once before first connection attempt (when WiFi is available)
+     */
+    void onRegister(RegisterCallback callback);
+    
+    /**
      * Check if connected to cloud
      */
     bool isConnected() const;
@@ -96,6 +105,8 @@ private:
     static const unsigned long MAX_RECONNECT_DELAY = 60000;  // Max 60 seconds
     
     CommandCallback _onCommand = nullptr;
+    RegisterCallback _onRegister = nullptr;
+    bool _registered = false;  // True after successful registration
     
     // Parse URL into host, port, path
     bool parseUrl(const String& url, String& host, uint16_t& port, String& path, bool& useSSL);

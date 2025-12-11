@@ -1069,15 +1069,6 @@ void setup() {
             State.saveCloudSettings();
         }
         
-        // Register device key with cloud server BEFORE trying to connect
-        // This ensures the cloud knows our device key for WebSocket authentication
-        LOG_I("Registering device key with cloud...");
-        if (pairingManager->registerTokenWithCloud()) {
-            LOG_I("Device key registered with cloud");
-        } else {
-            LOG_W("Failed to register device key with cloud - will retry on connect");
-        }
-        
         // Initialize Cloud Connection for real-time state relay
         // Uses pairing manager's device key for secure authentication
         LOG_I("Initializing Cloud Connection...");
@@ -1086,6 +1077,12 @@ void setup() {
             deviceId,
             deviceKey
         );
+        
+        // Set up registration callback - called when WiFi is connected before first connection
+        // Uses static function to avoid PSRAM issues
+        cloudConnection->onRegister([]() -> bool {
+            return pairingManager->registerTokenWithCloud();
+        });
         
         // Set up command handler using static function to avoid PSRAM issues
         cloudConnection->onCommand(onCloudCommand);

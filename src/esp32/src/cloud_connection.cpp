@@ -111,6 +111,19 @@ void CloudConnection::connect() {
         return;
     }
     
+    // Register device key with cloud before first connection
+    // This ensures the cloud server knows our key for authentication
+    if (!_registered && _onRegister) {
+        LOG_I("Registering device with cloud...");
+        if (_onRegister()) {
+            LOG_I("Device registered successfully");
+            _registered = true;
+        } else {
+            LOG_W("Device registration failed - will retry next connection");
+            // Don't block connection attempt - server might already know us
+        }
+    }
+    
     // Disconnect any existing connection first
     if (_connected) {
         _ws.disconnect();
@@ -366,6 +379,10 @@ void CloudConnection::send(const JsonDocument& doc) {
 
 void CloudConnection::onCommand(CommandCallback callback) {
     _onCommand = callback;
+}
+
+void CloudConnection::onRegister(RegisterCallback callback) {
+    _onRegister = callback;
 }
 
 bool CloudConnection::isConnected() const {

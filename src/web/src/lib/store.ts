@@ -1168,6 +1168,36 @@ export const useStore = create<BrewOSState>()(
           }));
           break;
         }
+
+        // =======================================================================
+        // Cloud mode: device connection status
+        // =======================================================================
+        case "connected": {
+          // Cloud server tells us if the target device is online
+          const deviceOnline = (data.deviceOnline as boolean) ?? false;
+          console.log(`[Store] Cloud connected, device online: ${deviceOnline}`);
+          
+          // If device is offline, set connection state to reflect that
+          // Commands will be blocked until device comes online
+          if (!deviceOnline) {
+            set({ connectionState: "disconnected" });
+          }
+          break;
+        }
+
+        case "device_online": {
+          // Device came online - update connection state
+          console.log("[Store] Device came online");
+          set({ connectionState: "connected" });
+          break;
+        }
+
+        case "device_offline": {
+          // Device went offline - update connection state
+          console.log("[Store] Device went offline");
+          set({ connectionState: "disconnected" });
+          break;
+        }
       }
     },
 
