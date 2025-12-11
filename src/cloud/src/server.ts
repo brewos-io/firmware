@@ -479,9 +479,20 @@ async function start() {
 ╔═══════════════════════════════════════════════════════════╗
 ║                  BrewOS Cloud Service                     ║
 ╠═══════════════════════════════════════════════════════════╣
-║  ${protocol.toUpperCase()}:    ${protocol}://localhost:${port}${getSpacing(protocol, port)}║
-║  Device:  ${wsProtocol}://localhost:${port}/ws/device${getSpacing(wsProtocol, port, "/ws/device")}║
-║  Client:  ${wsProtocol}://localhost:${port}/ws/client${getSpacing(wsProtocol, port, "/ws/client")}║
+║  ${protocol.toUpperCase()}:    ${protocol}://localhost:${port}${getSpacing(
+        protocol,
+        port
+      )}║
+║  Device:  ${wsProtocol}://localhost:${port}/ws/device${getSpacing(
+        wsProtocol,
+        port,
+        "/ws/device"
+      )}║
+║  Client:  ${wsProtocol}://localhost:${port}/ws/client${getSpacing(
+        wsProtocol,
+        port,
+        "/ws/client"
+      )}║
 ║  DB:      SQLite (sql.js)${" ".repeat(30)}║
 ║  SSL:     ${
         isProduction && sslCertPath && sslKeyPath
