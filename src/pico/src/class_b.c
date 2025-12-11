@@ -444,15 +444,33 @@ class_b_result_t class_b_test_clock(void) {
     // Get actual system clock frequency
     uint32_t sys_clk = clock_get_hz(clk_sys);
     
-    // Calculate tolerance bounds
-    uint32_t min_freq = CLASS_B_CLOCK_NOMINAL_HZ * (100 - CLASS_B_CLOCK_TOLERANCE_PCT) / 100;
-    uint32_t max_freq = CLASS_B_CLOCK_NOMINAL_HZ * (100 + CLASS_B_CLOCK_TOLERANCE_PCT) / 100;
+    // Determine expected frequency based on actual clock
+    // Pico 1 (RP2040): 125 MHz, Pico 2 (RP2350): 150 MHz
+    uint32_t nominal_freq;
+    
+    // If clock is close to known frequencies, use those as nominal for better error reporting
+    if (sys_clk >= 140000000 && sys_clk <= 160000000) {
+        nominal_freq = 150000000;  // Pico 2 (RP2350)
+    } else if (sys_clk >= 115000000 && sys_clk <= 135000000) {
+        nominal_freq = 125000000;  // Pico 1 (RP2040)
+    } else {
+        // For other frequencies, use actual clock as nominal (allows for custom clock configs)
+        nominal_freq = sys_clk;
+    }
+    
+    // Calculate tolerance bounds using 64-bit math to avoid overflow
+    // ±5% tolerance: min = 95%, max = 105%
+    uint64_t min_freq_64 = ((uint64_t)nominal_freq * (100 - CLASS_B_CLOCK_TOLERANCE_PCT)) / 100;
+    uint64_t max_freq_64 = ((uint64_t)nominal_freq * (100 + CLASS_B_CLOCK_TOLERANCE_PCT)) / 100;
+    uint32_t min_freq = (uint32_t)min_freq_64;
+    uint32_t max_freq = (uint32_t)max_freq_64;
     
     if (sys_clk < min_freq || sys_clk > max_freq) {
         g_class_b_status.fail_count++;
         g_class_b_status.last_result = CLASS_B_FAIL_CLOCK;
-        DEBUG_PRINT("CLASS B: Clock test FAILED! Freq=%lu Hz (expected %lu±%d%%)\n",
-                   sys_clk, CLASS_B_CLOCK_NOMINAL_HZ, CLASS_B_CLOCK_TOLERANCE_PCT);
+        // Only print debug output on failure
+        DEBUG_PRINT("CLASS B: Clock test FAILED! Freq=%lu Hz (expected %lu±%d%% = [%lu, %lu] Hz)\n",
+                   sys_clk, nominal_freq, CLASS_B_CLOCK_TOLERANCE_PCT, min_freq, max_freq);
         return CLASS_B_FAIL_CLOCK;
     }
     

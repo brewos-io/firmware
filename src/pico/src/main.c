@@ -57,7 +57,7 @@ static mutex_t g_status_mutex;  // Protects g_status and g_status_updated
 // Core 1 Entry Point (Communication)
 // -----------------------------------------------------------------------------
 void core1_main(void) {
-    DEBUG_PRINT("Core 1: Starting communication loop\n");
+    LOG_PRINT("Core 1: Starting communication loop\n");
     
     // Initialize protocol
     protocol_init();
@@ -624,33 +624,34 @@ int main(void) {
     // Initialize mutex for thread-safe status sharing between cores
     mutex_init(&g_status_mutex);
     
-    // Initialize stdio (USB for debugging)
+    // Initialize stdio (USB serial for logging)
     stdio_init_all();
-    sleep_ms(100);  // Brief delay for USB
+    sleep_ms(100);  // Brief delay for USB enumeration
     
-    DEBUG_PRINT("\n========================================\n");
-    DEBUG_PRINT("ECM Pico Controller v%d.%d.%d\n", 
+    // Always print boot banner to USB serial
+    LOG_PRINT("\n========================================\n");
+    LOG_PRINT("ECM Pico Controller v%d.%d.%d\n", 
                 FIRMWARE_VERSION_MAJOR, 
                 FIRMWARE_VERSION_MINOR, 
                 FIRMWARE_VERSION_PATCH);
-    DEBUG_PRINT("========================================\n");
+    LOG_PRINT("========================================\n");
     
     // Initialize hardware abstraction layer
     if (!hw_init()) {
-        DEBUG_PRINT("ERROR: Failed to initialize hardware abstraction layer\n");
+        LOG_PRINT("ERROR: Failed to initialize hardware abstraction layer\n");
         // Continue anyway, but hardware may not work correctly
     } else {
-        DEBUG_PRINT("Hardware: %s mode\n", hw_is_simulation_mode() ? "SIMULATION" : "REAL");
+        LOG_PRINT("Hardware: %s mode\n", hw_is_simulation_mode() ? "SIMULATION" : "REAL");
     }
     
     // Initialize PCB configuration and GPIO
     if (!gpio_init_all()) {
-        DEBUG_PRINT("ERROR: Failed to initialize GPIO (invalid PCB config)\n");
+        LOG_PRINT("ERROR: Failed to initialize GPIO (invalid PCB config)\n");
         // Continue anyway, but GPIO may not work correctly
     } else {
         const pcb_config_t* pcb = pcb_config_get();
         if (pcb) {
-            DEBUG_PRINT("PCB: %s v%d.%d.%d\n",
+            LOG_PRINT("PCB: %s v%d.%d.%d\n",
                        pcb->name,
                        pcb->version.major,
                        pcb->version.minor,
@@ -661,48 +662,48 @@ int main(void) {
     // Log machine configuration (lazy initialized on first access)
     const machine_features_t* features = machine_get_features();
     if (features) {
-        DEBUG_PRINT("Machine: %s (%s)\n", features->name, features->description);
-        DEBUG_PRINT("  Type: %s\n", 
+        LOG_PRINT("Machine: %s\n", features->name);
+        LOG_PRINT("  Type: %s\n", 
             features->type == MACHINE_TYPE_DUAL_BOILER ? "Dual Boiler" :
             features->type == MACHINE_TYPE_SINGLE_BOILER ? "Single Boiler" :
             features->type == MACHINE_TYPE_HEAT_EXCHANGER ? "Heat Exchanger" : "Unknown");
-        DEBUG_PRINT("  Boilers: %d, SSRs: %d\n", features->num_boilers, features->num_ssrs);
-        DEBUG_PRINT("  Sensors: brew_ntc=%d steam_ntc=%d\n",
+        LOG_PRINT("  Boilers: %d, SSRs: %d\n", features->num_boilers, features->num_ssrs);
+        LOG_PRINT("  Sensors: brew_ntc=%d steam_ntc=%d\n",
                    features->has_brew_ntc, features->has_steam_ntc);
     } else {
-        DEBUG_PRINT("ERROR: Machine configuration not available!\n");
+        LOG_PRINT("ERROR: Machine configuration not available!\n");
     }
     
     // SAF-001: Enable watchdog immediately after GPIO initialization
     watchdog_enable(SAFETY_WATCHDOG_TIMEOUT_MS, true);
-    DEBUG_PRINT("Watchdog enabled (%dms timeout)\n", SAFETY_WATCHDOG_TIMEOUT_MS);
+    LOG_PRINT("Watchdog enabled (%dms timeout)\n", SAFETY_WATCHDOG_TIMEOUT_MS);
     
     // Check reset reason
     if (watchdog_caused_reboot()) {
-        DEBUG_PRINT("WARNING: Watchdog reset!\n");
+        LOG_PRINT("WARNING: Watchdog reset!\n");
         // SAF-004: On watchdog timeout, outputs are already OFF from gpio_init_outputs()
         // which sets all outputs to 0 (safe state) on boot
     }
     
     // Initialize safety system FIRST
     safety_init();
-    DEBUG_PRINT("Safety system initialized\n");
+    LOG_PRINT("Safety system initialized\n");
     
     // Initialize Class B safety routines (IEC 60730/60335 compliance)
     if (class_b_init() != CLASS_B_PASS) {
-        DEBUG_PRINT("ERROR: Class B initialization failed!\n");
+        LOG_PRINT("ERROR: Class B initialization failed!\n");
         // Continue but log the error - safety system will catch issues
     }
     
     // Run Class B startup self-test
     class_b_result_t class_b_result = class_b_startup_test();
     if (class_b_result != CLASS_B_PASS) {
-        DEBUG_PRINT("ERROR: Class B startup test failed: %s\n", 
+        LOG_PRINT("ERROR: Class B startup test failed: %s\n", 
                    class_b_result_string(class_b_result));
         // Enter safe state if startup tests fail
         safety_enter_safe_state();
     } else {
-        DEBUG_PRINT("Class B startup tests PASSED\n");
+        LOG_PRINT("Class B startup tests PASSED\n");
     }
     
     // Initialize sensors

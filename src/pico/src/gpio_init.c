@@ -240,8 +240,11 @@ void gpio_init_pwm(void) {
 // =============================================================================
 
 bool gpio_init_all(void) {
+    LOG_PRINT("GPIO: Initializing all subsystems\n");
+    
     // Validate PCB configuration first
     if (!pcb_validate_pins()) {
+        LOG_PRINT("GPIO: ERROR - PCB pin validation failed\n");
         return false;
     }
     
@@ -254,6 +257,7 @@ bool gpio_init_all(void) {
     gpio_init_outputs();
     gpio_init_pwm();
     
+    LOG_PRINT("GPIO: All subsystems initialized\n");
     return true;
 }
 

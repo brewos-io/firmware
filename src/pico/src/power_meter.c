@@ -5,6 +5,7 @@
  */
 
 #include "power_meter.h"
+#include "config.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -387,7 +388,9 @@ bool power_meter_init(const power_meter_config_t* config) {
     }
     
     initialized = true;
-    printf("Power meter initialized: %s @ %u baud\n", current_map->name, (unsigned int)current_map->baud_rate);
+    LOG_PRINT("Power meter: Initialized (%s @ %u baud, RS485: %s)\n", 
+              current_map->name, (unsigned int)current_map->baud_rate,
+              current_map->is_rs485 ? "yes" : "no");
     
     return true;
 }

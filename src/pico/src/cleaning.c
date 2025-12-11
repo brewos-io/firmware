@@ -160,7 +160,7 @@ bool cleaning_start_cycle(void) {
     // IMPORTANT: Cleaning should only be performed when machine is at operating temperature
     // This ensures effective cleaning with hot water and proper machine state
     if (!state_is_ready()) {
-        DEBUG_PRINT("Cleaning: Cannot start - machine not at operating temperature (must be STATE_READY)\n");
+        LOG_PRINT("Cleaning: Cannot start - machine not at operating temperature (must be STATE_READY)\n");
         return false;  // Machine must be at operating temperature (STATE_READY)
     }
     
@@ -175,7 +175,7 @@ bool cleaning_start_cycle(void) {
         hw_set_gpio(pcb->pins.relay_brew_solenoid, true);  // Open solenoid
     }
     
-    DEBUG_PRINT("Cleaning: Cycle started\n");
+    LOG_PRINT("Cleaning: Cycle started (brew_count=%d)\n", g_brew_count);
     
     return true;
 }
@@ -196,7 +196,7 @@ void cleaning_stop_cycle(void) {
     g_cleaning_state = CLEANING_IDLE;
     g_cleaning_cycle_start = 0;
     
-    DEBUG_PRINT("Cleaning: Cycle stopped\n");
+    LOG_PRINT("Cleaning: Cycle stopped\n");
 }
 
 void cleaning_update(void) {

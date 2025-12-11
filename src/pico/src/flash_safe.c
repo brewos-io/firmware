@@ -65,13 +65,13 @@ void flash_safe_init(void) {
     multicore_lockout_victim_init();
     
     g_flash_safe_initialized = true;
-    DEBUG_PRINT("Flash safety: Initialized (using SDK flash_safe_execute)\n");
+    LOG_PRINT("Flash: Safety system initialized (using SDK flash_safe_execute)\n");
 }
 
 bool flash_safe_erase(uint32_t offset, size_t size) {
     // Validate offset is sector-aligned
     if (offset % FLASH_SECTOR_SIZE != 0) {
-        DEBUG_PRINT("Flash safety: Erase offset 0x%lx not sector-aligned\n", (unsigned long)offset);
+        LOG_PRINT("Flash: ERROR - Erase offset 0x%lx not sector-aligned\n", (unsigned long)offset);
         return false;
     }
     
@@ -96,7 +96,7 @@ bool flash_safe_erase(uint32_t offset, size_t size) {
     // Use SDK's flash_safe_execute which handles multicore lockout and interrupt safety
     int result = flash_safe_execute(do_flash_erase, &op, FLASH_SAFE_TIMEOUT_MS);
     if (result != PICO_OK) {
-        DEBUG_PRINT("Flash safety: Erase failed (error %d)\n", result);
+        LOG_PRINT("Flash: ERROR - Erase failed (error %d)\n", result);
         return false;
     }
     

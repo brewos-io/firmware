@@ -43,7 +43,7 @@ void control_init_machine(void) {
     g_sb_mode = SB_MODE_BREW;
     g_heating_strategy = HEAT_BREW_ONLY;
     
-    DEBUG_PRINT("Control: Single boiler mode initialized\n");
+    LOG_PRINT("Control: Single boiler mode initialized\n");
     DEBUG_PRINT("  Starting in BREW mode (%.1fC)\n", g_brew_pid.setpoint);
     if (sb_config) {
         DEBUG_PRINT("  Steam setpoint: %.1fC\n", sb_config->steam_setpoint);

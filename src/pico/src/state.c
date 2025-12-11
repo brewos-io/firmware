@@ -311,7 +311,7 @@ void state_init(void) {
     // Perform entry action for INIT state
     state_entry_action(STATE_INIT);
     
-    DEBUG_PRINT("State machine initialized: %s (eco: %s, timeout=%d min)\n", 
+    LOG_PRINT("State machine initialized: %s (eco: %s, timeout=%d min)\n", 
                state_names[g_state],
                g_eco_config.enabled ? "enabled" : "disabled",
                g_eco_config.timeout_minutes);
@@ -329,7 +329,7 @@ void state_update(void) {
             g_previous_state = g_state;
             g_state = STATE_SAFE;
             state_entry_action(STATE_SAFE);
-            DEBUG_PRINT("State: %s -> SAFE\n", state_names[g_previous_state]);
+            LOG_PRINT("State: %s -> SAFE\n", state_names[g_previous_state]);
         }
         return;
     }
@@ -340,7 +340,7 @@ void state_update(void) {
         g_previous_state = g_state;
         g_state = STATE_FAULT;
         state_entry_action(STATE_FAULT);
-        DEBUG_PRINT("State: %s -> FAULT\n", state_names[g_previous_state]);
+        LOG_PRINT("State: %s -> FAULT\n", state_names[g_previous_state]);
         return;
     }
     
@@ -637,7 +637,8 @@ void state_update(void) {
         g_previous_state = g_state;
         g_state = new_state;
         state_entry_action(g_state);
-        DEBUG_PRINT("State: %s -> %s\n", state_names[g_previous_state], state_names[g_state]);
+        LOG_PRINT("State: %s -> %s (mode=%d, brew=%d)\n", 
+                 state_names[g_previous_state], state_names[g_state], g_mode, g_brewing);
     }
 }
 
@@ -655,9 +656,29 @@ machine_mode_t state_get_mode(void) {
 
 bool state_set_mode(machine_mode_t mode) {
     if (g_brewing) {
+        LOG_PRINT("State: Mode change blocked - brewing in progress\n");
         return false;  // Can't change mode while brewing
     }
     
+    if (safety_is_defensive_mode()) {
+        if (mode != MODE_IDLE) {
+            LOG_PRINT("State: Mode change blocked - defensive mode (ESP32 disconnected)\n");
+            return false;
+        }
+    }
+    
+    if (mode != g_mode) {
+        LOG_PRINT("State: Mode change: %d -> %d\n", g_mode, mode);
+    }
+    
+    // Defensive mode: ESP32 not connected - only allow IDLE mode
+    // Allow setting IDLE mode even in defensive mode (for safety system to force it)
+    if (safety_is_defensive_mode() && mode != MODE_IDLE) {
+        DEBUG_PRINT("Mode change blocked: ESP32 not connected (defensive mode)\n");
+        return false;
+    }
+    
+    // If entering IDLE from defensive mode, allow it (safety system needs this)
     DEBUG_PRINT("Mode: %d -> %d\n", g_mode, mode);
     g_mode = mode;
     return true;
@@ -670,9 +691,16 @@ bool state_set_mode(machine_mode_t mode) {
 bool state_start_brew(void) {
     // Don't allow brew if in safe state (e.g., reservoir empty in water tank mode)
     if (safety_is_safe_state()) {
-        DEBUG_PRINT("Brew: Cannot start - machine in safe state\n");
+        LOG_PRINT("Brew: Cannot start - machine in safe state\n");
         return false;
     }
+    
+    if (g_brewing) {
+        DEBUG_PRINT("Brew: Already brewing\n");
+        return false;
+    }
+    
+    LOG_PRINT("Brew: Starting (state=%s, mode=%d)\n", state_names[g_state], g_mode);
     
     // Allow brew to start in IDLE, HEATING, or READY states
     // This allows pump to work for purging even when machine is cold (first setup)
@@ -686,6 +714,7 @@ bool state_start_brew(void) {
 
 bool state_stop_brew(void) {
     if (g_brewing) {
+        LOG_PRINT("Brew: Stopping\n");
         // Stop shot timer immediately (capture exact stop time)
         uint32_t now = to_ms_since_boot(get_absolute_time());
         if (g_brew_stop_time == 0 && g_brew_start_time > 0) {

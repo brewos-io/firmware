@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdlib.h>
+#include <stddef.h>
 #include <time.h>
 
 // =============================================================================
@@ -208,6 +208,26 @@ typedef struct {
 static inline void mutex_init(mutex_t* mtx) { mtx->locked = false; }
 static inline void mutex_enter_blocking(mutex_t* mtx) { mtx->locked = true; }
 static inline void mutex_exit(mutex_t* mtx) { mtx->locked = false; }
+
+// =============================================================================
+// Clock Mock
+// =============================================================================
+
+// Mock clock frequency - MUST be set by tests before calling clock_get_hz
+extern uint32_t mock_clock_frequency_hz;
+
+typedef enum {
+    clk_sys,
+    clk_ref,
+    clk_usb,
+    clk_adc,
+    clk_rtc
+} clock_index_t;
+
+static inline uint32_t clock_get_hz(clock_index_t clk) {
+    (void)clk;  // Ignore clock index in tests
+    return mock_clock_frequency_hz;
+}
 
 // =============================================================================
 // Debug Print (redirect to printf for tests)

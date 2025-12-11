@@ -267,6 +267,7 @@ static bool receive_chunk_data(uint8_t* buffer, uint16_t size, uint8_t* checksum
 // -----------------------------------------------------------------------------
 
 bootloader_result_t bootloader_receive_firmware(void) {
+    LOG_PRINT("Bootloader: Starting firmware receive\n");
     g_receiving = true;
     g_total_size = 0;
     g_received_size = 0;
@@ -298,6 +299,7 @@ bootloader_result_t bootloader_receive_firmware(void) {
         // Check timeout
         uint32_t elapsed_ms = to_ms_since_boot(get_absolute_time()) - to_ms_since_boot(start_time);
         if (elapsed_ms > BOOTLOADER_TIMEOUT_MS) {
+            LOG_PRINT("Bootloader: ERROR - Timeout after %lu ms\n", elapsed_ms);
             uart_write_byte(0xFF);  // Error marker
             uart_write_byte(BOOTLOADER_ERROR_TIMEOUT);
             return BOOTLOADER_ERROR_TIMEOUT;
@@ -308,6 +310,7 @@ bootloader_result_t bootloader_receive_firmware(void) {
         uint16_t chunk_size;
         
         if (!receive_chunk_header(&chunk_num, &chunk_size)) {
+            LOG_PRINT("Bootloader: ERROR - Failed to receive chunk header\n");
             uart_write_byte(0xFF);  // Error marker
             uart_write_byte(BOOTLOADER_ERROR_TIMEOUT);
             return BOOTLOADER_ERROR_TIMEOUT;
@@ -485,6 +488,9 @@ bootloader_result_t bootloader_receive_firmware(void) {
     
     // Small delay to ensure message is sent
     sleep_ms(100);
+    
+    LOG_PRINT("Bootloader: Firmware received successfully (%lu bytes, %lu chunks)\n",
+              g_received_size, g_chunk_count);
     
     // Copy firmware from staging area to main area
     // This function does not return - it reboots the device

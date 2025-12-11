@@ -71,6 +71,8 @@ uint16_t protocol_crc16(const uint8_t* data, size_t length) {
 // Initialization
 // -----------------------------------------------------------------------------
 void protocol_init(void) {
+    LOG_PRINT("Protocol: Initializing UART communication\n");
+    
     // Initialize UART
     uart_init(ESP32_UART_ID, ESP32_UART_BAUD);
     
@@ -86,9 +88,13 @@ void protocol_init(void) {
     // Configure UART pins
     if (PIN_VALID(tx_pin)) {
         gpio_set_function(tx_pin, GPIO_FUNC_UART);
+    } else {
+        LOG_PRINT("Protocol: WARNING - Invalid TX pin (%d)\n", tx_pin);
     }
     if (PIN_VALID(rx_pin)) {
         gpio_set_function(rx_pin, GPIO_FUNC_UART);
+    } else {
+        LOG_PRINT("Protocol: WARNING - Invalid RX pin (%d)\n", rx_pin);
     }
     
     // Set UART format
@@ -96,7 +102,11 @@ void protocol_init(void) {
     uart_set_hw_flow(ESP32_UART_ID, false, false);
     uart_set_fifo_enabled(ESP32_UART_ID, true);
     
-    DEBUG_PRINT("Protocol: UART%d at %d baud (TX=%d, RX=%d)\n",
+    // Reset error counters
+    g_crc_errors = 0;
+    g_packet_errors = 0;
+    
+    LOG_PRINT("Protocol: UART%d initialized at %d baud (TX=%d, RX=%d)\n",
                 ESP32_UART_ID == uart0 ? 0 : 1,
                 ESP32_UART_BAUD,
                 tx_pin,
@@ -108,6 +118,8 @@ void protocol_init(void) {
 // -----------------------------------------------------------------------------
 static bool send_packet(uint8_t type, const uint8_t* payload, uint8_t length) {
     if (length > PROTOCOL_MAX_PAYLOAD) {
+        LOG_PRINT("Protocol: ERROR - Packet too large (type=0x%02X, len=%d, max=%d)\n",
+                  type, length, PROTOCOL_MAX_PAYLOAD);
         return false;
     }
     
@@ -181,6 +193,19 @@ bool protocol_send_boot(void) {
     const pcb_config_t* pcb = pcb_config_get();
     pcb_version_t pcb_ver = pcb ? pcb->version : (pcb_version_t){0, 0, 0};
     pcb_type_t pcb_type = pcb ? pcb->type : PCB_TYPE_UNKNOWN;
+    uint8_t reset_reason = get_reset_reason();
+    
+    const char* reset_reason_str = "UNKNOWN";
+    switch (reset_reason) {
+        case RESET_REASON_POWER_ON: reset_reason_str = "POWER_ON"; break;
+        case RESET_REASON_WATCHDOG: reset_reason_str = "WATCHDOG"; break;
+        case RESET_REASON_SOFTWARE: reset_reason_str = "SOFTWARE"; break;
+        case RESET_REASON_DEBUG: reset_reason_str = "DEBUG"; break;
+    }
+    
+    LOG_PRINT("Protocol: Sending boot message (v%d.%d.%d, reset: %s)\n",
+              FIRMWARE_VERSION_MAJOR, FIRMWARE_VERSION_MINOR, FIRMWARE_VERSION_PATCH,
+              reset_reason_str);
     
     boot_payload_t boot = {
         .version_major = FIRMWARE_VERSION_MAJOR,
@@ -190,9 +215,13 @@ bool protocol_send_boot(void) {
         .pcb_type = (uint8_t)pcb_type,
         .pcb_version_major = pcb_ver.major,
         .pcb_version_minor = pcb_ver.minor,
-        .reset_reason = get_reset_reason()
+        .reset_reason = reset_reason
     };
-    return send_packet(MSG_BOOT, (const uint8_t*)&boot, sizeof(boot_payload_t));
+    bool result = send_packet(MSG_BOOT, (const uint8_t*)&boot, sizeof(boot_payload_t));
+    if (!result) {
+        LOG_PRINT("Protocol: ERROR - Failed to send boot message\n");
+    }
+    return result;
 }
 
 bool protocol_send_config(const config_payload_t* config) {
@@ -289,8 +318,8 @@ static void process_byte(uint8_t byte) {
                 // Validate packet length field
                 if (packet.length > PROTOCOL_MAX_PAYLOAD) {
                     g_packet_errors++;
-                    DEBUG_PRINT("Protocol: Invalid packet length %d (max %d)\n", 
-                               packet.length, PROTOCOL_MAX_PAYLOAD);
+                    LOG_PRINT("Protocol: ERROR - Invalid packet length %d (max %d, total errors: %lu)\n", 
+                               packet.length, PROTOCOL_MAX_PAYLOAD, g_packet_errors);
                     g_rx_state = RX_WAIT_SYNC;
                     g_rx_index = 0;
                     break;
@@ -307,14 +336,22 @@ static void process_byte(uint8_t byte) {
                     packet.valid = true;
                     packet.crc = received_crc;
                     
+                    DEBUG_PRINT("Protocol: RX packet type=0x%02X len=%d seq=%d\n",
+                               packet.type, packet.length, packet.seq);
+                    
                     // Call callback
                     if (g_packet_callback) {
                         g_packet_callback(&packet);
+                    } else {
+                        DEBUG_PRINT("Protocol: WARNING - No callback registered for packet 0x%02X\n",
+                                   packet.type);
                     }
                 } else {
                     g_crc_errors++;
-                    DEBUG_PRINT("CRC error: got=0x%04X exp=0x%04X (total errors: %lu)\n", 
-                               received_crc, expected_crc, g_crc_errors);
+                    if (g_crc_errors <= 5 || (g_crc_errors % 10 == 0)) {
+                        LOG_PRINT("Protocol: CRC error (got=0x%04X exp=0x%04X, total: %lu)\n", 
+                                 received_crc, expected_crc, g_crc_errors);
+                    }
                 }
                 
                 g_rx_state = RX_WAIT_SYNC;
@@ -325,7 +362,7 @@ static void process_byte(uint8_t byte) {
     // Buffer overflow protection
     if (g_rx_index >= sizeof(g_rx_buffer)) {
         g_packet_errors++;
-        DEBUG_PRINT("Protocol: Buffer overflow, resetting state (total errors: %lu)\n", g_packet_errors);
+        LOG_PRINT("Protocol: ERROR - Buffer overflow, resetting state (total errors: %lu)\n", g_packet_errors);
         g_rx_state = RX_WAIT_SYNC;
         g_rx_index = 0;
         g_rx_length = 0;

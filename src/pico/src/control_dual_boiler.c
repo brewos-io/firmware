@@ -27,7 +27,7 @@ void control_init_machine(void) {
     // Default heating strategy for dual boiler
     g_heating_strategy = HEAT_SEQUENTIAL;
     
-    DEBUG_PRINT("Control: Dual boiler mode initialized\n");
+    LOG_PRINT("Control: Dual boiler mode initialized\n");
     DEBUG_PRINT("  Brew setpoint: %.1fC\n", g_brew_pid.setpoint);
     DEBUG_PRINT("  Steam setpoint: %.1fC\n", g_steam_pid.setpoint);
 }

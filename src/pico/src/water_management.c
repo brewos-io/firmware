@@ -244,7 +244,8 @@ void water_management_init(void) {
         DEBUG_PRINT("Water: Water LED initialized\n");
     }
     
-    DEBUG_PRINT("Water management initialized (steam boiler auto-fill enabled)\n");
+    LOG_PRINT("Water: Initialized (steam boiler auto-fill: %s)\n",
+              g_auto_fill_enabled ? "enabled" : "disabled");
 }
 
 // =============================================================================
@@ -336,7 +337,7 @@ static void update_steam_fill_cycle(void) {
         case STEAM_FILL_ACTIVE:
             // Check timeout (safety)
             if (now - g_fill_start_time > STEAM_FILL_TIMEOUT_MS) {
-                DEBUG_PRINT("Water: Steam fill timeout! Stopping fill cycle\n");
+                LOG_PRINT("Water: ERROR - Steam fill timeout! Stopping fill cycle\n");
                 // Report error via protocol (alarm)
                 protocol_send_alarm(ALARM_WATER_LOW, 1, 0);  // Severity 1 = error
                 // Stop filling

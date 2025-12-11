@@ -60,7 +60,7 @@ void control_init_machine(void) {
             case HX_CONTROL_TEMPERATURE:
                 g_steam_pid.setpoint = hx_config->steam_setpoint;
                 g_steam_pid.setpoint_target = g_steam_pid.setpoint;
-                DEBUG_PRINT("Control: HX mode - TEMPERATURE PID\n");
+                LOG_PRINT("Control: HX mode - TEMPERATURE PID\n");
                 DEBUG_PRINT("  Steam setpoint: %.1fC\n", g_steam_pid.setpoint);
                 break;
                 
@@ -77,7 +77,7 @@ void control_init_machine(void) {
                 }
                 g_pressure_pid.setpoint = g_pressure_setpoint_bar * PRESSURE_TO_TEMP_SCALE;
                 g_pressure_pid.setpoint_target = g_pressure_pid.setpoint;
-                DEBUG_PRINT("Control: HX mode - PRESSURE PID\n");
+                LOG_PRINT("Control: HX mode - PRESSURE PID\n");
                 DEBUG_PRINT("  Pressure setpoint: %.2f bar (scaled SP: %.1f)\n", 
                            g_pressure_setpoint_bar, g_pressure_pid.setpoint);
                 break;
@@ -85,14 +85,13 @@ void control_init_machine(void) {
             case HX_CONTROL_PRESSURESTAT:
                 // No PID control - pressurestat handles it
                 g_steam_pid.setpoint = 0;
-                DEBUG_PRINT("Control: HX mode - PRESSURESTAT (monitor only)\n");
+                LOG_PRINT("Control: HX mode - PRESSURESTAT (monitor only)\n");
                 DEBUG_PRINT("  Heater controlled by external pressurestat\n");
                 break;
         }
         
-        DEBUG_PRINT("  Target group temp: %.1fC\n", hx_config->target_group_temp);
-        DEBUG_PRINT("  Use group for ready: %s\n", 
-                   hx_config->use_group_for_ready ? "yes" : "no");
+        DEBUG_PRINT("  Control mode: %d\n", hx_config->control_mode);
+        DEBUG_PRINT("  Steam setpoint: %.1fC\n", hx_config->steam_setpoint);
     } else {
         // Default to temperature control
         g_hx_control_mode = HX_CONTROL_TEMPERATURE;

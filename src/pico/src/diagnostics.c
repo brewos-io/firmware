@@ -61,7 +61,7 @@ static void set_result(diag_result_t* result, uint8_t status, const char* msg) {
 
 void diagnostics_init(void) {
     g_running = false;
-    DEBUG_PRINT("Diagnostics module initialized\n");
+    LOG_PRINT("Diagnostics: Module initialized\n");
 }
 
 bool diagnostics_is_running(void) {
@@ -70,7 +70,7 @@ bool diagnostics_is_running(void) {
 
 void diagnostics_abort(void) {
     g_running = false;
-    DEBUG_PRINT("Diagnostics aborted\n");
+    LOG_PRINT("Diagnostics: Aborted\n");
 }
 
 // =============================================================================
@@ -682,8 +682,17 @@ uint8_t diag_test_class_b_clock(diag_result_t* result) {
     // Get actual clock frequency for raw value
     uint32_t sys_clk = clock_get_hz(clk_sys);
     result->raw_value = (int16_t)(sys_clk / 1000000);  // MHz
-    result->expected_min = 118;  // 118 MHz (-5%)
-    result->expected_max = 131;  // 131 MHz (+5%)
+    
+    // Set expected range based on detected frequency (Pico 1: 125MHz, Pico 2: 150MHz)
+    if (sys_clk >= 140000000 && sys_clk <= 160000000) {
+        // Pico 2 (RP2350): 150 MHz ±5%
+        result->expected_min = 142;  // 142 MHz (-5%)
+        result->expected_max = 157;   // 157 MHz (+5%)
+    } else {
+        // Pico 1 (RP2040): 125 MHz ±5%
+        result->expected_min = 118;  // 118 MHz (-5%)
+        result->expected_max = 131;  // 131 MHz (+5%)
+    }
     
     if (class_b_res == CLASS_B_PASS) {
         char msg[32];

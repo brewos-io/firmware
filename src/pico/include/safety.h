@@ -64,6 +64,9 @@ void safety_esp32_heartbeat(void);
 // Check if ESP32 is connected
 bool safety_esp32_connected(void);
 
+// Check if in defensive mode (ESP32 not connected, machine forced to IDLE)
+bool safety_is_defensive_mode(void);
+
 // Get last alarm code
 uint8_t safety_get_last_alarm(void);
 

@@ -59,7 +59,7 @@ bool hw_init(void) {
     }
     
     if (g_simulation_mode) {
-        DEBUG_PRINT("Hardware: Simulation mode enabled\n");
+        LOG_PRINT("Hardware: Initializing in SIMULATION mode\n");
         
         // Initialize simulation state
         for (int i = 0; i < HW_ADC_CHANNEL_COUNT; i++) {
@@ -75,7 +75,7 @@ bool hw_init(void) {
     }
     
     // Initialize real hardware
-    DEBUG_PRINT("Hardware: Initializing real hardware\n");
+    LOG_PRINT("Hardware: Initializing REAL hardware\n");
     
     // Initialize ADC
     adc_init();
@@ -86,7 +86,7 @@ bool hw_init(void) {
     // SPI and PWM will be initialized on first use
     
     g_initialized = true;
-    DEBUG_PRINT("Hardware: Initialization complete\n");
+    LOG_PRINT("Hardware: Initialization complete\n");
     return true;
 }
 

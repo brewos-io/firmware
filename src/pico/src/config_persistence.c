@@ -180,12 +180,12 @@ static bool flash_write_config(const persisted_config_t* config) {
     
     // Use flash_safe API which handles multicore lockout and interrupt safety
     if (!flash_safe_erase(CONFIG_FLASH_OFFSET, FLASH_SECTOR_SIZE)) {
-        DEBUG_PRINT("Config: Flash erase failed\n");
+        LOG_PRINT("Config: ERROR - Flash erase failed\n");
         return false;
     }
     
     if (!flash_safe_program(CONFIG_FLASH_OFFSET, write_buffer, FLASH_PAGE_SIZE)) {
-        DEBUG_PRINT("Config: Flash program failed\n");
+        LOG_PRINT("Config: ERROR - Flash program failed\n");
         return false;
     }
     
@@ -259,10 +259,12 @@ bool config_persistence_init(void) {
             // Cleaning mode values are loaded but not applied here
             // They are applied in cleaning_init() via config_persistence_get_cleaning()
             
-            DEBUG_PRINT("Config: Loaded from flash (env valid)\n");
+            LOG_PRINT("Config: Loaded from flash (env: %dV, %.1fA)\n",
+                     g_persisted_config.environmental.nominal_voltage,
+                     g_persisted_config.environmental.max_current_draw);
             return true;  // Machine can operate
         } else {
-            DEBUG_PRINT("Config: Loaded from flash but environmental config invalid\n");
+            LOG_PRINT("Config: Loaded from flash but environmental config invalid (machine disabled)\n");
             return false;  // Machine disabled - environmental config invalid
         }
     } else {
@@ -271,8 +273,8 @@ bool config_persistence_init(void) {
         g_config_loaded = false;
         g_env_valid = false;
         
-        DEBUG_PRINT("Config: No valid config in flash, using defaults\n");
-        DEBUG_PRINT("Config: Machine disabled - environmental config required\n");
+        LOG_PRINT("Config: No valid config in flash, using defaults\n");
+        LOG_PRINT("Config: Machine disabled - environmental config required\n");
         return false;  // Machine disabled - environmental config not set
     }
 }
@@ -327,11 +329,11 @@ bool config_persistence_save(void) {
     // Save to flash
     if (flash_write_config(&g_persisted_config)) {
         g_config_loaded = true;
-        DEBUG_PRINT("Config: Saved to flash\n");
+        LOG_PRINT("Config: Saved to flash successfully\n");
         return true;
     }
     
-    DEBUG_PRINT("Config: Failed to save to flash\n");
+    LOG_PRINT("Config: ERROR - Failed to save to flash\n");
     return false;
 }
 

@@ -105,7 +105,7 @@ static float read_brew_ntc(void) {
         g_brew_ntc_error_count++;
         if (g_brew_ntc_error_count >= SENSOR_ERROR_THRESHOLD && 
             g_brew_ntc_error_count == SENSOR_ERROR_THRESHOLD) {
-            DEBUG_PRINT("SENSOR ERROR: Brew NTC invalid reading (%.1fC) - %d consecutive failures\n", 
+            LOG_PRINT("Sensors: ERROR - Brew NTC invalid reading (%.1fC) - %d consecutive failures\n", 
                        temp_c, g_brew_ntc_error_count);
         }
         return NAN;
@@ -113,7 +113,7 @@ static float read_brew_ntc(void) {
     
     // Valid reading - reset error count
     if (g_brew_ntc_error_count > 0) {
-        DEBUG_PRINT("SENSOR: Brew NTC recovered after %d failures\n", g_brew_ntc_error_count);
+        LOG_PRINT("Sensors: Brew NTC recovered after %d failures\n", g_brew_ntc_error_count);
     }
     g_brew_ntc_fault = false;
     g_brew_ntc_error_count = 0;
@@ -331,8 +331,10 @@ void sensors_init(void) {
     g_sensor_data.pressure = 0;        // 0.00 bar
     g_sensor_data.water_level = 80;    // 80%
     
-    DEBUG_PRINT("Sensors initialized (hardware mode: %s)\n", 
-                hw_is_simulation_mode() ? "SIMULATION" : "REAL");
+    LOG_PRINT("Sensors: Initialized (mode: %s, brew_ntc: %s, steam_ntc: %s)\n", 
+              hw_is_simulation_mode() ? "SIMULATION" : "REAL",
+              machine_has_brew_ntc() ? "yes" : "no",
+              machine_has_steam_ntc() ? "yes" : "no");
 }
 
 // =============================================================================

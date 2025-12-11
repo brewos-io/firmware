@@ -560,8 +560,8 @@ void control_init(void) {
     // Machine-specific initialization
     control_init_machine();
     
-    DEBUG_PRINT("Control initialized. Brew SP=%.1fC, Steam SP=%.1fC\n",
-                g_brew_pid.setpoint, g_steam_pid.setpoint);
+    LOG_PRINT("Control: Initialized (Brew SP=%.1fC, Steam SP=%.1fC, Strategy=%d)\n",
+              g_brew_pid.setpoint, g_steam_pid.setpoint, g_heating_strategy);
     
     // Initialize power meter if configured (PZEM, JSY, Eastron, etc.)
     if (power_meter_init(NULL)) {
@@ -642,7 +642,7 @@ void control_set_setpoint(uint8_t target, int16_t temp) {
     
     control_unlock();
     
-    DEBUG_PRINT("%s setpoint: %.1fC\n", target == 0 ? "Brew" : "Steam", temp_c);
+    LOG_PRINT("Control: %s setpoint changed: %.1fC\n", target == 0 ? "Brew" : "Steam", temp_c);
 }
 
 int16_t control_get_setpoint(uint8_t target) {
@@ -675,7 +675,7 @@ void control_set_pid(uint8_t target, float kp, float ki, float kd) {
     
     control_unlock();
     
-    DEBUG_PRINT("PID[%d] set: Kp=%.2f Ki=%.2f Kd=%.2f\n", target, kp, ki, kd);
+    LOG_PRINT("Control: PID[%d] updated: Kp=%.2f Ki=%.2f Kd=%.2f\n", target, kp, ki, kd);
 }
 
 void control_get_pid(uint8_t target, float* kp, float* ki, float* kd) {
@@ -807,7 +807,7 @@ bool control_set_heating_strategy(uint8_t strategy) {
     if (!control_is_heating_strategy_allowed(strategy)) return false;
     
     g_heating_strategy = (heating_strategy_t)strategy;
-    DEBUG_PRINT("Heating strategy: Set to %d\n", strategy);
+    LOG_PRINT("Control: Heating strategy changed: %d\n", strategy);
     return true;
 }
 

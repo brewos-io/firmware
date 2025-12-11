@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>  // For printf() used in DEBUG_PRINT and LOG_PRINT macros
 
 // Include shared protocol definitions
 #include "protocol_defs.h"
@@ -86,12 +87,13 @@
 #endif
 
 // -----------------------------------------------------------------------------
-// Debug
+// Logging
 // -----------------------------------------------------------------------------
-#if DEBUG_BUILD
-    #define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
-#else
-    #define DEBUG_PRINT(fmt, ...) ((void)0)
-#endif
+// Always output logs to USB serial (stdio_init_all() must be called first)
+// Both DEBUG_PRINT and LOG_PRINT output to USB serial in all builds
+// DEBUG_PRINT: Verbose debugging information
+// LOG_PRINT: Important operational logs
+#define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
+#define LOG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
 
 #endif // CONFIG_H

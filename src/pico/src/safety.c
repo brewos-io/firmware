@@ -16,6 +16,7 @@
 #include "machine_config.h"
 #include "protocol.h"
 #include "config_persistence.h"
+#include "state.h"
 #include <math.h>
 
 // =============================================================================
@@ -49,6 +50,7 @@ static uint8_t g_safety_flags = 0;
 static uint8_t g_last_alarm = ALARM_NONE;
 static uint32_t g_last_esp32_heartbeat = 0;
 static uint32_t g_safe_state_entered_time = 0;
+static bool g_defensive_mode = false;  // True when ESP32 not connected - machine forced to IDLE
 
 // Water sensor debounce state
 static uint8_t g_reservoir_debounce_count = 0;
@@ -234,7 +236,7 @@ void safety_init(void) {
     g_buzzer_beep_count = 0;
     g_buzzer_last_beep = 0;
     
-    DEBUG_PRINT("Safety system initialized\n");
+    LOG_PRINT("Safety system initialized\n");
 }
 
 // =============================================================================
@@ -300,7 +302,7 @@ safety_state_t safety_check(void) {
                     g_last_alarm = ALARM_WATER_LOW;
                 }
                 result = SAFETY_CRITICAL;  // Critical: disable pump and heaters
-                DEBUG_PRINT("SAFETY: Water reservoir empty! (Water tank mode - disabling heaters and pump)\n");
+                LOG_PRINT("SAFETY: Water reservoir empty! (Water tank mode - disabling heaters and pump)\n");
             }
         }
     } else {
@@ -364,7 +366,7 @@ safety_state_t safety_check(void) {
                 g_safety_flags |= SAFETY_FLAG_OVER_TEMP;
                 g_last_alarm = ALARM_OVER_TEMP;
                 result = SAFETY_CRITICAL;
-                DEBUG_PRINT("SAFETY: Brew boiler over temperature: %.1fC\n", brew_temp_c);
+                LOG_PRINT("SAFETY: Brew boiler over temperature: %.1fC (max: %.1fC)\n", brew_temp_c, SAFETY_BREW_MAX_TEMP_C);
             } else if (brew_temp_c <= (SAFETY_BREW_MAX_TEMP_C - SAFETY_TEMP_HYSTERESIS_C)) {
                 // Hysteresis: re-enable 10°C below max (SAF-025)
                 g_brew_over_temp = false;
@@ -380,7 +382,7 @@ safety_state_t safety_check(void) {
                 g_safety_flags |= SAFETY_FLAG_OVER_TEMP;
                 g_last_alarm = ALARM_OVER_TEMP;
                 result = SAFETY_CRITICAL;
-                DEBUG_PRINT("SAFETY: Steam boiler over temperature: %.1fC\n", steam_temp_c);
+                LOG_PRINT("SAFETY: Steam boiler over temperature: %.1fC (max: %.1fC)\n", steam_temp_c, SAFETY_STEAM_MAX_TEMP_C);
             } else if (steam_temp_c <= (SAFETY_STEAM_MAX_TEMP_C - SAFETY_TEMP_HYSTERESIS_C)) {
                 g_steam_over_temp = false;
             }
@@ -403,7 +405,7 @@ safety_state_t safety_check(void) {
                 g_last_alarm = ALARM_SENSOR_FAIL;
             }
             result = SAFETY_CRITICAL;  // Critical: disable brew heater
-            DEBUG_PRINT("SAFETY: Brew NTC sensor fault!\n");
+            LOG_PRINT("SAFETY: Brew NTC sensor fault! (temp=%.1fC)\n", brew_temp_c);
         }
     }
     
@@ -415,7 +417,7 @@ safety_state_t safety_check(void) {
                 g_last_alarm = ALARM_SENSOR_FAIL;
             }
             result = SAFETY_CRITICAL;  // Critical: disable steam heater
-            DEBUG_PRINT("SAFETY: Steam NTC sensor fault!\n");
+            LOG_PRINT("SAFETY: Steam NTC sensor fault! (temp=%.1fC)\n", steam_temp_c);
         }
     }
     
@@ -447,7 +449,8 @@ safety_state_t safety_check(void) {
                             g_last_alarm = ALARM_OVER_TEMP;
                         }
                         result = SAFETY_FAULT;
-                        DEBUG_PRINT("SAFETY: Brew SSR on too long without temp change!\n");
+                        LOG_PRINT("SAFETY: Brew SSR on too long without temp change! (on_time=%lu ms, temp=%.1fC)\n",
+                                 now - g_brew_ssr_on_time, brew_temp_c);
                     }
                 } else {
                     // Temperature changing - reset timer
@@ -476,7 +479,8 @@ safety_state_t safety_check(void) {
                             g_last_alarm = ALARM_OVER_TEMP;
                         }
                         result = SAFETY_FAULT;
-                        DEBUG_PRINT("SAFETY: Steam SSR on too long without temp change!\n");
+                        LOG_PRINT("SAFETY: Steam SSR on too long without temp change! (on_time=%lu ms, temp=%.1fC)\n",
+                                 now - g_steam_ssr_on_time, steam_temp_c);
                     }
                 } else {
                     g_steam_ssr_on_time = now;
@@ -503,14 +507,39 @@ safety_state_t safety_check(void) {
     }
     
     // =========================================================================
-    // ESP32 Communication Timeout
+    // ESP32 Communication Timeout - Defensive Mode
     // =========================================================================
     
-    if (now - g_last_esp32_heartbeat > SAFETY_HEARTBEAT_TIMEOUT_MS) {
+    bool esp32_connected = (now - g_last_esp32_heartbeat) < SAFETY_HEARTBEAT_TIMEOUT_MS;
+    
+        if (!esp32_connected) {
         g_safety_flags |= SAFETY_FLAG_COMM_TIMEOUT;
-        // Warning only - machine can still run safely without ESP32
+        
+        // Enter defensive mode: force machine to IDLE state for safety
+        // Machine should not operate without ESP32 control/monitoring
+        if (!g_defensive_mode) {
+            LOG_PRINT("ESP32 timeout - entering defensive mode (forcing IDLE)\n");
+            g_defensive_mode = true;
+            // Force machine to IDLE mode immediately
+            state_set_mode(MODE_IDLE);
+        }
+        
+        // Keep machine in IDLE if it tries to change mode
+        machine_mode_t current_mode = state_get_mode();
+        if (current_mode != MODE_IDLE) {
+            LOG_PRINT("Defensive mode: forcing IDLE (current mode: %d)\n", current_mode);
+            state_set_mode(MODE_IDLE);
+        }
+        
         if (result < SAFETY_WARNING) {
             result = SAFETY_WARNING;
+        }
+    } else {
+        // ESP32 reconnected - exit defensive mode
+        if (g_defensive_mode) {
+            LOG_PRINT("ESP32 reconnected - exiting defensive mode\n");
+            g_defensive_mode = false;
+            g_safety_flags &= ~SAFETY_FLAG_COMM_TIMEOUT;
         }
     }
     
@@ -536,7 +565,7 @@ safety_state_t safety_check(void) {
 
 void safety_enter_safe_state(void) {
     if (!g_safe_state) {
-        DEBUG_PRINT("SAFETY: Entering SAFE STATE!\n");
+        LOG_PRINT("SAFETY: Entering SAFE STATE!\n");
         g_safe_state_entered_time = to_ms_since_boot(get_absolute_time());
         
         // Disable all outputs (SAF-004, SAF-030)
@@ -558,7 +587,7 @@ bool safety_is_safe_state(void) {
 bool safety_reset(void) {
     // Only allow reset if all safety conditions are now OK
     if (g_safety_flags == 0) {
-        DEBUG_PRINT("SAFETY: Resetting from safe state\n");
+        LOG_PRINT("SAFETY: Resetting from safe state\n");
         g_safe_state = false;
         g_last_alarm = ALARM_NONE;
         g_safe_state_entered_time = 0;
@@ -572,7 +601,7 @@ bool safety_reset(void) {
         return true;
     }
     
-    DEBUG_PRINT("SAFETY: Cannot reset, conditions not cleared (flags=0x%02X)\n", g_safety_flags);
+    LOG_PRINT("SAFETY: Cannot reset, conditions not cleared (flags=0x%02X)\n", g_safety_flags);
     return false;
 }
 
@@ -607,5 +636,9 @@ void safety_esp32_heartbeat(void) {
 bool safety_esp32_connected(void) {
     uint32_t now = to_ms_since_boot(get_absolute_time());
     return (now - g_last_esp32_heartbeat) < SAFETY_HEARTBEAT_TIMEOUT_MS;
+}
+
+bool safety_is_defensive_mode(void) {
+    return g_defensive_mode;
 }
 
