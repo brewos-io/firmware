@@ -56,8 +56,11 @@ export function SystemSettings() {
   const [showBetaWarning, setShowBetaWarning] = useState(false);
 
   const handleCheckForUpdates = useCallback(async () => {
-    // Use a fallback version if not yet received from device
-    const version = esp32.version || "0.0.0";
+    if (!esp32.version) {
+      setUpdateError("Device version not available. Please connect to the device and try again.");
+      return;
+    }
+    const version = esp32.version;
 
     setCheckingUpdate(true);
     setUpdateError(null);
