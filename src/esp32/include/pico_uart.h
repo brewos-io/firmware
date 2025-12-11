@@ -53,6 +53,7 @@ public:
     uint32_t getPacketsReceived() { return _packetsReceived; }
     uint32_t getPacketErrors() { return _packetErrors; }
     bool isConnected() { return _connected; }
+    int bytesAvailable() { return Serial1.available(); }  // Check if any raw bytes are available
 
 private:
     HardwareSerial& _serial;

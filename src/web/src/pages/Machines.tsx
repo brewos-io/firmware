@@ -4,7 +4,7 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { Logo } from "@/components/Logo";
 import { Loading } from "@/components/Loading";
-import { DeviceClaimFlow } from "@/components/onboarding";
+import { DeviceClaimFlow } from "@/components/onboarding/DeviceClaimFlow";
 import { useAppStore } from "@/lib/mode";
 import { isDemoMode, disableDemoMode } from "@/lib/demo-mode";
 import type { CloudDevice } from "@/lib/types";

@@ -24,9 +24,12 @@ function getLogColor(level: string): string {
 export function LogViewer({ maxHeight = "max-h-64" }: LogViewerProps) {
   const logs = useStore((s) => s.logs);
 
+  // If maxHeight is "h-full", use full height; otherwise use max-height
+  const heightClass = maxHeight === "h-full" ? "h-full" : maxHeight;
+
   return (
     <div
-      className={`${maxHeight} overflow-y-auto bg-theme-secondary rounded-xl p-4 font-mono text-xs`}
+      className={`${heightClass} overflow-y-auto bg-theme-secondary rounded-xl p-4 font-mono text-xs`}
     >
       {logs.length > 0 ? (
         logs.map((log) => (

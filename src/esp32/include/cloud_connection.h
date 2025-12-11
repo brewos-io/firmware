@@ -89,8 +89,11 @@ private:
     bool _connected = false;
     bool _connecting = false;
     unsigned long _lastConnectAttempt = 0;
-    unsigned long _reconnectDelay = 1000;  // Start with 1 second
-    static const unsigned long MAX_RECONNECT_DELAY = 10000;  // Max 10 seconds
+    unsigned long _lastConnectedTime = 0;       // When we last successfully connected
+    unsigned long _reconnectDelay = 5000;       // Start with 5 seconds
+    int _quickDisconnectCount = 0;              // Count of quick disconnects (server rejections)
+    bool _inLongBackoff = false;                // True if we're in a long backoff period
+    static const unsigned long MAX_RECONNECT_DELAY = 60000;  // Max 60 seconds
     
     CommandCallback _onCommand = nullptr;
     

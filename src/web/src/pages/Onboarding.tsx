@@ -1,10 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  WelcomeStep,
-  OnboardingLayout,
-  DeviceClaimFlow,
-} from "@/components/onboarding";
+import { WelcomeStep, OnboardingLayout } from "@/components/onboarding";
+import { DeviceClaimFlow } from "@/components/onboarding/DeviceClaimFlow";
 import { useAppStore } from "@/lib/mode";
 
 /**

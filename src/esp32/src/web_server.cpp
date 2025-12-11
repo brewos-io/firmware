@@ -9,6 +9,7 @@
 #include "state/state_manager.h"
 #include "statistics/statistics_manager.h"
 #include "power_meter/power_meter_manager.h"
+#include "ui/ui.h"
 #include <LittleFS.h>
 #include <HTTPClient.h>
 #include <Update.h>
@@ -504,7 +505,7 @@ void WebServer::setupRoutes() {
         
         // Feature flags - granular capability detection
         // Web UI uses these to conditionally show/hide features
-        JsonArray features = doc.createNestedArray("features");
+        JsonArray features = doc["features"].to<JsonArray>();
         
         // Core features (always available)
         features.add("temperature_control");
@@ -750,6 +751,19 @@ void WebServer::setupRoutes() {
         handleStartOTA(request);
     });
     
+    // Filesystem space check endpoint
+    _server.on("/api/filesystem/space", HTTP_GET, [](AsyncWebServerRequest* request) {
+        size_t used = LittleFS.usedBytes();
+        size_t total = LittleFS.totalBytes();
+        size_t free = total - used;
+        
+        char response[128];
+        snprintf(response, sizeof(response), 
+            "{\"used\":%u,\"total\":%u,\"free\":%u,\"usedPercent\":%.1f}", 
+            (unsigned)used, (unsigned)total, (unsigned)free, (used * 100.0f / total));
+        request->send(200, "application/json", response);
+    });
+    
     _server.on("/api/pico/reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
         _picoUart.resetPico();
         request->send(200, "application/json", "{\"status\":\"ok\"}");
@@ -774,8 +788,12 @@ void WebServer::setupRoutes() {
         }
         
         State.settings().system.setupComplete = true;
-        State.saveSystemSettings();
-        LOG_I("Setup wizard completed");
+        
+        // Save all settings to ensure everything configured during wizard is persisted
+        // This includes machine info, power settings, cloud settings, etc.
+        State.saveSettings();
+        
+        LOG_I("Setup wizard completed - all settings saved");
         request->send(200, "application/json", "{\"success\":true}");
     });
     
@@ -1258,9 +1276,23 @@ void WebServer::setupRoutes() {
     
     // Force NTP sync
     _server.on("/api/time/sync", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        // Check if WiFi is connected (NTP requires internet)
+        if (!_wifiManager.isConnected()) {
+            request->send(503, "application/json", "{\"error\":\"WiFi not connected\"}");
+            return;
+        }
+        
         _wifiManager.syncNTP();
         request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"NTP sync initiated\"}");
         broadcastLog("NTP sync initiated", "info");
+    });
+    
+    // Handle OPTIONS for CORS preflight
+    _server.on("/api/time/sync", HTTP_OPTIONS, [](AsyncWebServerRequest* request) {
+        AsyncWebServerResponse* response = request->beginResponse(200, "text/plain", "");
+        response->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        request->send(response);
     });
     
     // Temperature control endpoints
@@ -1346,7 +1378,21 @@ void WebServer::setupRoutes() {
             }
             
             if (_picoUart.sendCommand(MSG_CMD_MODE, &cmd, 1)) {
-                broadcastLog("Machine mode set to: %s", mode.c_str());
+                // Pre-format message to avoid String.c_str() issues
+                char modeMsg[64];
+                snprintf(modeMsg, sizeof(modeMsg), "Machine mode set to: %s", mode.c_str());
+                broadcastLog(modeMsg);
+                
+                // If setting to standby/idle, immediately force state to IDLE
+                // This prevents the machine from staying in cooldown state
+                // The state will be updated from Pico status packets, but this ensures
+                // immediate response to the user command
+                if (cmd == 0x00) {  // MODE_IDLE
+                    extern ui_state_t machineState;
+                    machineState.machine_state = UI_STATE_IDLE;
+                    machineState.is_heating = false;
+                }
+                
                 request->send(200, "application/json", "{\"status\":\"ok\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Failed to send command\"}");
@@ -1658,13 +1704,9 @@ void WebServer::setupRoutes() {
         request->send(200, "application/json", response);
     });
     
-    // Serve static files from LittleFS (React app assets: JS, CSS, images, etc.)
-    // This is registered AFTER all API routes to ensure API endpoints have priority
-    _server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
-    
-    // SPA fallback - serve index.html for all non-API routes (React Router handles client-side routing)
-    // This is critical for SPA apps: routes like /stats, /settings, etc. are handled by React Router
-    _server.onNotFound([](AsyncWebServerRequest* request) {
+    // Handle ALL static file requests manually to fix Content-Length issues
+    // AsyncWebServer's serveStatic has known bugs with LittleFS file size calculation
+    _server.onNotFound([this](AsyncWebServerRequest* request) {
         String url = request->url();
         
         // API routes should return 404 if not found
@@ -1673,10 +1715,28 @@ void WebServer::setupRoutes() {
             return;
         }
         
-        // For all other routes, serve index.html (SPA fallback)
-        // React Router will handle the routing client-side
-        Serial.printf("[WEB] SPA fallback: %s -> index.html\n", url.c_str());
-        request->send(LittleFS, "/index.html", "text/html");
+        // Try to serve static file from LittleFS
+        String path = url;
+        if (path == "/") path = "/index.html";
+        
+        if (LittleFS.exists(path)) {
+            String contentType = getContentType(path);
+            // Use request->send(LittleFS, path) which handles streaming correctly
+            request->send(LittleFS, path, contentType);
+            return;
+        }
+        
+        // SPA fallback - serve index.html for React Router paths
+        // (paths like /stats, /settings, etc. that don't exist as files)
+        if (!url.startsWith("/assets/")) {
+            Serial.printf("[WEB] SPA fallback: %s -> index.html\n", url.c_str());
+            request->send(LittleFS, "/index.html", "text/html");
+            return;
+        }
+        
+        // Asset file not found
+        Serial.printf("[WEB] File not found: %s\n", path.c_str());
+        request->send(404, "text/plain", "Not found");
     });
     
     LOG_I("Routes setup complete");
@@ -1977,14 +2037,34 @@ void WebServer::handleOTAUpload(AsyncWebServerRequest* request, const String& fi
         totalSize = request->contentLength();
         uploadedSize = 0;
         
-        // Delete old firmware if exists
+        // Check available space before starting upload
+        size_t freeSpace = LittleFS.totalBytes() - LittleFS.usedBytes();
+        if (totalSize > freeSpace) {
+            LOG_E("Not enough space: need %d bytes, have %d bytes", totalSize, freeSpace);
+            broadcastLog("Upload failed: Not enough storage space", "error");
+            request->send(507, "application/json", "{\"error\":\"Not enough storage space\"}");
+            return;
+        }
+        
+        // Delete old firmware if exists to free up space
         if (LittleFS.exists(OTA_FILE_PATH)) {
             LittleFS.remove(OTA_FILE_PATH);
+            // Recalculate free space after deletion
+            freeSpace = LittleFS.totalBytes() - LittleFS.usedBytes();
+            if (totalSize > freeSpace) {
+                LOG_E("Still not enough space after cleanup: need %d bytes, have %d bytes", totalSize, freeSpace);
+                broadcastLog("Upload failed: Not enough storage space (even after cleanup)", "error");
+                request->send(507, "application/json", "{\"error\":\"Not enough storage space\"}");
+                return;
+            }
         }
+        
+        LOG_I("Available space: %d bytes, required: %d bytes", freeSpace, totalSize);
         
         otaFile = LittleFS.open(OTA_FILE_PATH, "w");
         if (!otaFile) {
             LOG_E("Failed to open OTA file for writing");
+            broadcastLog("Upload failed: Cannot create file", "error");
             request->send(500, "application/json", "{\"error\":\"Failed to open file\"}");
             return;
         }
@@ -1993,7 +2073,13 @@ void WebServer::handleOTAUpload(AsyncWebServerRequest* request, const String& fi
     if (otaFile && len > 0) {
         size_t written = otaFile.write(data, len);
         if (written != len) {
-            LOG_E("Failed to write all data: %d/%d", written, len);
+            LOG_E("Failed to write all data: %d/%d (filesystem may be full)", written, len);
+            // Close file and abort upload if write fails
+            otaFile.close();
+            LittleFS.remove(OTA_FILE_PATH);  // Clean up partial file
+            broadcastLog("Upload failed: Filesystem full or write error", "error");
+            request->send(507, "application/json", "{\"error\":\"Filesystem full\"}");
+            return;
         }
         uploadedSize += written;
         

@@ -19,6 +19,7 @@ import {
   Shield,
   ExternalLink,
   Info,
+  Maximize2,
 } from "lucide-react";
 import { StatusRow } from "./StatusRow";
 import {
@@ -31,8 +32,10 @@ import {
   type UpdateCheckResult,
 } from "@/lib/updates";
 import { useDevMode } from "@/lib/dev-mode";
+import { useNavigate } from "react-router-dom";
 
 export function SystemSettings() {
+  const navigate = useNavigate();
   const esp32 = useStore((s) => s.esp32);
   const pico = useStore((s) => s.pico);
   const clearLogs = useStore((s) => s.clearLogs);
@@ -189,7 +192,7 @@ export function SystemSettings() {
             />
             <StatusRow
               label="Status"
-              value={pico.connected ? "Communicating" : "No response"}
+              value={pico.connected ? "Connected" : "No response"}
             />
           </div>
         </Card>
@@ -643,10 +646,20 @@ export function SystemSettings() {
       <Card>
         <CardHeader
           action={
-            <Button variant="ghost" size="sm" onClick={clearLogs}>
-              <Trash2 className="w-4 h-4" />
-              Clear
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/logs")}
+                title="View full screen"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={clearLogs}>
+                <Trash2 className="w-4 h-4" />
+                Clear
+              </Button>
+            </div>
           }
         >
           <CardTitle icon={<Terminal className="w-5 h-5" />}>

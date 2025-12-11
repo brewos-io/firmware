@@ -353,13 +353,16 @@ void StateManager::saveNotificationSettings() {
 }
 
 void StateManager::saveSystemSettings() {
-    if (_prefs.begin(NVS_SETTINGS, false)) {
-        _prefs.putBool("setupDone", _settings.system.setupComplete);
-        _prefs.end();
-        notifySettingsChanged();
-    } else {
-        Serial.println("[State] Error: Failed to initialize NVS for system settings");
+    if (!_prefs.begin(NVS_SETTINGS, false)) {
+        Serial.println("[State] ERROR: Failed to open NVS for system settings save");
+        Serial.flush();
+        return;
     }
+    _prefs.putBool("setupDone", _settings.system.setupComplete);
+    _prefs.end();  // This commits the changes to flash
+    Serial.println("[State] System settings saved (setupComplete=" + String(_settings.system.setupComplete ? "true" : "false") + ")");
+    Serial.flush();
+    notifySettingsChanged();
 }
 
 void StateManager::saveUserPreferences() {

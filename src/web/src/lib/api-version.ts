@@ -75,6 +75,10 @@ export interface BackendInfo {
   // Mode detection
   mode: 'local' | 'cloud';
   
+  // Connection status
+  picoConnected?: boolean;      // Whether Pico is connected (ESP32 only)
+  apMode?: boolean;             // Whether ESP32 is in AP mode
+  
   // Granular feature flags
   features: FeatureKey[];
   

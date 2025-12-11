@@ -644,14 +644,40 @@ void WebServer::startPicoGitHubOTA(const String& version) {
     }
     
     LOG_I("Pico firmware size: %d bytes", contentLength);
+    
+    // Check available space before downloading
+    size_t freeSpace = LittleFS.totalBytes() - LittleFS.usedBytes();
+    if (contentLength > freeSpace) {
+        LOG_E("Not enough space: need %d bytes, have %d bytes", contentLength, freeSpace);
+        broadcastLog("Update error: Not enough storage space", "error");
+        broadcastProgress("error", 0, "Not enough storage space");
+        http.end();
+        return;
+    }
+    
+    // Delete old firmware if exists to free up space
+    if (LittleFS.exists(OTA_FILE_PATH)) {
+        LittleFS.remove(OTA_FILE_PATH);
+        // Recalculate free space after deletion
+        freeSpace = LittleFS.totalBytes() - LittleFS.usedBytes();
+        if (contentLength > freeSpace) {
+            LOG_E("Still not enough space after cleanup: need %d bytes, have %d bytes", contentLength, freeSpace);
+            broadcastLog("Update error: Not enough storage space (even after cleanup)", "error");
+            broadcastProgress("error", 0, "Not enough storage space");
+            http.end();
+            return;
+        }
+    }
+    
+    LOG_I("Available space: %d bytes, required: %d bytes", freeSpace, contentLength);
     broadcastProgress("download", 10, "Downloading...");
     
     // Save to LittleFS first
     File firmwareFile = LittleFS.open(OTA_FILE_PATH, "w");
     if (!firmwareFile) {
         LOG_E("Failed to create firmware file");
-        broadcastLog("Update error: Storage full", "error");
-        broadcastProgress("error", 0, "Storage full");
+        broadcastLog("Update error: Cannot create file", "error");
+        broadcastProgress("error", 0, "Cannot create file");
         http.end();
         return;
     }
@@ -671,10 +697,11 @@ void WebServer::startPicoGitHubOTA(const String& version) {
             if (bytesRead > 0) {
                 size_t bytesWritten = firmwareFile.write(buffer, bytesRead);
                 if (bytesWritten != bytesRead) {
-                    LOG_E("File write error");
-                    broadcastLog("Update error: Write failed", "error");
-                    broadcastProgress("error", 0, "Write failed");
+                    LOG_E("File write error: wrote %d/%d bytes (filesystem may be full)", bytesWritten, bytesRead);
+                    broadcastLog("Update error: Write failed - filesystem full", "error");
+                    broadcastProgress("error", 0, "Write failed - filesystem full");
                     firmwareFile.close();
+                    LittleFS.remove(OTA_FILE_PATH);  // Clean up partial file
                     http.end();
                     return;
                 }

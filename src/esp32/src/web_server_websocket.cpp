@@ -7,6 +7,7 @@
 #include "pairing_manager.h"
 #include "state/state_manager.h"
 #include "power_meter/power_meter_manager.h"
+#include "ui/ui.h"
 #include <ArduinoJson.h>
 #include <stdarg.h>
 
@@ -137,7 +138,10 @@ void WebServer::processCommand(JsonDocument& doc) {
             payload[0] = (boiler == "steam") ? 0x02 : 0x01;
             memcpy(&payload[1], &temp, sizeof(float));
             if (_picoUart.sendCommand(MSG_CMD_SET_TEMP, payload, 5)) {
-                broadcastLog("%s temp set to %.1f°C", boiler.c_str(), temp);
+                // Pre-format message to avoid String.c_str() issues
+                char tempMsg[64];
+                snprintf(tempMsg, sizeof(tempMsg), "%s temp set to %.1f°C", boiler.c_str(), temp);
+                broadcastLog(tempMsg);
             }
         }
         else if (cmd == "set_mode") {
@@ -170,7 +174,21 @@ void WebServer::processCommand(JsonDocument& doc) {
             }
             
             if (_picoUart.sendCommand(MSG_CMD_MODE, &modeCmd, 1)) {
-                broadcastLog("Mode set to: %s", mode.c_str());
+                // Pre-format message to avoid String.c_str() issues
+                char modeMsg[64];
+                snprintf(modeMsg, sizeof(modeMsg), "Mode set to: %s", mode.c_str());
+                broadcastLog(modeMsg);
+                
+                // If setting to standby/idle, immediately force state to IDLE
+                // This prevents the machine from staying in cooldown state
+                // The state will be updated from Pico status packets, but this ensures
+                // immediate response to the user command
+                if (modeCmd == 0x00) {  // MODE_IDLE
+                    // Force state to IDLE immediately - will be confirmed by next status packet
+                    extern ui_state_t machineState;
+                    machineState.machine_state = UI_STATE_IDLE;
+                    machineState.is_heating = false;
+                }
             }
         }
         else if (cmd == "mqtt_test") {
@@ -316,7 +334,10 @@ void WebServer::processCommand(JsonDocument& doc) {
             String address = doc["address"] | "";
             if (!address.isEmpty()) {
                 scaleManager->connect(address.c_str());
-                broadcastLog("Connecting to scale: %s", address.c_str());
+                // Pre-format message to avoid String.c_str() issues
+                char scaleMsg[64];
+                snprintf(scaleMsg, sizeof(scaleMsg), "Connecting to scale: %s", address.c_str());
+                broadcastLog(scaleMsg);
             }
         }
         else if (cmd == "scale_disconnect") {
@@ -386,8 +407,8 @@ void WebServer::processCommand(JsonDocument& doc) {
                 }
             }
         }
-        // Power settings
-        else if (cmd == "set_power") {
+        // Power settings (accept both "set_power" and "set_power_config" for compatibility)
+        else if (cmd == "set_power" || cmd == "set_power_config") {
             uint16_t voltage = doc["voltage"] | 230;
             uint8_t maxCurrent = doc["maxCurrent"] | 15;
             
@@ -432,7 +453,10 @@ void WebServer::processCommand(JsonDocument& doc) {
                 
                 if (topic.length() > 0) {
                     if (powerMeterManager && powerMeterManager->configureMqtt(topic.c_str(), format.c_str())) {
-                        broadcastLog("MQTT power meter configured: %s", topic.c_str());
+                        // Pre-format message to avoid String.c_str() issues
+                        char mqttMsg[64];
+                        snprintf(mqttMsg, sizeof(mqttMsg), "MQTT power meter configured: %s", topic.c_str());
+                        broadcastLog(mqttMsg);
                     } else {
                         broadcastLog("Failed to configure MQTT power meter", "error");
                     }
@@ -469,7 +493,10 @@ void WebServer::processCommand(JsonDocument& doc) {
             _wifiManager.setStaticIP(staticIp, ip, gateway, subnet, dns1, dns2);
             
             if (staticIp) {
-                broadcastLog("Static IP configured: %s. Reconnecting...", ip.c_str());
+                // Pre-format message to avoid String.c_str() issues
+                char ipMsg[64];
+                snprintf(ipMsg, sizeof(ipMsg), "Static IP configured: %s. Reconnecting...", ip.c_str());
+                broadcastLog(ipMsg);
             } else {
                 broadcastLog("DHCP mode enabled. Reconnecting...", "info");
             }
@@ -596,7 +623,10 @@ void WebServer::processCommand(JsonDocument& doc) {
             String type = doc["type"] | "";
             if (!type.isEmpty()) {
                 State.recordMaintenance(type.c_str());
-                broadcastLog("Maintenance recorded: %s", type.c_str());
+                // Pre-format message to avoid String.c_str() issues
+                char maintMsg[64];
+                snprintf(maintMsg, sizeof(maintMsg), "Maintenance recorded: %s", type.c_str());
+                broadcastLog(maintMsg);
             }
         }
         // Diagnostics commands

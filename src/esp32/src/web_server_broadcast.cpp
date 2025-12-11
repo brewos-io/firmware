@@ -12,7 +12,15 @@
 // Internal helper to broadcast a formatted log message
 static void broadcastLogInternal(AsyncWebSocket* ws, CloudConnection* cloudConnection, 
                                  const char* level, const char* message) {
+    // Defensive checks: ensure all required pointers are valid
     if (!message || !ws) return;
+    
+    // Additional safety: check if WebSocket is in a valid state
+    // Accessing invalid WebSocket can cause LoadProhibited crashes
+    if (reinterpret_cast<uintptr_t>(ws) < 0x1000) {
+        // Invalid pointer (likely null or corrupted)
+        return;
+    }
     
     // Use stack allocation to avoid PSRAM crashes
     #pragma GCC diagnostic push
@@ -347,6 +355,58 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     connections["mqtt"] = state.mqtt_connected;
     connections["scale"] = state.scale_connected;
     connections["cloud"] = state.cloud_connected;
+    
+    // =========================================================================
+    // Pico Info Section
+    // =========================================================================
+    JsonObject pico = doc["pico"].to<JsonObject>();
+    pico["connected"] = state.pico_connected;
+    
+    // Get Pico version from StateManager (set when MSG_BOOT is received)
+    const char* picoVersion = State.getPicoVersion();
+    if (picoVersion && picoVersion[0] != '\0') {
+        // Copy to stack buffer to avoid PSRAM issues
+        char picoVerBuf[16];
+        strncpy(picoVerBuf, picoVersion, sizeof(picoVerBuf) - 1);
+        picoVerBuf[sizeof(picoVerBuf) - 1] = '\0';
+        pico["version"] = picoVerBuf;
+    } else {
+        pico["version"] = (char*)nullptr;  // Will be omitted from JSON
+    }
+    
+    // =========================================================================
+    // WiFi Details Section
+    // =========================================================================
+    JsonObject wifi = doc["wifi"].to<JsonObject>();
+    wifi["connected"] = state.wifi_connected;
+    wifi["apMode"] = state.wifi_ap_mode;
+    wifi["ssid"] = state.wifi_ssid;
+    wifi["ip"] = state.wifi_ip;
+    wifi["rssi"] = state.wifi_rssi;
+    
+    // Get WiFi configuration from WiFiManager (gateway, subnet, DNS, static IP)
+    WiFiStatus wifiStatus = _wifiManager.getStatus();
+    wifi["staticIp"] = wifiStatus.staticIp;
+    
+    // Copy strings to stack buffers to avoid PSRAM issues
+    char gatewayBuf[16];
+    char subnetBuf[16];
+    char dns1Buf[16];
+    char dns2Buf[16];
+    
+    strncpy(gatewayBuf, wifiStatus.gateway.c_str(), sizeof(gatewayBuf) - 1);
+    gatewayBuf[sizeof(gatewayBuf) - 1] = '\0';
+    strncpy(subnetBuf, wifiStatus.subnet.c_str(), sizeof(subnetBuf) - 1);
+    subnetBuf[sizeof(subnetBuf) - 1] = '\0';
+    strncpy(dns1Buf, wifiStatus.dns1.c_str(), sizeof(dns1Buf) - 1);
+    dns1Buf[sizeof(dns1Buf) - 1] = '\0';
+    strncpy(dns2Buf, wifiStatus.dns2.c_str(), sizeof(dns2Buf) - 1);
+    dns2Buf[sizeof(dns2Buf) - 1] = '\0';
+    
+    wifi["gateway"] = gatewayBuf;
+    wifi["subnet"] = subnetBuf;
+    wifi["dns1"] = dns1Buf;
+    wifi["dns2"] = dns2Buf;
     
     // =========================================================================
     // ESP32 Info

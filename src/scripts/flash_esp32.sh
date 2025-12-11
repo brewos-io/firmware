@@ -67,10 +67,49 @@ if [ "$FIRMWARE_ONLY" = false ]; then
         rm -rf "$WEB_DATA_DIR/.well-known" 2>/dev/null || true
         
         echo -e "${BLUE}Building web UI for ESP32...${NC}"
-        npm run build:esp32
+        if ! npm run build:esp32; then
+            echo -e "${RED}✗ Web build failed!${NC}"
+            exit 1
+        fi
+        
+        # Verify web files were built and copied to data directory
+        echo -e "${BLUE}Verifying web files in data directory...${NC}"
+        if [ ! -d "$WEB_DATA_DIR" ]; then
+            echo -e "${RED}✗ Data directory not found: $WEB_DATA_DIR${NC}"
+            echo -e "${YELLOW}Web build may have failed or output path is incorrect${NC}"
+            exit 1
+        fi
+        
+        # Check for essential files
+        MISSING_FILES=()
+        if [ ! -f "$WEB_DATA_DIR/index.html" ]; then
+            MISSING_FILES+=("index.html")
+        fi
+        if [ ! -d "$WEB_DATA_DIR/assets" ] || [ -z "$(ls -A "$WEB_DATA_DIR/assets" 2>/dev/null)" ]; then
+            MISSING_FILES+=("assets/")
+        fi
+        
+        if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+            echo -e "${RED}✗ Missing required web files:${NC}"
+            for file in "${MISSING_FILES[@]}"; do
+                echo -e "  ${RED}- $file${NC}"
+            done
+            echo -e "${YELLOW}Web build may have failed or files were not copied correctly${NC}"
+            echo -e "${CYAN}Data directory contents:${NC}"
+            ls -la "$WEB_DATA_DIR" || true
+            exit 1
+        fi
+        
+        WEB_FILE_COUNT=$(find "$WEB_DATA_DIR" -type f | wc -l | tr -d ' ')
+        echo -e "${GREEN}✓ Web files verified: $WEB_FILE_COUNT files in $WEB_DATA_DIR${NC}"
         cd "$ESP32_DIR"
     else
         echo -e "${YELLOW}⚠ npm not found - skipping web build${NC}"
+        if [ ! -d "$WEB_DATA_DIR" ] || [ -z "$(ls -A "$WEB_DATA_DIR" 2>/dev/null)" ]; then
+            echo -e "${RED}✗ No web files found in $WEB_DATA_DIR${NC}"
+            echo -e "${YELLOW}Please run: ${CYAN}./scripts/sync_web_to_esp32.sh --build${NC}"
+            exit 1
+        fi
     fi
 fi
 
@@ -84,11 +123,36 @@ fi
 
 # Build LittleFS image if not firmware-only
 if [ "$FIRMWARE_ONLY" = false ]; then
-    echo -e "${BLUE}Building LittleFS image...${NC}"
-    if ! pio run -e esp32s3 -t buildfs; then
-        echo -e "${RED}✗ LittleFS build failed!${NC}"
+    # Double-check data directory exists and has files before building LittleFS
+    if [ ! -d "$WEB_DATA_DIR" ] || [ -z "$(ls -A "$WEB_DATA_DIR" 2>/dev/null)" ]; then
+        echo -e "${RED}✗ Data directory is empty or missing: $WEB_DATA_DIR${NC}"
+        echo -e "${YELLOW}Cannot build LittleFS image without web files${NC}"
+        echo -e "${CYAN}Please ensure web files are built and synced first:${NC}"
+        echo -e "  ${CYAN}./scripts/sync_web_to_esp32.sh --build${NC}"
         exit 1
     fi
+    
+    echo -e "${BLUE}Building LittleFS image from $WEB_DATA_DIR...${NC}"
+    echo -e "${BLUE}Files to include: $(find "$WEB_DATA_DIR" -type f | wc -l | tr -d ' ') files${NC}"
+    
+    if ! pio run -e esp32s3 -t buildfs; then
+        echo -e "${RED}✗ LittleFS build failed!${NC}"
+        echo -e "${YELLOW}Check that:${NC}"
+        echo -e "  1. Data directory exists: $WEB_DATA_DIR"
+        echo -e "  2. Data directory contains files"
+        echo -e "  3. PlatformIO is configured correctly"
+        exit 1
+    fi
+    
+    # Verify LittleFS image was created
+    if [ ! -f "$LITTLEFS_IMAGE" ]; then
+        echo -e "${RED}✗ LittleFS image not found after build: $LITTLEFS_IMAGE${NC}"
+        echo -e "${YELLOW}Build may have failed silently${NC}"
+        exit 1
+    fi
+    
+    LITTLEFS_SIZE=$(du -h "$LITTLEFS_IMAGE" | cut -f1)
+    echo -e "${GREEN}✓ LittleFS image built: $LITTLEFS_SIZE${NC}"
 fi
 echo ""
 

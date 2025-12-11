@@ -27,6 +27,7 @@ import {
   type HourlyData,
 } from "@/components/stats";
 import { formatRuntime, formatMsToSeconds } from "@/lib/format";
+import { getCurrencySymbol } from "@/lib/currency";
 import {
   BarChart3,
   Coffee,
@@ -543,8 +544,6 @@ function TipRow({ title, description, frequency }: TipRowProps) {
     </div>
   );
 }
-
-import { getCurrencySymbol } from "@/lib/currency";
 
 interface PowerTabProps {
   stats: Statistics;

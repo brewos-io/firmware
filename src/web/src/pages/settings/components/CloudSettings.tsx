@@ -212,6 +212,13 @@ export function CloudSettings() {
         connected: cloudEnabled,
         serverUrl: cloudUrl,
       });
+      // If enabling cloud, fetch pairing QR
+      if (cloudEnabled) {
+        fetchPairingQR();
+      } else {
+        setPairing(null);
+        setError(null);
+      }
       setTimeout(() => setSaving(false), 600);
       return;
     }
@@ -231,6 +238,17 @@ export function CloudSettings() {
         connected: cloudConfig?.connected || false,
         serverUrl: cloudUrl,
       });
+      
+      // If enabling cloud, fetch pairing QR after a short delay to allow backend to process
+      if (cloudEnabled) {
+        setTimeout(() => {
+          fetchPairingQR();
+        }, 1000);
+      } else {
+        // Clear pairing data when disabling cloud
+        setPairing(null);
+        setError(null);
+      }
     }
 
     // Brief visual feedback for fire-and-forget WebSocket command
@@ -262,13 +280,28 @@ export function CloudSettings() {
     }
   }, [isDemo]);
 
+  // Fetch cloud status on mount
   useEffect(() => {
     // Skip API calls in demo mode - data already initialized
     if (isDemo) return;
 
-    fetchPairingQR();
     fetchCloudStatus();
-  }, [isDemo, fetchPairingQR, fetchCloudStatus]);
+  }, [isDemo, fetchCloudStatus]);
+
+  // Fetch pairing QR only when cloud is enabled
+  useEffect(() => {
+    // Skip API calls in demo mode - data already initialized
+    if (isDemo) return;
+
+    // Only fetch pairing QR if cloud is enabled
+    if (cloudEnabled) {
+      fetchPairingQR();
+    } else {
+      // Clear pairing data when cloud is disabled
+      setPairing(null);
+      setError(null);
+    }
+  }, [isDemo, cloudEnabled, fetchPairingQR]);
 
   const isExpired =
     pairing !== null && pairing.expiresIn !== undefined && timeLeft <= 0;
@@ -291,7 +324,14 @@ export function CloudSettings() {
           </div>
 
           <div className="bg-white rounded-xl p-6 border border-theme flex flex-col items-center">
-            {loadingQR ? (
+            {!cloudEnabled ? (
+              <div className="w-48 h-48 flex flex-col items-center justify-center text-center">
+                <Cloud className="w-8 h-8 text-theme-muted mb-2" />
+                <p className="text-sm text-theme-muted">
+                  Enable cloud connection to generate pairing code
+                </p>
+              </div>
+            ) : loadingQR ? (
               <div className="w-48 h-48 flex items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-accent" />
               </div>
@@ -340,7 +380,7 @@ export function CloudSettings() {
               variant="secondary"
               className="w-full"
               onClick={refreshPairing}
-              disabled={loadingQR}
+              disabled={loadingQR || !cloudEnabled}
             >
               <RefreshCw
                 className={`w-4 h-4 mr-2 ${loadingQR ? "animate-spin" : ""}`}

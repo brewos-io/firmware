@@ -78,12 +78,47 @@ async function fetchModeFromServer(): Promise<{
   }
 
   // Try /api/info first (new endpoint with full capabilities)
+  // For ESP32 local mode, wait for Pico connection if not connected initially
   try {
     const infoResponse = await fetchWithTimeout("/api/info");
     if (infoResponse.ok) {
       const info = (await infoResponse.json()) as BackendInfo;
       const detectedMode = info.mode === "cloud" ? "cloud" : "local";
       console.log(`[Mode] Detected mode from /api/info: ${detectedMode}`);
+      
+      // If on ESP32 hardware in local mode and Pico not connected, wait/retry
+      // This handles simultaneous power-on where both devices need initialization time
+      if (detectedMode === "local" && 
+          typeof info.picoConnected === "boolean" && 
+          !info.picoConnected &&
+          typeof window !== "undefined" &&
+          (window.location.hostname === "brewos.local" || __ESP32__)) {
+        console.log("[Mode] Pico not connected yet, waiting for initialization...");
+        
+        // Retry up to 3 times with 2 second intervals (total 6 seconds)
+        // This gives Pico time to boot and connect after ESP32 server is ready
+        for (let retry = 0; retry < 3; retry++) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            const retryResponse = await fetchWithTimeout("/api/info", 3000);
+            if (retryResponse.ok) {
+              const retryInfo = (await retryResponse.json()) as BackendInfo;
+              if (retryInfo.picoConnected) {
+                console.log(`[Mode] Pico connected after ${(retry + 1) * 2} seconds`);
+                return {
+                  mode: detectedMode,
+                  apMode: retryInfo.apMode,
+                  backendInfo: retryInfo,
+                };
+              }
+            }
+          } catch (retryError) {
+            console.log(`[Mode] Retry ${retry + 1} failed:`, retryError);
+          }
+        }
+        console.log("[Mode] Pico still not connected after waiting, continuing...");
+      }
+      
       return {
         mode: detectedMode,
         apMode: (info as { apMode?: boolean }).apMode,

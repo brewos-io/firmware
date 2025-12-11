@@ -139,25 +139,56 @@ export class Connection implements IConnection {
   private buildUrl(): string {
     if (this.config.mode === 'cloud') {
       // Cloud: connect to /ws/client with auth
+      // Always use wss:// for cloud connections (secure)
       const base = this.config.cloudUrl || '';
-      const url = new URL(base || window.location.href);
-      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-      url.pathname = '/ws/client';
-      url.searchParams.set('token', this.config.authToken || '');
-      url.searchParams.set('device', this.config.deviceId || '');
-      return url.toString();
+      
+      if (base) {
+        // Parse the provided cloud URL
+        const url = new URL(base);
+        // Force wss:// for cloud connections unless explicitly ws:// (for local dev)
+        if (url.protocol === 'https:' || url.protocol === 'wss:') {
+          url.protocol = 'wss:';
+        } else if (url.protocol === 'http:' || url.protocol === 'ws:') {
+          // Allow ws:// for local development/testing
+          url.protocol = 'ws:';
+        } else {
+          // Default to wss:// if no protocol or unknown protocol
+          url.protocol = 'wss:';
+        }
+        url.pathname = '/ws/client';
+        url.searchParams.set('token', this.config.authToken || '');
+        url.searchParams.set('device', this.config.deviceId || '');
+        return url.toString();
+      }
+      
+      // Fallback: use current page URL and convert to wss://
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'wss:'; // Always wss:// for cloud
+        url.pathname = '/ws/client';
+        url.searchParams.set('token', this.config.authToken || '');
+        url.searchParams.set('device', this.config.deviceId || '');
+        return url.toString();
+      }
+      
+      // Last resort fallback (shouldn't happen in browser)
+      return 'wss://cloud.brewos.io/ws/client';
     }
 
     // Local connection - direct to ESP32
-    // WebSocket on same port 80, endpoint /ws
+    // Use ws:// for local ESP32 connections (local network, no SSL needed)
     const endpoint = this.config.endpoint || '/ws';
     
     if (typeof window !== 'undefined') {
+      // For local ESP32, use the same protocol as the page
+      // If page is HTTPS (e.g., served via HTTPS locally), use wss://
+      // Otherwise use ws:// (typical for local ESP32 on HTTP)
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
       return `${protocol}//${host}${endpoint}`;
     }
     
+    // Fallback for non-browser environments: use ws:// for local ESP32
     return `ws://brewos.local${endpoint}`;
   }
 

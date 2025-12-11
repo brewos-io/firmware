@@ -60,8 +60,8 @@
 // -----------------------------------------------------------------------------
 #define PICO_UART_NUM           1               // UART1
 #define PICO_UART_BAUD          PROTOCOL_BAUD_RATE
-#define PICO_UART_TX_PIN        17              // ESP32 TX -> Pico RX (GPIO1)
-#define PICO_UART_RX_PIN        18              // ESP32 RX <- Pico TX (GPIO0)
+#define PICO_UART_TX_PIN        43              // ESP32 TX -> Pico RX (GPIO1)
+#define PICO_UART_RX_PIN        44              // ESP32 RX <- Pico TX (GPIO0)
 
 // Pico control pins
 #define PICO_RUN_PIN            8               // Controls Pico RUN (reset) → J15 Pin 5

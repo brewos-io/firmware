@@ -114,13 +114,15 @@ BrewOSLogLevel stringToLogLevel(const char* str) {
 static bool scaleEnabled = false;
 
 // Machine state from Pico
-static ui_state_t machineState = {0};
+ui_state_t machineState = {0};  // Made non-static so it can be accessed from other files
 
 // Demo mode - simulates Pico data when Pico not connected
-#define DEMO_MODE_TIMEOUT_MS  10000  // Enter demo after 10s without Pico
+#define DEMO_MODE_TIMEOUT_MS  20000  // Enter demo after 20s without Pico (from server ready)
+#define DEMO_MODE_GRACE_PERIOD_MS 5000  // Grace period after server starts before checking
 static bool demoMode = false;
 static unsigned long demoStartTime = 0;
 static unsigned long wifiConnectedTime = 0;
+static unsigned long serverReadyTime = 0;  // Track when server is ready to serve requests
 static bool mDNSStarted = false;
 static bool wifiConnectedLogSent = false;
 static bool ntpConfigured = false;
@@ -325,10 +327,9 @@ static void onPicoPacket(const PicoPacket& packet) {
     LOG_D("Pico packet: type=0x%02X, len=%d, seq=%d", 
           packet.type, packet.length, packet.seq);
     
-    // Forward to WebSocket clients
-    if (webServer) {
-        webServer->broadcastPicoMessage(packet.type, packet.payload, packet.length);
-    }
+    // NOTE: Raw Pico messages are NOT forwarded to WebSocket clients
+    // The UI should use processed "status" messages instead, not low-level ESP32-Pico protocol
+    // These messages are for ESP32-Pico communication only, not for the web UI
     
     // Handle specific message types
     switch (packet.type) {
@@ -365,6 +366,35 @@ static void onPicoPacket(const PicoPacket& packet) {
                     if (webServer) webServer->broadcastLog("Firmware update recommended", "warn");
                 }
             }
+            
+            // Send environmental config to Pico immediately after boot
+            // This is required for Pico to exit STATE_FAULT (0x05)
+            // Pico will remain in fault state until environmental config is received
+            uint16_t voltage = State.settings().power.mainsVoltage;
+            uint8_t maxCurrent = (uint8_t)State.settings().power.maxCurrent;
+            
+            // Only send if settings are valid (non-zero)
+            if (voltage > 0 && maxCurrent > 0) {
+                uint8_t envPayload[4];
+                envPayload[0] = CONFIG_ENVIRONMENTAL;  // Config type
+                envPayload[1] = (voltage >> 8) & 0xFF;
+                envPayload[2] = voltage & 0xFF;
+                envPayload[3] = maxCurrent;
+                
+                if (picoUart->sendCommand(MSG_CMD_CONFIG, envPayload, 4)) {
+                    LOG_I("Sent environmental config to Pico: %dV, %dA", voltage, maxCurrent);
+                } else {
+                    LOG_W("Failed to send environmental config to Pico");
+                }
+            } else {
+                LOG_W("Environmental config not set - Pico will remain in STATE_FAULT until power settings are configured");
+                if (webServer) {
+                    char msg[128];
+                    snprintf(msg, sizeof(msg), "Power settings not configured - please set voltage and max current in settings");
+                    webServer->broadcastLog(msg, "warn");
+                }
+            }
+            
             break;
         }
             
@@ -384,10 +414,38 @@ static void onPicoPacket(const PicoPacket& packet) {
         
         case MSG_ALARM: {
             uint8_t alarmCode = packet.payload[0];
-            LOG_W("PICO ALARM: 0x%02X", alarmCode);
-            if (webServer) webServer->broadcastLog("Pico ALARM: 0x%02X", "error", alarmCode);
-            machineState.alarm_active = true;
-            machineState.alarm_code = alarmCode;
+            
+            if (alarmCode == ALARM_NONE) {
+                // ALARM_NONE (0x00) means no alarm - clear the alarm state
+                // Only log if we're actually transitioning from a REAL alarm (non-zero) to cleared
+                if (machineState.alarm_active && machineState.alarm_code != ALARM_NONE) {
+                    LOG_I("Pico alarm cleared (was: 0x%02X)", machineState.alarm_code);
+                    // Defensive: Check webServer pointer and use try-catch equivalent (null check)
+                    if (webServer) {
+                        // Use a safer approach - format the message first to avoid variadic issues
+                        char alarmMsg[64];
+                        snprintf(alarmMsg, sizeof(alarmMsg), "Pico alarm cleared");
+                        webServer->broadcastLog(alarmMsg, "info");
+                    }
+                }
+                // Always update state, but only log when transitioning from real alarm
+                machineState.alarm_active = false;
+                machineState.alarm_code = ALARM_NONE;
+            } else {
+                // Actual alarm - log and set alarm state
+                // Only log if this is a new alarm or different from current
+                if (!machineState.alarm_active || machineState.alarm_code != alarmCode) {
+                    LOG_W("PICO ALARM: 0x%02X", alarmCode);
+                    // Defensive: Format message first to avoid variadic argument issues
+                    if (webServer) {
+                        char alarmMsg[64];
+                        snprintf(alarmMsg, sizeof(alarmMsg), "Pico ALARM: 0x%02X", alarmCode);
+                        webServer->broadcastLog(alarmMsg, "error");
+                    }
+                }
+                machineState.alarm_active = true;
+                machineState.alarm_code = alarmCode;
+            }
             break;
         }
         
@@ -550,7 +608,7 @@ void setup() {
     // CRITICAL: Initialize serial FIRST
     // With ARDUINO_USB_CDC_ON_BOOT=1, Serial goes to USB CDC (appears as /dev/cu.usbmodem* or /dev/cu.usbserial*)
     // Serial0 is hardware UART (GPIO43/44 by default, or can be configured to GPIO36/37)
-    // Serial1 is used for Pico communication (GPIO17/18)
+    // Serial1 is used for Pico communication (GPIO43/44)
     Serial.begin(115200);
     delay(500);  // Give USB CDC time to enumerate
     
@@ -755,13 +813,37 @@ void setup() {
     Serial.println("Pico UART initialized OK");
     Serial.flush();
     
-    // Wait a bit to see if Pico connects (sends boot message)
-    Serial.println("[4.5/8] Waiting for Pico connection (2 seconds)...");
+    // Reset Pico to ensure fresh boot
+    Serial.println("[4.4/8] Resetting Pico...");
+    Serial.flush();
+    picoUart->resetPico();
+    delay(1000);  // Give Pico time to reset and start booting (Core 1 needs time to init)
+    
+    // Wait for Pico to connect (sends boot message)
+    // Pico Core 1 needs time to initialize and send boot message
+    // Increased to 10 seconds to allow for simultaneous power-on initialization
+    Serial.println("[4.5/8] Waiting for Pico connection (10 seconds)...");
     Serial.flush();
     unsigned long picoWaitStart = millis();
     bool picoConnected = false;
-    while (millis() - picoWaitStart < 2000) {
+    uint32_t initialPackets = picoUart->getPacketsReceived();
+    bool sawAnyData = false;
+    
+    while (millis() - picoWaitStart < 10000) {
         picoUart->loop();  // Process any incoming packets
+        
+        // Check if we're receiving any raw data at all
+        if (picoUart->bytesAvailable() > 0) {
+            sawAnyData = true;
+        }
+        
+        // Check if we received any packets (even if not "connected" yet)
+        if (picoUart->getPacketsReceived() > initialPackets) {
+            Serial.printf("Received %d packet(s) from Pico\n", 
+                         picoUart->getPacketsReceived() - initialPackets);
+            Serial.flush();
+        }
+        
         if (picoUart->isConnected()) {
             picoConnected = true;
             Serial.println("Pico connected!");
@@ -770,9 +852,45 @@ void setup() {
         }
         delay(10);
     }
+    
     if (!picoConnected) {
-        Serial.println("Pico not connected - continuing without Pico");
+        Serial.printf("Pico not connected after %d ms\n", millis() - picoWaitStart);
+        Serial.printf("Packets received: %d, Errors: %d\n", 
+                     picoUart->getPacketsReceived(), 
+                     picoUart->getPacketErrors());
+        if (sawAnyData) {
+            Serial.println("WARNING: Received raw data but no valid packets - check baud rate/protocol");
+        } else {
+            Serial.println("WARNING: No data received - check wiring (TX/RX pins)");
+            Serial.println("  ESP32 TX (GPIO43) -> Pico RX (GPIO1)");
+            Serial.println("  ESP32 RX (GPIO44) <- Pico TX (GPIO0)");
+        }
+        
+        // Try sending a ping to see if Pico responds
+        Serial.println("Attempting to ping Pico...");
         Serial.flush();
+        if (picoUart->sendPing()) {
+            Serial.println("Ping sent, waiting 500ms for response...");
+            Serial.flush();
+            delay(500);
+            picoUart->loop();
+            if (picoUart->isConnected()) {
+                picoConnected = true;
+                Serial.println("Pico responded to ping - connected!");
+                Serial.flush();
+            } else {
+                Serial.println("Ping sent but no response received");
+                Serial.flush();
+            }
+        } else {
+            Serial.println("Failed to send ping");
+            Serial.flush();
+        }
+        
+        if (!picoConnected) {
+            Serial.println("Continuing without Pico (demo mode)");
+            Serial.flush();
+        }
     }
     
     // Set up packet handler using static function to avoid PSRAM issues
@@ -798,6 +916,10 @@ void setup() {
     webServer->begin();
     Serial.println("Web server started OK");
     Serial.flush();
+    
+    // Record server ready time for demo mode timeout calculation
+    // This ensures we give Pico time to initialize even if both devices boot simultaneously
+    serverReadyTime = millis();
     
     // Initialize MQTT
     Serial.println("[7/8] Initializing MQTT...");
@@ -889,16 +1011,10 @@ void setup() {
     // Initialize BLE Scale Manager
     if (scaleEnabled) {
         LOG_I("Initializing BLE Scale Manager...");
-        Serial.flush();
-        LOG_I("About to call scaleManager.begin()...");
-        Serial.flush();
         if (scaleManager->begin()) {
-            LOG_I("scaleManager.begin() returned true");
-            Serial.flush();
             // Set up scale callbacks using static functions to avoid PSRAM issues
             scaleManager->onWeight(onScaleWeight);
             scaleManager->onConnection(onScaleConnection);
-            
             LOG_I("Scale Manager ready");
         } else {
             LOG_E("Scale Manager initialization failed!");
@@ -1083,12 +1199,19 @@ void loop() {
     // Provides simulated data when Pico is not connected
     // =========================================================================
     
+    // Only check for demo mode after server is ready and grace period has passed
+    // This allows both ESP32 and Pico to initialize when powering on simultaneously
+    bool canEnterDemoMode = (serverReadyTime > 0) && 
+                           (millis() - serverReadyTime > DEMO_MODE_GRACE_PERIOD_MS);
+    
     if (!picoConnected && picoUart->getPacketsReceived() == 0) {
-        // No Pico detected - enter demo mode after timeout
-        if (!demoMode && millis() > DEMO_MODE_TIMEOUT_MS) {
+        // No Pico detected - enter demo mode after timeout (from server ready time)
+        if (!demoMode && canEnterDemoMode && 
+            (millis() - serverReadyTime) > DEMO_MODE_TIMEOUT_MS) {
             demoMode = true;
             demoStartTime = millis();
-            LOG_I("=== DEMO MODE ENABLED (no Pico detected) ===");
+            LOG_I("=== DEMO MODE ENABLED (no Pico detected after %lu ms) ===", 
+                  millis() - serverReadyTime);
         }
     } else {
         // Pico connected - exit demo mode
@@ -1300,7 +1423,17 @@ void parsePicoStatus(const uint8_t* payload, uint8_t length) {
     machineState.is_brewing = (flags & 0x01) != 0;
     machineState.is_heating = (flags & 0x02) != 0;
     machineState.water_low = (flags & 0x08) != 0;
-    machineState.alarm_active = (flags & 0x10) != 0;
+    // Only update alarm_active from status if we have a valid alarm code
+    // MSG_ALARM messages are the source of truth for alarm state
+    // Status packet flag is just a hint - don't set alarm_active without alarm_code
+    bool statusAlarmFlag = (flags & 0x10) != 0;
+    if (machineState.alarm_code != ALARM_NONE) {
+        // We have a real alarm code - status flag should match
+        machineState.alarm_active = statusAlarmFlag;
+    } else {
+        // No alarm code - status flag is unreliable, keep alarm_active false
+        machineState.alarm_active = false;
+    }
     
     // Parse power watts (offset 18-19, if available)
     if (length >= 20) {

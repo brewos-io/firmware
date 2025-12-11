@@ -604,13 +604,28 @@ export const useStore = create<BrewOSState>()(
                     (connectionsData.mqtt as boolean) ?? state.mqtt.connected,
                 }
               : state.mqtt,
-            pico: connectionsData
-              ? {
+            pico: (() => {
+              // Check if there's a dedicated pico object in the message
+              const picoData = data.pico as Record<string, unknown> | undefined;
+              if (picoData) {
+                return {
+                  ...state.pico,
+                  connected:
+                    (picoData.connected as boolean) ?? state.pico.connected,
+                  version:
+                    (picoData.version as string) || state.pico.version,
+                };
+              }
+              // Fallback to connections data
+              if (connectionsData) {
+                return {
                   ...state.pico,
                   connected:
                     (connectionsData.pico as boolean) ?? state.pico.connected,
-                }
-              : state.pico,
+                };
+              }
+              return state.pico;
+            })(),
             // ESP32 info
             esp32: esp32Data
               ? {

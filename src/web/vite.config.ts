@@ -159,11 +159,58 @@ export default defineConfig(({ mode, command }) => {
         : undefined,
       rollupOptions: {
         output: {
-          manualChunks: isEsp32
-            ? undefined
-            : {
-                vendor: ["react", "react-dom", "react-router-dom"],
-              },
+          manualChunks: (id) => {
+            // For ESP32 builds, use aggressive code splitting to reduce initial bundle
+            if (isEsp32) {
+              // Core React libraries
+              if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
+                return "react-vendor";
+              }
+              // Router
+              if (id.includes("node_modules/react-router")) {
+                return "router";
+              }
+              // State management
+              if (id.includes("node_modules/zustand")) {
+                return "state";
+              }
+              // Icons (lucide-react can be large)
+              if (id.includes("node_modules/lucide-react")) {
+                return "icons";
+              }
+              // QR code libraries - don't split separately to avoid circular dependency issues
+              // They'll be bundled with the components that use them (lazy loaded)
+              // OAuth (only used in cloud mode)
+              if (id.includes("node_modules/@react-oauth")) {
+                return "oauth";
+              }
+              // Utilities (small, can be bundled)
+              if (id.includes("node_modules/clsx") || id.includes("node_modules/tailwind-merge")) {
+                return "utils";
+              }
+              // Large pages - split by route
+              if (id.includes("/pages/Brewing")) {
+                return "page-brewing";
+              }
+              if (id.includes("/pages/Stats")) {
+                return "page-stats";
+              }
+              if (id.includes("/pages/Settings") || id.includes("/pages/settings")) {
+                return "page-settings";
+              }
+              if (id.includes("/pages/Diagnostics")) {
+                return "page-diagnostics";
+              }
+              if (id.includes("/pages/Schedules")) {
+                return "page-schedules";
+              }
+            } else {
+              // Cloud builds: simpler chunking
+              if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/react-router-dom")) {
+                return "vendor";
+              }
+            }
+          },
         },
       },
     },
@@ -177,6 +224,9 @@ export default defineConfig(({ mode, command }) => {
       proxy: {
         "/ws": {
           // Use localhost:3001 for local cloud dev, brewos.local for ESP32 dev
+          // Note: For local ESP32, ws:// is correct (local network, no SSL)
+          // For local cloud dev, ws:// is fine (localhost, no SSL needed)
+          // In production/cloud, the connection.ts will use wss:// automatically
           target: isEsp32 ? "ws://brewos.local" : "ws://localhost:3001",
           ws: true,
         },

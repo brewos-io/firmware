@@ -1,20 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { Dashboard } from "@/pages/Dashboard";
-import { Brewing } from "@/pages/Brewing";
-import { Stats } from "@/pages/Stats";
-import { Settings } from "@/pages/settings";
-import { Schedules } from "@/pages/Schedules";
-import { Diagnostics } from "@/pages/Diagnostics";
-import { Setup } from "@/pages/Setup";
-import { Login } from "@/pages/Login";
-import { Machines } from "@/pages/Machines";
-import { AuthCallback } from "@/pages/AuthCallback";
-import { Pair } from "@/pages/Pair";
-import { Onboarding } from "@/pages/Onboarding";
-import { FirstRunWizard } from "@/pages/FirstRunWizard";
-import { BrewingPreview } from "@/pages/dev/BrewingPreview";
+import { Loading } from "@/components/Loading";
 import {
   initConnection,
   getConnection,
@@ -23,7 +10,6 @@ import {
 import { initializeStore } from "@/lib/store";
 import { useAppStore } from "@/lib/mode";
 import { useThemeStore } from "@/lib/themeStore";
-import { Loading } from "@/components/Loading";
 import { DemoBanner } from "@/components/DemoBanner";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { FirmwareUpdateNotification } from "@/components/FirmwareUpdateNotification";
@@ -32,6 +18,50 @@ import { getDemoConnection, clearDemoConnection } from "@/lib/demo-connection";
 import { isDemoMode, disableDemoMode } from "@/lib/demo-mode";
 import { isRunningAsPWA, isDemoModeAllowed } from "@/lib/pwa";
 import { isDevModeEnabled } from "@/lib/dev-mode";
+
+// Lazy load routes for better code splitting
+// Core routes (loaded immediately)
+import { Dashboard } from "@/pages/Dashboard";
+import { Login } from "@/pages/Login";
+import { Setup } from "@/pages/Setup";
+import { FirstRunWizard } from "@/pages/FirstRunWizard";
+
+// Heavy routes (lazy loaded) - using named exports
+const Brewing = lazy(() =>
+  import("@/pages/Brewing").then((mod) => ({ default: mod.Brewing }))
+);
+const Stats = lazy(() =>
+  import("@/pages/Stats").then((mod) => ({ default: mod.Stats }))
+);
+const Settings = lazy(() =>
+  import("@/pages/settings").then((mod) => ({ default: mod.Settings }))
+);
+const Schedules = lazy(() =>
+  import("@/pages/Schedules").then((mod) => ({ default: mod.Schedules }))
+);
+const Diagnostics = lazy(() =>
+  import("@/pages/Diagnostics").then((mod) => ({ default: mod.Diagnostics }))
+);
+const Machines = lazy(() =>
+  import("@/pages/Machines").then((mod) => ({ default: mod.Machines }))
+);
+const AuthCallback = lazy(() =>
+  import("@/pages/AuthCallback").then((mod) => ({ default: mod.AuthCallback }))
+);
+const Pair = lazy(() =>
+  import("@/pages/Pair").then((mod) => ({ default: mod.Pair }))
+);
+const Onboarding = lazy(() =>
+  import("@/pages/Onboarding").then((mod) => ({ default: mod.Onboarding }))
+);
+const BrewingPreview = lazy(() =>
+  import("@/pages/dev/BrewingPreview").then((mod) => ({
+    default: mod.BrewingPreview,
+  }))
+);
+const Logs = lazy(() =>
+  import("@/pages/Logs").then((mod) => ({ default: mod.Logs }))
+);
 
 // Maximum time to wait for initialization before showing error/fallback
 const INIT_TIMEOUT_MS = 10000;
@@ -93,6 +123,9 @@ function App() {
   // Initialize demo mode
   useEffect(() => {
     if (!inDemoMode) return;
+
+    // In demo mode, treat setup as complete (no real device setup needed)
+    setSetupComplete(true);
 
     const initDemo = async () => {
       try {
@@ -171,7 +204,8 @@ function App() {
         // IMPORTANT: If setup is not complete, we're in wizard mode
         // Stay in local mode and check setup status - don't allow mode changes
         // until wizard completes
-        if (!setupComplete && !apMode && !isPWA) {
+        // BUT: Skip setup check in demo mode (demo mode doesn't need real device setup)
+        if (!setupComplete && !apMode && !isPWA && !inDemoMode) {
           // Check if setup is complete (with timeout via AbortController)
           try {
             const setupResponse = await fetch("/api/setup/status", {
@@ -317,10 +351,31 @@ function App() {
           {isDev && (
             <>
               <Route path="/dev/login" element={<Login />} />
-              <Route path="/dev/onboarding" element={<Onboarding />} />
-              <Route path="/dev/pair" element={<Pair />} />
+              <Route
+                path="/dev/onboarding"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <Onboarding />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/dev/pair"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <Pair />
+                  </Suspense>
+                }
+              />
               <Route path="/dev/setup" element={<Setup />} />
-              <Route path="/dev/brewing" element={<BrewingPreview />} />
+              <Route
+                path="/dev/brewing"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <BrewingPreview />
+                  </Suspense>
+                }
+              />
               <Route
                 path="/dev/wizard"
                 element={
@@ -331,14 +386,64 @@ function App() {
               />
             </>
           )}
-          <Route path="/machines" element={<Machines />} />
+          <Route
+            path="/machines"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Machines />
+              </Suspense>
+            }
+          />
           <Route path="/" element={<Layout onExitDemo={handleExitDemo} />}>
             <Route index element={<Dashboard />} />
-            <Route path="brewing" element={<Brewing />} />
-            <Route path="stats" element={<Stats />} />
-            <Route path="schedules" element={<Schedules />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="diagnostics" element={<Diagnostics />} />
+            <Route
+              path="brewing"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Brewing />
+                </Suspense>
+              }
+            />
+            <Route
+              path="stats"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Stats />
+                </Suspense>
+              }
+            />
+            <Route
+              path="schedules"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Schedules />
+                </Suspense>
+              }
+            />
+            <Route
+              path="settings"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Settings />
+                </Suspense>
+              }
+            />
+            <Route
+              path="diagnostics"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Diagnostics />
+                </Suspense>
+              }
+            />
+            <Route
+              path="logs"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Logs />
+                </Suspense>
+              }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
@@ -366,7 +471,8 @@ function App() {
 
     // Show first-run wizard if setup not complete
     // This takes precedence over everything - wizard must complete first
-    if (!setupComplete) {
+    // BUT: Skip wizard in demo mode (demo mode doesn't need real device setup)
+    if (!setupComplete && !inDemoMode) {
       return <FirstRunWizard onComplete={handleSetupComplete} />;
     }
 
@@ -377,10 +483,31 @@ function App() {
           {isDev && (
             <>
               <Route path="/dev/login" element={<Login />} />
-              <Route path="/dev/onboarding" element={<Onboarding />} />
-              <Route path="/dev/pair" element={<Pair />} />
+              <Route
+                path="/dev/onboarding"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <Onboarding />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/dev/pair"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <Pair />
+                  </Suspense>
+                }
+              />
               <Route path="/dev/setup" element={<Setup />} />
-              <Route path="/dev/brewing" element={<BrewingPreview />} />
+              <Route
+                path="/dev/brewing"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <BrewingPreview />
+                  </Suspense>
+                }
+              />
               <Route
                 path="/dev/wizard"
                 element={
@@ -394,11 +521,46 @@ function App() {
 
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
-            <Route path="brewing" element={<Brewing />} />
-            <Route path="stats" element={<Stats />} />
-            <Route path="schedules" element={<Schedules />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="diagnostics" element={<Diagnostics />} />
+            <Route
+              path="brewing"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Brewing />
+                </Suspense>
+              }
+            />
+            <Route
+              path="stats"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Stats />
+                </Suspense>
+              }
+            />
+            <Route
+              path="schedules"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Schedules />
+                </Suspense>
+              }
+            />
+            <Route
+              path="settings"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Settings />
+                </Suspense>
+              }
+            />
+            <Route
+              path="diagnostics"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Diagnostics />
+                </Suspense>
+              }
+            />
             <Route path="setup" element={<Setup />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
@@ -420,10 +582,31 @@ function App() {
           {isDev && (
             <>
               <Route path="/dev/login" element={<Login />} />
-              <Route path="/dev/onboarding" element={<Onboarding />} />
-              <Route path="/dev/pair" element={<Pair />} />
+              <Route
+                path="/dev/onboarding"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <Onboarding />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/dev/pair"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <Pair />
+                  </Suspense>
+                }
+              />
               <Route path="/dev/setup" element={<Setup />} />
-              <Route path="/dev/brewing" element={<BrewingPreview />} />
+              <Route
+                path="/dev/brewing"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <BrewingPreview />
+                  </Suspense>
+                }
+              />
               <Route
                 path="/dev/wizard"
                 element={
@@ -435,8 +618,22 @@ function App() {
             </>
           )}
           <Route path="/login" element={<Login />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/pair" element={<Pair />} />
+          <Route
+            path="/auth/callback"
+            element={
+              <Suspense fallback={<Loading />}>
+                <AuthCallback />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/pair"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Pair />
+              </Suspense>
+            }
+          />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
         <UpdateNotification />
@@ -453,10 +650,31 @@ function App() {
           {isDev && (
             <>
               <Route path="/dev/login" element={<Login />} />
-              <Route path="/dev/onboarding" element={<Onboarding />} />
-              <Route path="/dev/pair" element={<Pair />} />
+              <Route
+                path="/dev/onboarding"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <Onboarding />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/dev/pair"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <Pair />
+                  </Suspense>
+                }
+              />
               <Route path="/dev/setup" element={<Setup />} />
-              <Route path="/dev/brewing" element={<BrewingPreview />} />
+              <Route
+                path="/dev/brewing"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <BrewingPreview />
+                  </Suspense>
+                }
+              />
               <Route
                 path="/dev/wizard"
                 element={
@@ -467,9 +685,30 @@ function App() {
               />
             </>
           )}
-          <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/pair" element={<Pair />} />
+          <Route
+            path="/onboarding"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Onboarding />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/auth/callback"
+            element={
+              <Suspense fallback={<Loading />}>
+                <AuthCallback />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/pair"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Pair />
+              </Suspense>
+            }
+          />
           <Route path="*" element={<Navigate to="/onboarding" replace />} />
         </Routes>
         <UpdateNotification />
@@ -488,10 +727,31 @@ function App() {
         {isDev && (
           <>
             <Route path="/dev/login" element={<Login />} />
-            <Route path="/dev/onboarding" element={<Onboarding />} />
-            <Route path="/dev/pair" element={<Pair />} />
+            <Route
+              path="/dev/onboarding"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Onboarding />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/dev/pair"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <Pair />
+                </Suspense>
+              }
+            />
             <Route path="/dev/setup" element={<Setup />} />
-            <Route path="/dev/brewing" element={<BrewingPreview />} />
+            <Route
+              path="/dev/brewing"
+              element={
+                <Suspense fallback={<Loading />}>
+                  <BrewingPreview />
+                </Suspense>
+              }
+            />
             <Route
               path="/dev/wizard"
               element={
@@ -504,21 +764,77 @@ function App() {
         )}
 
         {/* Auth routes */}
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/pair" element={<Pair />} />
+        <Route
+          path="/auth/callback"
+          element={
+            <Suspense fallback={<Loading />}>
+              <AuthCallback />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/pair"
+          element={
+            <Suspense fallback={<Loading />}>
+              <Pair />
+            </Suspense>
+          }
+        />
 
         {/* Machine management */}
-        <Route path="/machines" element={<Machines />} />
+        <Route
+          path="/machines"
+          element={
+            <Suspense fallback={<Loading />}>
+              <Machines />
+            </Suspense>
+          }
+        />
         <Route path="/login" element={<Navigate to="/machines" replace />} />
 
         {/* Machine control (when connected via cloud) */}
         <Route path="/machine/:deviceId" element={<Layout />}>
           <Route index element={<Dashboard />} />
-          <Route path="brewing" element={<Brewing />} />
-          <Route path="stats" element={<Stats />} />
-          <Route path="schedules" element={<Schedules />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="diagnostics" element={<Diagnostics />} />
+          <Route
+            path="brewing"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Brewing />
+              </Suspense>
+            }
+          />
+          <Route
+            path="stats"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Stats />
+              </Suspense>
+            }
+          />
+          <Route
+            path="schedules"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Schedules />
+              </Suspense>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Settings />
+              </Suspense>
+            }
+          />
+          <Route
+            path="diagnostics"
+            element={
+              <Suspense fallback={<Loading />}>
+                <Diagnostics />
+              </Suspense>
+            }
+          />
         </Route>
 
         {/* Root: redirect to selected machine or machines list */}
