@@ -54,6 +54,24 @@ static bool g_status_updated = false;
 static mutex_t g_status_mutex;  // Protects g_status and g_status_updated
 
 // -----------------------------------------------------------------------------
+// Helper: Send environmental config to ESP32
+// -----------------------------------------------------------------------------
+static void send_environmental_config(void) {
+    environmental_electrical_t env;
+    environmental_config_get(&env);
+    electrical_state_t elec_state;
+    electrical_state_get(&elec_state);
+    
+    env_config_payload_t payload;
+    payload.nominal_voltage = env.nominal_voltage;
+    payload.max_current_draw = env.max_current_draw;
+    payload.brew_heater_current = elec_state.brew_heater_current;
+    payload.steam_heater_current = elec_state.steam_heater_current;
+    payload.max_combined_current = elec_state.max_combined_current;
+    protocol_send_env_config(&payload);
+}
+
+// -----------------------------------------------------------------------------
 // Core 1 Entry Point (Communication)
 // -----------------------------------------------------------------------------
 void core1_main(void) {
@@ -64,19 +82,7 @@ void core1_main(void) {
     
     // Send boot message and environmental config
     protocol_send_boot();
-    
-    env_config_payload_t env_resp;
-    environmental_electrical_t env;
-    environmental_config_get(&env);
-    electrical_state_t elec_state;
-    electrical_state_get(&elec_state);
-    
-    env_resp.nominal_voltage = env.nominal_voltage;
-    env_resp.max_current_draw = env.max_current_draw;
-    env_resp.brew_heater_current = elec_state.brew_heater_current;
-    env_resp.steam_heater_current = elec_state.steam_heater_current;
-    env_resp.max_combined_current = elec_state.max_combined_current;
-    protocol_send_env_config(&env_resp);
+    send_environmental_config();
     
     // Signal ready
     g_core1_ready = true;
@@ -115,22 +121,8 @@ void core1_main(void) {
         if (now - last_boot_info_send >= BOOT_INFO_RESEND_MS) {
             last_boot_info_send = now;
             
-            // Resend boot message (contains version, machine type, etc.)
             protocol_send_boot();
-            
-            // Resend environmental config
-            environmental_electrical_t env_info;
-            environmental_config_get(&env_info);
-            electrical_state_t elec_info;
-            electrical_state_get(&elec_info);
-            
-            env_config_payload_t env_payload;
-            env_payload.nominal_voltage = env_info.nominal_voltage;
-            env_payload.max_current_draw = env_info.max_current_draw;
-            env_payload.brew_heater_current = elec_info.brew_heater_current;
-            env_payload.steam_heater_current = elec_info.steam_heater_current;
-            env_payload.max_combined_current = elec_info.max_combined_current;
-            protocol_send_env_config(&env_payload);
+            send_environmental_config();
             
             DEBUG_PRINT("Core 1: Periodic boot info resend complete\n");
         }
