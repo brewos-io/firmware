@@ -203,8 +203,11 @@ if (isProduction && (!sslCertPath || !sslKeyPath)) {
             );
           }
         }
-      } catch {
-        // Ignore errors reading directory
+      } catch (error) {
+        console.warn(
+          `[Security] Failed to read Let's Encrypt directory at ${letsEncryptLive}:`,
+          error
+        );
       }
     }
   }
