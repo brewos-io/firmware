@@ -460,22 +460,19 @@ async function start() {
 ╔═══════════════════════════════════════════════════════════╗
 ║                  BrewOS Cloud Service                     ║
 ╠═══════════════════════════════════════════════════════════╣
-║  ${protocol.toUpperCase()}:    ${protocol}://localhost:${port}${" ".repeat(
-        Math.max(0, 30 - protocol.length - port.toString().length)
-      )}║
-║  Device:  ${wsProtocol}://localhost:${port}/ws/device${" ".repeat(
-        Math.max(0, 30 - wsProtocol.length - port.toString().length - 12)
-      )}║
-║  Client:  ${wsProtocol}://localhost:${port}/ws/client${" ".repeat(
-        Math.max(0, 30 - wsProtocol.length - port.toString().length - 12)
-      )}║
+║  ${protocol.toUpperCase()}:    ${protocol}://localhost:${port}${getSpacing(protocol, port)}║
+║  Device:  ${wsProtocol}://localhost:${port}/ws/device${getSpacing(wsProtocol, port, "/ws/device")}║
+║  Client:  ${wsProtocol}://localhost:${port}/ws/client${getSpacing(wsProtocol, port, "/ws/client")}║
 ║  DB:      SQLite (sql.js)${" ".repeat(30)}║
 ║  SSL:     ${
         isProduction && sslCertPath && sslKeyPath
           ? "Enabled ✓"
           : "Disabled (dev/proxy)"
-      }${" ".repeat(
-        Math.max(0, 30 - (isProduction && sslCertPath && sslKeyPath ? 18 : 23))
+      }${getSpacing(
+        "", // protocol not needed here
+        "", // port not needed here
+        "",
+        30 - (isProduction && sslCertPath && sslKeyPath ? 0 : 5) // fudge for length difference
       )}║
 ╚═══════════════════════════════════════════════════════════╝
       `);
