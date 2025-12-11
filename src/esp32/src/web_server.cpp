@@ -2338,8 +2338,10 @@ bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
         chunkNumber++;
         
         // Report progress every 10%
-        static size_t lastProgress = 0;
+        // Use non-static to reset between OTA attempts
         size_t progress = (bytesSent * 100) / firmwareSize;
+        static size_t lastProgress = 0;
+        if (bytesSent == 0) lastProgress = 0;  // Reset on new OTA
         if (progress >= lastProgress + 10 || bytesSent == firmwareSize) {
             lastProgress = progress;
             #pragma GCC diagnostic push

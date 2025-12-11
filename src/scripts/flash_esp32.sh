@@ -17,6 +17,9 @@ FIRMWARE="$ESP32_DIR/.pio/build/esp32s3/firmware.bin"
 LITTLEFS_IMAGE="$ESP32_DIR/.pio/build/esp32s3/littlefs.bin"
 WEB_DATA_DIR="$ESP32_DIR/data"
 
+# Configuration
+MAX_FILE_AGE_SECONDS=60  # Warn if web files are older than this
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -124,7 +127,7 @@ if [ "$FIRMWARE_ONLY" = false ]; then
         NEWEST_FILE=$(find "$WEB_DATA_DIR" -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
         if [ -n "$NEWEST_FILE" ]; then
             NEWEST_AGE=$(($(date +%s) - $(stat -f "%m" "$NEWEST_FILE" 2>/dev/null || echo 0)))
-            if [ "$NEWEST_AGE" -gt 60 ]; then
+            if [ "$NEWEST_AGE" -gt "$MAX_FILE_AGE_SECONDS" ]; then
                 echo -e "${YELLOW}⚠ Warning: Web files may be stale (newest file is ${NEWEST_AGE}s old)${NC}"
             fi
         fi

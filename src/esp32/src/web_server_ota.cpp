@@ -24,6 +24,25 @@ extern PowerMeterManager* powerMeterManager;
 extern NotificationManager* notificationManager;
 
 // =============================================================================
+// OTA Configuration Constants
+// =============================================================================
+
+// Watchdog timeout during OTA (seconds) - long enough for slow downloads
+static constexpr uint32_t OTA_WDT_TIMEOUT_SECONDS = 60;
+
+// Default watchdog timeout (seconds) - restored after OTA
+static constexpr uint32_t DEFAULT_WDT_TIMEOUT_SECONDS = 5;
+
+// WebSocket progress broadcast interval (ms) - prevents queue overflow during downloads
+static constexpr uint32_t OTA_PROGRESS_BROADCAST_INTERVAL_MS = 1000;
+
+// Console log interval during download (ms)
+static constexpr uint32_t OTA_CONSOLE_LOG_INTERVAL_MS = 5000;
+
+// Progress percentage increment before broadcasting (ESP32 download)
+static constexpr int OTA_ESP32_PROGRESS_INCREMENT = 10;
+
+// =============================================================================
 // Forward Declarations
 // =============================================================================
 
@@ -225,7 +244,7 @@ static void disableWatchdogForOTA() {
     
     // Last resort: try to reinit with longer timeout (this usually fails if already init)
     // But we try anyway in case the state is inconsistent
-    err = esp_task_wdt_init(60, false);  // 60 second timeout, no panic
+    err = esp_task_wdt_init(OTA_WDT_TIMEOUT_SECONDS, false);  // Long timeout, no panic
     if (err == ESP_OK) {
         LOG_I("WDT reinitialized with 60 second timeout");
     } else if (err == ESP_ERR_INVALID_STATE) {
@@ -254,7 +273,7 @@ static void enableWatchdogAfterOTA() {
         LOG_I("Task watchdog re-enabled for current task");
     } else if (err == ESP_ERR_INVALID_STATE) {
         // WDT not initialized - try to init with default settings
-        err = esp_task_wdt_init(5, true);  // 5 second timeout, panic on trigger
+        err = esp_task_wdt_init(DEFAULT_WDT_TIMEOUT_SECONDS, true);  // Default timeout, panic on trigger
         if (err == ESP_OK) {
             LOG_I("WDT reinitialized with default config");
             esp_task_wdt_add(NULL);
@@ -298,9 +317,18 @@ static void broadcastOtaProgress(AsyncWebSocket* ws, const char* stage, int prog
     if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
     if (jsonBuffer) {
         serializeJson(doc, jsonBuffer, jsonSize);
+        
+        // Clean up clients and process queue before sending
+        ws->cleanupClients();
+        
         ws->textAll(jsonBuffer);
         LOG_D("OTA progress sent: %s", jsonBuffer);
         free(jsonBuffer);
+        
+        // CRITICAL: Yield to allow AsyncTCP to actually send the queued message
+        // Without this, messages queue up but never get sent during blocking downloads
+        delay(100);  // Give AsyncTCP time to process the send queue
+        yield();     // Also yield to FreeRTOS scheduler
     } else {
         LOG_E("Failed to allocate buffer for OTA progress");
     }
@@ -456,19 +484,22 @@ static bool downloadToFile(const char* url, const char* filePath,
                 written += bytesWritten;
                 
                 // Log to console every 5 seconds
-                if (millis() - lastConsoleLog > 5000) {
+                if (millis() - lastConsoleLog > OTA_CONSOLE_LOG_INTERVAL_MS) {
                     int pct = (written * 100) / contentLength;
                     LOG_I("Download: %d%% (%d/%d bytes)", pct, written, contentLength);
                     lastConsoleLog = millis();
                 }
                 
-                // Update WebSocket progress (limit frequency to avoid flooding)
-                // Broadcast at most every 2 seconds to prevent WebSocket queue overflow
-                if (ws && millis() - lastProgressUpdate > 2000) {
+                // Update WebSocket progress - interval limits prevent queue overflow
+                // when HTTP download consumes all network bandwidth
+                if (ws && (millis() - lastProgressUpdate > OTA_PROGRESS_BROADCAST_INTERVAL_MS)) {
                     int progress = progressStart + (written * (progressEnd - progressStart)) / contentLength;
                     if (progress > lastProgress) {
                         lastProgress = progress;
-                        broadcastOtaProgress(ws, "download", progress, "Downloading...");
+                        char msg[64];
+                        int pct = (written * 100) / contentLength;
+                        snprintf(msg, sizeof(msg), "Downloading... %d%%", pct);
+                        broadcastOtaProgress(ws, "download", progress, msg);
                         lastProgressUpdate = millis();
                     }
                 }
@@ -802,18 +833,20 @@ void WebServer::startGitHubOTA(const String& version) {
                 }
                 written += bytesWritten;
                 
-                // Log progress to console every 5 seconds (in case WebSocket is dead)
-                if (millis() - lastProgressLog > 5000) {
+                // Log and broadcast progress every 2 seconds for better UX
+                if (millis() - lastProgressLog > 2000) {
                     int pct = (written * 100) / contentLength;
                     LOG_I("ESP32 OTA: %d%% (%d/%d bytes)", pct, written, contentLength);
                     lastProgressLog = millis();
-                }
-                
-                // Progress 70-95% (only broadcast every 10% to avoid WebSocket queue overflow)
-                int progress = 70 + (written * 25) / contentLength;
-                if (progress >= lastProgress + 10) {  // Report every 10% to limit message frequency
-                    lastProgress = progress;
-                    broadcastOtaProgress(&_ws, "download", progress, "Installing...");
+                    
+                    // Progress 70-95% - broadcast every update for responsive UI
+                    int progress = 70 + (written * 25) / contentLength;
+                    if (progress > lastProgress) {
+                        lastProgress = progress;
+                        char msg[64];
+                        snprintf(msg, sizeof(msg), "Installing ESP32... %d%%", pct);
+                        broadcastOtaProgress(&_ws, "flash", progress, msg);
+                    }
                 }
             }
         } else {
