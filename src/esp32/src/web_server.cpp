@@ -2374,6 +2374,41 @@ bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
             return false;
         }
         
+        // LOCK-STEP PROTOCOL: Wait for Pico to ACK (0xAA) after each chunk
+        // This ensures the Pico has finished flash operations before we send more data.
+        // The Pico's UART FIFO is only 32 bytes - without this handshake, we overflow it
+        // during slow flash erase operations (~50ms).
+        bool ackReceived = false;
+        unsigned long ackStart = millis();
+        const unsigned long ACK_TIMEOUT_MS = 2000;  // 2 second timeout (flash ops can be slow)
+        
+        while ((millis() - ackStart) < ACK_TIMEOUT_MS) {
+            if (Serial1.available()) {
+                uint8_t byte = Serial1.read();
+                if (byte == 0xAA) {
+                    ackReceived = true;
+                    break;
+                } else if (byte == 0xFF) {
+                    // Error marker from Pico
+                    uint8_t errorCode = 0;
+                    if (Serial1.available()) {
+                        errorCode = Serial1.read();
+                    }
+                    LOG_E("Pico reported error 0x%02X during chunk %d", errorCode, chunkNumber);
+                    broadcastLogLevel("error", "Pico error during flash at chunk %d", chunkNumber);
+                    return false;
+                }
+                // Ignore other bytes (could be debug output on wrong line)
+            }
+            delay(1);  // Small delay to avoid busy-waiting
+        }
+        
+        if (!ackReceived) {
+            LOG_E("Timeout waiting for ACK after chunk %d", chunkNumber);
+            broadcastLogLevel("error", "Pico not responding at chunk %d", chunkNumber);
+            return false;
+        }
+        
         bytesSent += bytesRead;
         chunkNumber++;
         
@@ -2409,8 +2444,8 @@ bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
             }
         }
         
-        // Small delay to prevent UART buffer overflow
-        delay(10);
+        // NOTE: No delay needed here - we use lock-step protocol with ACK after each chunk.
+        // The ACK wait above ensures proper flow control regardless of flash timing.
     }
     
     // Send end marker (chunk number 0xFFFFFFFF signals end of firmware)

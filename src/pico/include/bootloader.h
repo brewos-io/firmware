@@ -11,6 +11,26 @@
  * Protocol: [MAGIC: 0x55AA] [CHUNK_NUM: 4 bytes LE] [SIZE: 2 bytes LE] [DATA] [CHECKSUM: 1 byte]
  */
 
+/**
+ * Check if bootloader mode is active.
+ * When active, other cores should pause their normal operations.
+ * 
+ * @return true if bootloader is receiving firmware
+ */
+bool bootloader_is_active(void);
+
+/**
+ * Prepare system for bootloader mode.
+ * Call this BEFORE bootloader_receive_firmware() to signal other cores to pause.
+ */
+void bootloader_prepare(void);
+
+/**
+ * Exit bootloader mode (on failure).
+ * Call this if bootloader_receive_firmware() returns an error to resume normal operation.
+ */
+void bootloader_exit(void);
+
 // Bootloader result codes
 typedef enum {
     BOOTLOADER_SUCCESS = 0,

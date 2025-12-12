@@ -267,11 +267,14 @@ uint16_t PicoUART::calculateCRC(const uint8_t* data, size_t length) {
 }
 
 bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
-    // Bootloader sends 0xAA 0x55 as ACK (raw bytes, not packet protocol)
-    // Note: 0xAA is also PROTOCOL_SYNC_BYTE, so we need to be careful
+    // Bootloader sends 4-byte ACK: 0xB0 0x07 0xAC 0x4B ("BOOT-ACK" pattern)
+    // This unique sequence cannot be confused with protocol packets (which start with 0xAA)
     // The bootloader ACK comes AFTER the protocol ACK packet, so we may see:
     // 1. Protocol ACK packet (0xAA ... with CRC)
-    // 2. Raw bootloader ACK (0xAA 0x55)
+    // 2. Raw bootloader ACK (0xB0 0x07 0xAC 0x4B)
+    
+    static const uint8_t BOOT_ACK[] = {0xB0, 0x07, 0xAC, 0x4B};  // "BOOT-ACK"
+    static const size_t BOOT_ACK_LEN = sizeof(BOOT_ACK);
     
     unsigned long startTime = millis();
     uint8_t index = 0;
@@ -281,44 +284,35 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
     RxState savedState = _rxState;
     _rxState = RxState::WAIT_START;
     
-    LOG_I("Waiting for bootloader ACK (0xAA 0x55)...");
+    LOG_I("Waiting for bootloader ACK (0xB0 0x07 0xAC 0x4B)...");
     
-    // DON'T drain buffer - the ACK might already be there!
-    // Instead, look for 0xAA 0x55 pattern in ALL incoming data
-    
+    // Look for the 4-byte ACK pattern in incoming data
     while ((millis() - startTime) < timeoutMs) {
         if (Serial1.available()) {
             uint8_t byte = Serial1.read();
             bytesRead++;
             
-            if (index == 0 && byte == 0xAA) {
-                // Got first byte (0xAA) - could be protocol sync or bootloader ACK
-                index = 1;
-            } else if (index == 1) {
-                if (byte == 0x55) {
-                    // Got second byte (0x55) - this is the bootloader ACK!
+            if (byte == BOOT_ACK[index]) {
+                index++;
+                if (index == BOOT_ACK_LEN) {
+                    // Got complete bootloader ACK!
                     LOG_I("Bootloader ACK received after %d bytes, %lu ms", 
                           bytesRead, millis() - startTime);
-                    _rxState = savedState;  // Restore state
+                    _rxState = savedState;
                     return true;
-                } else {
-                    // Not 0x55, reset and check if this byte is 0xAA
-                    if (bytesRead < 50) {  // Only log first few bytes to avoid spam
-                        LOG_D("Got 0xAA then 0x%02X (not ACK)", byte);
-                    }
-                    index = (byte == 0xAA) ? 1 : 0;
                 }
+            } else if (byte == BOOT_ACK[0]) {
+                // Start of new potential match
+                index = 1;
             } else {
-                // Check if this byte starts a new potential ACK
-                index = (byte == 0xAA) ? 1 : 0;
+                // Reset matching
+                index = 0;
             }
         } else {
-            // Small delay to avoid busy-waiting
             delay(1);
         }
     }
     
-    // Restore state
     _rxState = savedState;
     LOG_E("Bootloader ACK timeout after %d ms (read %d bytes total)", timeoutMs, bytesRead);
     return false;

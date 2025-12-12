@@ -13,6 +13,7 @@
 #include "pcb_config.h"
 #include "machine_config.h"
 #include "gpio_init.h"
+#include "bootloader.h"
 
 // Reset reason codes
 #define RESET_REASON_POWER_ON      0  // Power-on reset
@@ -370,6 +371,12 @@ static void process_byte(uint8_t byte) {
 }
 
 void protocol_process(void) {
+    // Skip packet processing when bootloader is active
+    // Bootloader handles UART directly with its own protocol
+    if (bootloader_is_active()) {
+        return;
+    }
+    
     // Process all available bytes
     while (uart_is_readable(ESP32_UART_ID)) {
         uint8_t byte = uart_getc(ESP32_UART_ID);

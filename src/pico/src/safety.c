@@ -17,6 +17,7 @@
 #include "protocol.h"
 #include "config_persistence.h"
 #include "state.h"
+#include "bootloader.h"
 #include <math.h>
 
 // =============================================================================
@@ -75,6 +76,13 @@ static uint32_t g_led_last_toggle = 0;
 static bool g_led_state = false;
 static uint8_t g_buzzer_beep_count = 0;
 static uint32_t g_buzzer_last_beep = 0;
+
+// Rate-limiting for safety log messages (avoid spamming during faults)
+// Messages only print once per SAFETY_MSG_RATE_LIMIT_MS while condition persists
+#define SAFETY_MSG_RATE_LIMIT_MS  5000  // 5 seconds between repeated messages
+static uint32_t g_last_reservoir_msg = 0;
+static uint32_t g_last_tank_msg = 0;
+static uint32_t g_last_steam_level_msg = 0;
 
 
 // =============================================================================
@@ -247,6 +255,12 @@ safety_state_t safety_check(void) {
     uint32_t now = to_ms_since_boot(get_absolute_time());
     safety_state_t result = SAFETY_OK;
     
+    // Skip safety checks during bootloader mode
+    // Machine is already in safe state (heaters off) during OTA
+    if (bootloader_is_active()) {
+        return SAFETY_OK;  // Already safe, don't spam logs
+    }
+    
     // Clear previous flags
     g_safety_flags = 0;
     
@@ -302,7 +316,11 @@ safety_state_t safety_check(void) {
                     g_last_alarm = ALARM_WATER_LOW;
                 }
                 result = SAFETY_CRITICAL;  // Critical: disable pump and heaters
-                LOG_PRINT("SAFETY: Water reservoir empty! (Water tank mode - disabling heaters and pump)\n");
+                // Rate-limit message to avoid log spam
+                if ((now - g_last_reservoir_msg) >= SAFETY_MSG_RATE_LIMIT_MS) {
+                    g_last_reservoir_msg = now;
+                    LOG_PRINT("SAFETY: Water reservoir empty! (Water tank mode - disabling heaters and pump)\n");
+                }
             }
         }
     } else {
@@ -326,7 +344,11 @@ safety_state_t safety_check(void) {
                 g_last_alarm = ALARM_WATER_LOW;
             }
             result = SAFETY_CRITICAL;  // Critical: disable pump and heaters
-            DEBUG_PRINT("SAFETY: Tank level low!\n");
+            // Rate-limit message to avoid log spam
+            if ((now - g_last_tank_msg) >= SAFETY_MSG_RATE_LIMIT_MS) {
+                g_last_tank_msg = now;
+                DEBUG_PRINT("SAFETY: Tank level low!\n");
+            }
         }
     }
     
@@ -347,7 +369,11 @@ safety_state_t safety_check(void) {
             if (result < SAFETY_CRITICAL) {
                 result = SAFETY_CRITICAL;
             }
-            DEBUG_PRINT("SAFETY: Steam boiler level low!\n");
+            // Rate-limit message to avoid log spam
+            if ((now - g_last_steam_level_msg) >= SAFETY_MSG_RATE_LIMIT_MS) {
+                g_last_steam_level_msg = now;
+                DEBUG_PRINT("SAFETY: Steam boiler level low!\n");
+            }
         }
     }
     

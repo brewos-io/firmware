@@ -93,8 +93,17 @@ void core1_main(void) {
     while (true) {
         uint32_t now = to_ms_since_boot(get_absolute_time());
         
-        // Process incoming packets
+        // Process incoming packets (skips automatically when bootloader is active)
         protocol_process();
+        
+        // Skip all periodic sends when bootloader is active
+        // Bootloader has full control of UART
+        if (bootloader_is_active()) {
+            // Still signal alive so Core 0 doesn't think we're dead
+            g_core1_alive = true;
+            sleep_us(100);
+            continue;
+        }
         
         // Send status periodically
         if (now - last_status_send >= STATUS_SEND_PERIOD_MS) {
@@ -558,10 +567,15 @@ void handle_packet(const packet_t* packet) {
             // Small delay to ensure ACK is sent
             sleep_ms(50);
             
+            // Signal bootloader mode - pauses Core 0 control loop and protocol processing
+            bootloader_prepare();
+            DEBUG_PRINT("Bootloader: System paused, starting firmware receive\n");
+            
             // Enter bootloader mode (does not return on success)
             bootloader_result_t result = bootloader_receive_firmware();
             
-            // If we get here, bootloader failed
+            // If we get here, bootloader failed - resume normal operation
+            bootloader_exit();
             DEBUG_PRINT("Bootloader error: %s\n", bootloader_get_status_message(result));
             
             // Send error ACK with appropriate error code
@@ -831,6 +845,19 @@ int main(void) {
     // Main control loop (Core 0)
     while (true) {
         uint32_t now = to_ms_since_boot(get_absolute_time());
+        
+        // Skip all operations when bootloader is active
+        // Core 1 (running bootloader) handles everything during OTA
+        if (bootloader_is_active()) {
+            // Feed watchdog only - don't do any special lockout init
+            // The SDK's flash_safe_execute handles multicore coordination internally
+            // when called from Core 1. Core 0 just needs to be in a simple state.
+            watchdog_update();
+            
+            // Simple tight loop - be responsive to any SDK coordination
+            tight_loop_contents();
+            continue;
+        }
         
         // Read sensors (20Hz)
         if (now - last_sensor >= SENSOR_READ_PERIOD_MS) {

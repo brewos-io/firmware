@@ -81,17 +81,21 @@ else
         fi
     fi
     
-    # Create build directory if it doesn't exist
+    # Remove the build directory to force a clean rebuild
+    if [ -d "$BUILD_DIR" ]; then
+        echo -e "${BLUE}Removing previous build directory for clean rebuild...${NC}"
+        rm -rf "$BUILD_DIR"
+    fi
+    
+    # Create build directory
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
     
-    # Configure CMake if not already configured or if machine type changed
-    if [ ! -f "CMakeCache.txt" ] || ! grep -q "MACHINE_TYPE:STRING=$MACHINE_TYPE" CMakeCache.txt 2>/dev/null; then
-        echo -e "${BLUE}Configuring CMake for $MACHINE_TYPE...${NC}"
-        cmake .. -DMACHINE_TYPE="$MACHINE_TYPE"
-    fi
+    # Configure CMake
+    echo -e "${BLUE}Configuring CMake for $MACHINE_TYPE...${NC}"
+    cmake .. -DMACHINE_TYPE="$MACHINE_TYPE"
     
-    # Always rebuild to ensure we flash the latest version
+    # Build the firmware
     echo -e "${BLUE}Building firmware...${NC}"
     if make -j$(sysctl -n hw.ncpu 2>/dev/null || echo 4); then
         echo -e "${GREEN}✓ Build successful${NC}"

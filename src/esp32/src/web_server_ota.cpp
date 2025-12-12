@@ -13,9 +13,18 @@
 #include <esp_heap_caps.h>
 #include <esp_partition.h>
 #include <esp_task_wdt.h>
+#include <Arduino.h>  // Must be included first for ESP32
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <freertos/portmacro.h>  // For portTICK_PERIOD_MS
 #include <ArduinoJson.h>
+#include <esp_ota_ops.h>
+#include <FS.h>
+#include <AsyncTCP.h>
+#include <AsyncWebSocket.h>
+
+// Forward declare PicoUART class if not already included
+class PicoUART;
 
 // External references to global service instances (for pausing during OTA)
 extern MQTTClient* mqttClient;
@@ -40,6 +49,9 @@ static constexpr uint32_t OTA_PROGRESS_BROADCAST_INTERVAL_MS = 3000;
 // Console log interval during download (ms)
 static constexpr uint32_t OTA_CONSOLE_LOG_INTERVAL_MS = 5000;
 
+// Pico OTA specific settings
+static constexpr uint32_t PICO_RESET_DELAY_MS = 2000;
+
 // Progress percentage increment before broadcasting (ESP32 download)
 // Higher value = fewer broadcasts = less chance of WebSocket queue overflow
 static constexpr int OTA_ESP32_PROGRESS_INCREMENT = 10;
@@ -51,6 +63,51 @@ static constexpr uint32_t OTA_ESP32_MIN_BROADCAST_INTERVAL_MS = 5000;
 // =============================================================================
 // Forward Declarations
 // =============================================================================
+
+/**
+ * @brief Pauses all background services that might interfere with OTA
+ */
+static void pauseBackgroundServices() {
+    LOG_I("Pausing background services for OTA...");
+    
+    // Disable MQTT client during OTA
+    if (mqttClient) {
+        if (mqttClient->isConnected()) {
+            mqttClient->setEnabled(false);
+        }
+    }
+    
+    // Pause other services with proper method existence checking
+    // (Implementation depends on your actual service interfaces)
+    
+    // Give some time for services to pause
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+}
+
+/**
+ * @brief Resumes all background services after OTA
+ */
+static void resumeBackgroundServices() {
+    LOG_I("Resuming background services after OTA...");
+    
+    // Re-enable MQTT client after OTA
+    if (mqttClient) {
+        mqttClient->setEnabled(true);
+    }
+    
+    // Resume other services with proper method existence checking
+    // (Implementation depends on your actual service interfaces)
+    
+    // Give some time for services to resume
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+}
+
+/**
+ * @brief Configures watchdog timer for OTA operations
+ * @param enable Whether to enable or disable watchdog
+ * @param timeoutSec Timeout in seconds (if enabling)
+ */
+static void configureWatchdog(bool enable, uint32_t timeoutSec = OTA_WDT_TIMEOUT_SECONDS);
 
 static void disableWatchdogForOTA();
 static void enableWatchdogAfterOTA();
@@ -166,7 +223,47 @@ constexpr int OTA_MAX_RETRIES = 3;
 constexpr unsigned long OTA_RETRY_DELAY_MS = 3000;
 
 // =============================================================================
-// OTA Helper Functions
+// Watchdog Management
+// =============================================================================
+
+// Track if watchdog is disabled (to avoid reset errors)
+static bool _watchdogDisabled = false;
+
+/**
+ * @brief Feeds the watchdog timer to prevent timeouts
+ */
+static inline void feedWatchdog() {
+    yield();
+    // Reset task watchdog only if we haven't disabled it
+    if (!_watchdogDisabled) {
+        esp_task_wdt_reset();
+    }
+}
+
+/**
+ * @brief Configures the watchdog timer for OTA operations
+ */
+static void configureWatchdog(bool enable, uint32_t timeoutSec) {
+    if (enable) {
+        esp_task_wdt_init(timeoutSec, true);
+        esp_task_wdt_add(NULL); // Add current task to WDT watch
+    } else {
+        esp_task_wdt_delete(NULL);
+        esp_task_wdt_deinit();
+    }
+}
+
+// =============================================================================
+// Progress Reporting
+// =============================================================================
+
+/**
+ * @brief Broadcasts OTA progress updates to WebSocket clients
+ */
+// broadcastOtaProgress is already defined above
+
+// =============================================================================
+// Main OTA Entry Points
 // =============================================================================
 
 /**
@@ -177,21 +274,6 @@ static void cleanupOtaFiles() {
     if (LittleFS.exists(OTA_FILE_PATH)) {
         LittleFS.remove(OTA_FILE_PATH);
         Serial.println("[OTA] Cleaned up temporary firmware file");
-    }
-}
-
-// Track if watchdog is disabled (to avoid reset errors)
-static bool _watchdogDisabled = false;
-
-/**
- * Feed the watchdog and yield to other tasks
- * Call this frequently during long operations
- */
-static inline void feedWatchdog() {
-    yield();
-    // Reset task watchdog only if we haven't disabled it
-    if (!_watchdogDisabled) {
-        esp_task_wdt_reset();
     }
 }
 
@@ -674,6 +756,23 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
         return false;
     }
     
+    // CRITICAL: Wait for Pico to fully enter bootloader mode
+    // The ACK detection might have false-positived on protocol data.
+    // Pico needs ~150ms from command to be ready (50ms sleep + 100ms in bootloader_prepare).
+    // We already waited 200ms before looking for ACK, but add extra safety margin.
+    LOG_I("ACK received, waiting for Pico to be ready...");
+    delay(150);  // Give Pico time to fully enter bootloader mode
+    
+    // Drain any remaining bytes from UART (old protocol data, false ACK remnants)
+    int drained = 0;
+    while (Serial1.available()) {
+        Serial1.read();
+        drained++;
+    }
+    if (drained > 0) {
+        LOG_I("Drained %d bytes from UART before streaming", drained);
+    }
+    
     broadcastOtaProgress(&_ws, "flash", 45, "Installing...");
     feedWatchdog();
     
@@ -713,12 +812,13 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
     _picoUart.clearConnectionState();
     
     // Wait for Pico to self-reset and reconnect
-    // The bootloader copies firmware (~1-3s) then resets via AIRCR register
-    // Don't blindly reset - wait for it to come back on its own
+    // The bootloader copies firmware (~3-5s for 22 sectors × ~100ms each) then resets.
+    // Total time: copy (~5s) + reboot (~1s) + reconnect (~1s) = ~7s minimum
+    // Use generous 25s timeout to be safe.
     LOG_I("Waiting for Pico to self-reset and boot with new firmware...");
     
     bool picoReconnected = false;
-    for (int i = 0; i < 80; i++) {  // Wait up to 8 seconds (copy ~3s + boot ~2s + margin)
+    for (int i = 0; i < 250; i++) {  // Wait up to 25 seconds
         delay(100);
         feedWatchdog();
         _picoUart.loop();  // Process incoming packets
