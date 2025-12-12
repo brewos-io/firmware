@@ -166,15 +166,15 @@ static bool flash_write_page(uint32_t offset, const uint8_t* data) {
 /**
  * Copy firmware from staging area to main area using ROM functions.
  * 
- * CRITICAL: Uses "Toggle XIP" strategy to safely copy firmware.
+ * CRITICAL: Uses "Buffer All" strategy.
  * 
- * The problem: We need to READ from staging (in flash) and WRITE to main (in flash).
- * But when XIP is disabled for writing, we CANNOT read from flash!
+ * To avoid XIP conflicts (reading flash while writing flash), we:
+ * 1. Copy the ENTIRE firmware from staging flash to a large RAM buffer.
+ * 2. Disable XIP (flash becomes unreadable).
+ * 3. Erase/Write Main flash using the data in RAM.
  * 
- * Solution - Toggle XIP for each sector:
- * 1. [XIP ENABLED]  Read 4KB sector from staging into RAM buffer
- * 2. [XIP DISABLED] Erase destination sector, write from RAM buffer
- * 3. [XIP ENABLED]  Repeat for next sector
+ * LIMITATION: Firmware must fit in the allocated RAM buffer (MAX_RAM_BUFFER_SIZE).
+ * RP2040 has 264KB RAM. We allocate 100KB for firmware buffer, leaving >160KB for system.
  * 
  * SAFETY REQUIREMENTS (all code must be in RAM):
  * - NO memcpy() - it's in flash and will crash after main flash erase
@@ -185,6 +185,8 @@ static bool flash_write_page(uint32_t offset, const uint8_t* data) {
  * @param firmware_size Size of firmware to copy
  * @param rom Pointer to ROM function lookup structure (populated before calling)
  */
+#define MAX_RAM_BUFFER_SIZE (100 * 1024) // 100KB buffer
+
 static void __not_in_flash_func(copy_firmware_to_main)(uint32_t firmware_size, const rom_flash_funcs_t* rom) {
     #ifndef XIP_BASE
     #define XIP_BASE 0x10000000
@@ -195,72 +197,77 @@ static void __not_in_flash_func(copy_firmware_to_main)(uint32_t firmware_size, c
     #endif
     
     // Watchdog register for direct feeding
-    // Feed value 0x7fffff = ~8.3 seconds at 1MHz (safe margin for 4KB erase ~50-400ms)
     volatile uint32_t* wdg_load = (volatile uint32_t*)(WATCHDOG_BASE + WATCHDOG_LOAD_OFFSET);
     
+    // Validate size
+    if (firmware_size > MAX_RAM_BUFFER_SIZE) {
+        // This should have been caught earlier, but if we are here, we can't proceed safely.
+        // We can't log (printf is in flash), so we just reset and hope the old firmware works.
+        volatile uint32_t* aircr = (volatile uint32_t*)(PPB_BASE + 0xED0C);
+        *aircr = 0x05FA0004;
+        while(1);
+    }
+
     uint32_t size_sectors = (firmware_size + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
+    uint32_t size_pages = (firmware_size + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE;
     
     // Kick watchdog one last time via SDK (still available here)
     watchdog_update();
     
     // Try to pause Core 0 with timeout (1 second for reliability)
-    // If Core 0 doesn't respond, proceed anyway - we're about to reboot
     multicore_lockout_start_timeout_us(1000000);
     
     // Disable interrupts for the entire critical operation
     uint32_t ints = save_and_disable_interrupts();
     
-    // 4KB buffer in RAM (static to avoid stack overflow)
-    // This buffers a full sector while XIP is toggled
-    static uint8_t sector_buffer[FLASH_SECTOR_SIZE];
+    // Allocate buffer in BSS (static) to avoid stack overflow
+    static uint8_t firmware_buffer[MAX_RAM_BUFFER_SIZE];
     const uint8_t* staging_base = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
     
-    // Process sector by sector with XIP toggle
+    // ============================================================
+    // PHASE 1: READ ALL (XIP ENABLED)
+    // ============================================================
+    // Copy entire firmware to RAM
+    for (uint32_t i = 0; i < firmware_size; i++) {
+        firmware_buffer[i] = staging_base[i];
+    }
+    
+    // ============================================================
+    // PHASE 2: WRITE ALL (XIP DISABLED)
+    // ============================================================
+    rom->connect_internal_flash();
+    rom->flash_exit_xip();
+    
+    // Feed watchdog via direct register write
+    *wdg_load = 0x7fffff;
+    
+    // 2a. Erase Destination (Sector by Sector)
     for (uint32_t sector = 0; sector < size_sectors; sector++) {
-        
-        // ============================================================
-        // PHASE 1: READ from Staging (XIP ENABLED - flash is readable)
-        // ============================================================
-        // XIP is still enabled here (or we just re-enabled it in previous iteration)
-        // Copy 4KB from staging flash into RAM buffer
-        uint32_t staging_offset = sector * FLASH_SECTOR_SIZE;
-        
-        // Manual byte copy - DO NOT use memcpy (it may be in flash!)
-        for (uint32_t i = 0; i < FLASH_SECTOR_SIZE; i++) {
-            sector_buffer[i] = staging_base[staging_offset + i];
-        }
-        
-        // ============================================================
-        // PHASE 2: WRITE to Main (XIP DISABLED - flash is writable)
-        // ============================================================
-        rom->connect_internal_flash();
-        rom->flash_exit_xip();
-        
-        // Feed watchdog via direct register write
+        // Feed watchdog every sector (safe, purely register write)
         *wdg_load = 0x7fffff;
         
         uint32_t main_offset = FLASH_MAIN_OFFSET + (sector * FLASH_SECTOR_SIZE);
-        
-        // Erase destination sector (4KB, command 0x20)
         rom->flash_range_erase(main_offset, FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE, 0x20);
-        
-        // Program sector page by page (256 bytes per page)
-        for (uint32_t page = 0; page < FLASH_SECTOR_SIZE / FLASH_PAGE_SIZE; page++) {
-            uint32_t page_offset = main_offset + (page * FLASH_PAGE_SIZE);
-            uint8_t* page_data = &sector_buffer[page * FLASH_PAGE_SIZE];
-            
-            rom->flash_range_program(page_offset, page_data, FLASH_PAGE_SIZE);
-        }
-        
-        // ============================================================
-        // PHASE 3: RESTORE XIP (so we can read next sector in Phase 1)
-        // ============================================================
-        rom->flash_flush_cache();
-        rom->flash_enter_cmd_xip();
     }
     
-    // All sectors copied - trigger reset via AIRCR register
-    // DO NOT use watchdog_reboot() - it's in the flash we just overwrote!
+    // 2b. Program Destination (Page by Page)
+    for (uint32_t page = 0; page < size_pages; page++) {
+        // Feed watchdog every 32 pages (~8KB)
+        if (page % 32 == 0) *wdg_load = 0x7fffff;
+        
+        uint32_t main_offset = FLASH_MAIN_OFFSET + (page * FLASH_PAGE_SIZE);
+        uint8_t* page_data = &firmware_buffer[page * FLASH_PAGE_SIZE];
+        
+        rom->flash_range_program(main_offset, page_data, FLASH_PAGE_SIZE);
+    }
+    
+    // ============================================================
+    // PHASE 3: FINISH
+    // ============================================================
+    rom->flash_flush_cache();
+    rom->flash_enter_cmd_xip();
+    
+    // Reset via AIRCR register
     volatile uint32_t* aircr = (volatile uint32_t*)(PPB_BASE + 0xED0C);
     *aircr = 0x05FA0004;
     
