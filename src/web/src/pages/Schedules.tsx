@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { useCommand } from "@/lib/useCommand";
 import { useMobileLandscape } from "@/lib/useMobileLandscape";
@@ -85,7 +85,7 @@ export function Schedules() {
       const command = isEditing ? "update_schedule" : "add_schedule";
       const payload = isEditing ? { id: isEditing, ...formData } : formData;
 
-      await sendCommand(command, payload);
+      await sendCommand(command, payload as Record<string, unknown>);
       resetForm();
       success(isEditing ? "Schedule updated" : "Schedule created");
     } catch (err) {
@@ -192,7 +192,7 @@ export function Schedules() {
   const [localAutoPowerOff, setLocalAutoPowerOff] = useState(autoPowerOff);
 
   // Sync local state when store updates (for non-demo mode)
-  useMemo(() => {
+  useEffect(() => {
     if (!isDemo) {
       setLocalAutoPowerOff(autoPowerOff);
     }

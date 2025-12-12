@@ -1143,10 +1143,7 @@ export const useStore = create<BrewOSState>()(
                 }
               : state.preferences,
             // Update schedules if provided (nested under schedule.schedules)
-            schedules: (() => {
-              const scheduleData = data.schedule as { schedules?: Schedule[] } | undefined;
-              return scheduleData?.schedules ?? state.schedules;
-            })(),
+            schedules: (data.schedule as { schedules?: Schedule[] } | undefined)?.schedules ?? state.schedules,
             autoPowerOff: (() => {
               const scheduleData = data.schedule as {
                 autoPowerOffEnabled?: boolean;

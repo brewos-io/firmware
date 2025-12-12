@@ -27,6 +27,9 @@ static unsigned long _wifiConnectRequestTime = 0;
 static unsigned long _wifiReadyTime = 0;
 static const unsigned long WIFI_READY_DELAY_MS = 5000;  // 5 seconds after WiFi connects
 
+// External reference to machine state defined in main.cpp
+extern ui_state_t machineState;
+
 // Static WebServer pointer for WebSocket callback
 static WebServer* _wsInstance = nullptr;
 
@@ -1449,7 +1452,6 @@ void WebServer::setupRoutes() {
                 // The state will be updated from Pico status packets, but this ensures
                 // immediate response to the user command
                 if (cmd == 0x00) {  // MODE_IDLE
-                    extern ui_state_t machineState;
                     machineState.machine_state = UI_STATE_IDLE;
                     machineState.is_heating = false;
                 }

@@ -12,6 +12,9 @@
 #include <ArduinoJson.h>
 #include <stdarg.h>
 
+// External reference to machine state defined in main.cpp
+extern ui_state_t machineState;
+
 // WebSocket event handler for AsyncWebSocket (ESP32Async library)
 void WebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len) {
     switch (type) {
@@ -79,8 +82,6 @@ void WebServer::processCommand(JsonDocument& doc) {
     else if (type == "request_state") {
         // Cloud client requesting full state - send everything
         LOG_I("Cloud: Sending full state to cloud client");
-        // Get current machine state and broadcast it
-        extern ui_state_t machineState;
         broadcastFullStatus(machineState);
         broadcastDeviceInfo();
     }
@@ -218,7 +219,6 @@ void WebServer::processCommand(JsonDocument& doc) {
                 // immediate response to the user command
                 if (modeCmd == 0x00) {  // MODE_IDLE
                     // Force state to IDLE immediately - will be confirmed by next status packet
-                    extern ui_state_t machineState;
                     machineState.machine_state = UI_STATE_IDLE;
                     machineState.is_heating = false;
                 }
