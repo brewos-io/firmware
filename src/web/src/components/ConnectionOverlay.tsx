@@ -27,7 +27,9 @@ export function ConnectionOverlay() {
   });
 
   const isConnected = connectionState === "connected";
-  const isDeviceOffline = machineState === "offline"; // Device offline in cloud mode
+  // Device is offline in cloud mode: this specifically detects when the cloud connection is established,
+  // but the physical machine is unreachable.
+  const isDeviceOffline = machineState === "offline";
   const isUpdating = ota.isUpdating || ota.stage === "complete";
   const [isVisible, setIsVisible] = useState(
     !isConnected || isUpdating || isDeviceOffline
