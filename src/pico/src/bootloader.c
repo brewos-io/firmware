@@ -204,14 +204,13 @@
          rom->flash_exit_xip();
      }
  
-     // 4. Force Watchdog Reset (Cleaner than AIRCR)
-     // Writing 1 to load forces immediate timeout.
-     // 0x40000000 enables the trigger bit.
-     watchdog_hw->load = 1; 
-     watchdog_hw->ctrl = 0x40000000; 
-     
-     while(1) __asm volatile("nop");
- }
+    // 4. Force Watchdog Reset (Cleaner than AIRCR)
+    // Use TRIGGER bit (31) and ENABLE bit (30)
+    // This forces an immediate reset by the watchdog hardware
+    watchdog_hw->ctrl = 0xC0000000; // TRIGGER | ENABLE
+    
+    while(1) __asm volatile("nop");
+}
  
  // -----------------------------------------------------------------------------
  // Main Receive Loop

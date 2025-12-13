@@ -42,23 +42,11 @@ static constexpr uint32_t OTA_WDT_TIMEOUT_SECONDS = 60;
 // Default watchdog timeout (seconds) - restored after OTA
 static constexpr uint32_t DEFAULT_WDT_TIMEOUT_SECONDS = 5;
 
-// WebSocket progress broadcast interval (ms) - prevents queue overflow during downloads
-// Must be long enough for AsyncTCP to drain its queue when network is saturated with HTTP
-static constexpr uint32_t OTA_PROGRESS_BROADCAST_INTERVAL_MS = 3000;
-
 // Console log interval during download (ms)
 static constexpr uint32_t OTA_CONSOLE_LOG_INTERVAL_MS = 5000;
 
 // Pico OTA specific settings
 static constexpr uint32_t PICO_RESET_DELAY_MS = 2000;
-
-// Progress percentage increment before broadcasting (ESP32 download)
-// Higher value = fewer broadcasts = less chance of WebSocket queue overflow
-static constexpr int OTA_ESP32_PROGRESS_INCREMENT = 10;
-
-// Minimum time between ESP32 OTA progress broadcasts (ms)
-// This ensures we don't flood the WebSocket during fast downloads
-static constexpr uint32_t OTA_ESP32_MIN_BROADCAST_INTERVAL_MS = 5000;
 
 // =============================================================================
 // Forward Declarations
@@ -373,86 +361,57 @@ static void enableWatchdogAfterOTA() {
 }
 
 /**
- * Broadcast OTA progress - uses stack allocation to avoid PSRAM issues
+ * Broadcast OTA stage update - simplified to just send stage transitions
  * 
- * CRITICAL: During heavy HTTP downloads, the network is saturated and WebSocket
- * messages queue up faster than they can be sent. The AsyncWebSocket library
- * closes connections when "Too many messages queued" (default ~8 messages).
- * 
- * To prevent this, we:
- * 1. Check if all clients can receive before sending (availableForWriteAll)
- * 2. Clean up any disconnected clients first
- * 3. Give extra time for AsyncTCP to drain the queue after sending
- * 4. Skip sending if the queue is building up (next update will catch up)
+ * The UI shows a simple animation during OTA, not a progress bar.
+ * We only need to notify: stage change, error, or completion.
+ * Progress percentage is unused and removed to avoid WebSocket queue overflow.
  */
-static void broadcastOtaProgress(AsyncWebSocket* ws, const char* stage, int progress, const char* message) {
-    if (!ws) {
-        LOG_W("OTA progress: ws is null!");
-        return;
-    }
+static void broadcastOtaProgress(AsyncWebSocket* ws, const char* stage, int /* progress */, const char* message) {
+    if (!ws) return;
     
-    feedWatchdog();  // Don't let broadcast block watchdog
-    
-    // Clean up disconnected clients first
+    feedWatchdog();
     ws->cleanupClients();
     
-    size_t clientCount = ws->count();
-    LOG_I("OTA broadcast: stage=%s, progress=%d, clients=%zu", stage, progress, clientCount);
-    
-    if (clientCount == 0) {
-        LOG_W("No WebSocket clients connected for OTA progress");
+    if (ws->count() == 0) {
+        LOG_D("OTA: No clients to notify");
         return;
     }
     
-    // CRITICAL: Check if clients can receive more messages
-    // If the queue is full, skip this update - the next one will catch up
-    // This prevents "Too many messages queued" which disconnects the client
+    // Skip non-critical updates if queue is full
+    bool isCritical = (strcmp(stage, "error") == 0 || strcmp(stage, "complete") == 0);
     if (!ws->availableForWriteAll()) {
-        LOG_W("OTA progress skipped: WebSocket queue full, waiting for drain");
-        // Give extra time for the queue to drain
-        for (int i = 0; i < 5; i++) {
-            delay(100);
-            yield();
-            feedWatchdog();
-            if (ws->availableForWriteAll()) break;
-        }
-        // If still not available, skip this update
-        if (!ws->availableForWriteAll()) {
-            LOG_W("OTA progress dropped: queue still full after waiting");
+        if (!isCritical) {
+            LOG_D("OTA: Skipping non-critical update (queue full)");
             return;
         }
+        // For critical messages, wait briefly
+        for (int i = 0; i < 3 && !ws->availableForWriteAll(); i++) {
+            delay(50);
+            yield();
+            feedWatchdog();
+        }
     }
+    
+    LOG_I("OTA: stage=%s, message=%s", stage, message ? message : "");
     
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<192> doc;
     #pragma GCC diagnostic pop
     doc["type"] = "ota_progress";
     doc["stage"] = stage;
-    doc["progress"] = progress;
     doc["message"] = message;
+    // Note: progress field removed - UI uses simple animation, not progress bar
     
-    size_t jsonSize = measureJson(doc) + 1;
-    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
-    if (jsonBuffer) {
-        serializeJson(doc, jsonBuffer, jsonSize);
-        
-        ws->textAll(jsonBuffer);
-        LOG_D("OTA progress sent: %s", jsonBuffer);
-        free(jsonBuffer);
-        
-        // CRITICAL: Yield to allow AsyncTCP to actually send the queued message
-        // Without this, messages queue up but never get sent during blocking downloads
-        // Use longer delay during OTA to ensure messages actually get transmitted
-        for (int i = 0; i < 3; i++) {
-            delay(100);
-            yield();
-            feedWatchdog();
-        }
-    } else {
-        LOG_E("Failed to allocate buffer for OTA progress");
-    }
+    char jsonBuffer[192];
+    serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
+    ws->textAll(jsonBuffer);
+    
+    // Brief yield to allow message to be sent
+    delay(50);
+    yield();
+    feedWatchdog();
     
     feedWatchdog();
 }
@@ -462,7 +421,6 @@ static void broadcastOtaProgress(AsyncWebSocket* ws, const char* stage, int prog
  * Returns true on success, false on failure
  */
 static bool downloadToFile(const char* url, const char* filePath, 
-                           AsyncWebSocket* ws, int progressStart, int progressEnd,
                            size_t* outFileSize = nullptr) {
     LOG_I("Downloading: %s", url);
     
@@ -554,10 +512,7 @@ static bool downloadToFile(const char* url, const char* filePath,
     WiFiClient* stream = http.getStreamPtr();
     uint8_t buffer[OTA_BUFFER_SIZE];
     size_t written = 0;
-    int lastProgress = progressStart;
     unsigned long lastYield = millis();
-    unsigned long lastProgressUpdate = millis();
-    
     unsigned long lastDataReceived = millis();
     unsigned long lastConsoleLog = millis();
     constexpr unsigned long STALL_TIMEOUT_MS = 30000;
@@ -604,25 +559,11 @@ static bool downloadToFile(const char* url, const char* filePath,
                 }
                 written += bytesWritten;
                 
-                // Log to console every 5 seconds
+                // Log to console every 5 seconds (progress not sent to WebSocket - UI uses simple animation)
                 if (millis() - lastConsoleLog > OTA_CONSOLE_LOG_INTERVAL_MS) {
                     int pct = (written * 100) / contentLength;
                     LOG_I("Download: %d%% (%d/%d bytes)", pct, written, contentLength);
                     lastConsoleLog = millis();
-                }
-                
-                // Update WebSocket progress - interval limits prevent queue overflow
-                // when HTTP download consumes all network bandwidth
-                if (ws && (millis() - lastProgressUpdate > OTA_PROGRESS_BROADCAST_INTERVAL_MS)) {
-                    int progress = progressStart + (written * (progressEnd - progressStart)) / contentLength;
-                    if (progress > lastProgress) {
-                        lastProgress = progress;
-                        char msg[64];
-                        int pct = (written * 100) / contentLength;
-                        snprintf(msg, sizeof(msg), "Downloading... %d%%", pct);
-                        broadcastOtaProgress(ws, "download", progress, msg);
-                        lastProgressUpdate = millis();
-                    }
                 }
             }
         } else {
@@ -696,10 +637,10 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
     cleanupOtaFiles();
     
     // Download firmware
-    broadcastOtaProgress(&_ws, "download", 10, "Downloading Pico firmware...");
+    broadcastOtaProgress(&_ws, "download", 0, "Downloading Pico firmware...");
     
     size_t firmwareSize = 0;
-    if (!downloadToFile(downloadUrl, OTA_FILE_PATH, &_ws, 10, 40, &firmwareSize)) {
+    if (!downloadToFile(downloadUrl, OTA_FILE_PATH, &firmwareSize)) {
         LOG_E("Pico firmware download failed");
         broadcastLogLevel("error", "Update error: Download failed");
         broadcastOtaProgress(&_ws, "error", 0, "Download failed");
@@ -741,12 +682,12 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
     // Give Pico time to process command and enter bootloader mode
     // Pico sends protocol ACK, waits 50ms, then sends 0xAA 0x55
     LOG_I("Sent bootloader command, waiting for Pico to enter bootloader...");
-    delay(200);
+    // REMOVED delay(200) to prevent UART buffer overflow from Pico logs
     feedWatchdog();
     
     // Wait for bootloader ACK with timeout
     feedWatchdog();
-    if (!_picoUart.waitForBootloaderAck(3000)) {
+    if (!_picoUart.waitForBootloaderAck(5000)) {
         LOG_E("Bootloader ACK timeout");
         broadcastLogLevel("error", "Update error: Device not ready");
         broadcastOtaProgress(&_ws, "error", 0, "Device not ready");
@@ -960,10 +901,8 @@ void WebServer::startGitHubOTA(const String& version) {
     WiFiClient* stream = http.getStreamPtr();
     uint8_t buffer[OTA_BUFFER_SIZE];
     size_t written = 0;
-    int lastProgress = 70;
     unsigned long lastYield = millis();
     unsigned long downloadStart = millis();
-    
     unsigned long lastProgressLog = 0;  // For console progress logging
     unsigned long lastDataReceived = millis();  // Track stalls
     constexpr unsigned long STALL_TIMEOUT_MS = 30000;  // 30 second stall timeout
@@ -1017,27 +956,11 @@ void WebServer::startGitHubOTA(const String& version) {
                 }
                 written += bytesWritten;
                 
-                // Log to console every 2 seconds
+                // Log to console every 2 seconds (UI uses animation, not progress bar)
                 if (millis() - lastProgressLog > 2000) {
                     int pct = (written * 100) / contentLength;
                     LOG_I("ESP32 OTA: %d%% (%d/%d bytes)", pct, written, contentLength);
                     lastProgressLog = millis();
-                }
-                
-                // Broadcast to UI less frequently to avoid WebSocket queue overflow
-                // Only broadcast every OTA_ESP32_MIN_BROADCAST_INTERVAL_MS or when progress changes significantly
-                static unsigned long lastBroadcast = 0;
-                int progress = 70 + (written * 25) / contentLength;
-                bool significantProgress = (progress >= lastProgress + OTA_ESP32_PROGRESS_INCREMENT);
-                bool enoughTimePassed = (millis() - lastBroadcast >= OTA_ESP32_MIN_BROADCAST_INTERVAL_MS);
-                
-                if (significantProgress && enoughTimePassed) {
-                    lastProgress = progress;
-                    lastBroadcast = millis();
-                    int pct = (written * 100) / contentLength;
-                    char msg[64];
-                    snprintf(msg, sizeof(msg), "Installing ESP32... %d%%", pct);
-                    broadcastOtaProgress(&_ws, "flash", progress, msg);
                 }
             }
         } else {
