@@ -36,10 +36,13 @@ export function TemperatureSettings() {
   const unitSymbol = getUnitSymbol(temperatureUnit);
 
   // Update display values when unit changes or temps change from server
+  // Only update if not editing to prevent overwriting user input
   useEffect(() => {
-    setBrewTempDisplay(convertFromCelsius(temps.brew.setpoint, temperatureUnit));
-    setSteamTempDisplay(convertFromCelsius(temps.steam.setpoint, temperatureUnit));
-  }, [temps.brew.setpoint, temps.steam.setpoint, temperatureUnit]);
+    if (!editing) {
+      setBrewTempDisplay(convertFromCelsius(temps.brew.setpoint, temperatureUnit));
+      setSteamTempDisplay(convertFromCelsius(temps.steam.setpoint, temperatureUnit));
+    }
+  }, [temps.brew.setpoint, temps.steam.setpoint, temperatureUnit, editing]);
 
   const isDualBoiler = device.machineType === 'dual_boiler';
   const isSingleBoiler = device.machineType === 'single_boiler';
@@ -61,6 +64,23 @@ export function TemperatureSettings() {
       sendCommand('set_temp', { boiler: 'steam', temp: steamTempCelsius }, 
         { successMessage: 'Temperatures saved' });
     }
+    
+    // Optimistically update the store to prevent UI flicker
+    // This ensures the "View Mode" shows the new values immediately when editing closes
+    // even if the machine status update hasn't arrived yet
+    useStore.setState((state) => ({
+      temps: {
+        ...state.temps,
+        brew: {
+          ...state.temps.brew,
+          setpoint: brewTempCelsius
+        },
+        steam: {
+          ...state.temps.steam,
+          setpoint: steamTempCelsius
+        }
+      }
+    }));
     
     // Brief visual feedback for fire-and-forget WebSocket command
     setTimeout(() => setSaving(false), 600);

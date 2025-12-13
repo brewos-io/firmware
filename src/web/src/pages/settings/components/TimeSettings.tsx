@@ -6,7 +6,6 @@ import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Toggle } from "@/components/Toggle";
 import { Badge } from "@/components/Badge";
-import { useToast } from "@/components/Toast";
 import {
   Clock,
   Globe,
@@ -20,91 +19,61 @@ import { getUnitLabel } from "@/lib/temperature";
 import { CURRENCY_OPTIONS } from "@/lib/currency";
 import type { TemperatureUnit, UserPreferences } from "@/lib/types";
 
-interface TimeStatus {
-  synced: boolean;
-  currentTime: string;
-  timezone: string;
-  utcOffset: number;
-  settings: {
-    useNTP: boolean;
-    ntpServer: string;
-    utcOffsetMinutes: number;
-    dstEnabled: boolean;
-    dstOffsetMinutes: number;
-  };
-}
-
 export function TimeSettings() {
-  const { success, error } = useToast();
-  const [timeStatus, setTimeStatus] = useState<TimeStatus | null>(null);
-  const [settings, setSettings] = useState({
-    useNTP: true,
-    ntpServer: "pool.ntp.org",
-    utcOffsetMinutes: 0,
-    dstEnabled: false,
-    dstOffsetMinutes: 60,
-  });
+  const { sendCommand } = useCommand();
+  const timeSettings = useStore((s) => s.time);
+  const timeStatus = useStore((s) => s.timeStatus);
+
+  const [settings, setSettings] = useState(timeSettings);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
 
+  // Sync local settings with store when not editing
   useEffect(() => {
-    fetchTimeStatus();
-    const interval = setInterval(fetchTimeStatus, 10000); // Update every 10s
+    if (!editing) {
+      setSettings(timeSettings);
+    }
+  }, [timeSettings, editing]);
+
+  // Poll for time status via WebSocket
+  useEffect(() => {
+    // Initial fetch
+    sendCommand("get_time_status");
+    
+    // Poll every 10s
+    const interval = setInterval(() => {
+      sendCommand("get_time_status");
+    }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [sendCommand]);
 
-  const fetchTimeStatus = async () => {
-    try {
-      const res = await fetch("/api/time");
-      if (res.ok) {
-        const data = await res.json();
-        setTimeStatus(data);
-        if (data.settings) {
-          setSettings(data.settings);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch time status:", err);
-    }
-  };
-
-  const saveSettings = async () => {
+  const saveSettings = () => {
+    if (saving) return;
     setSaving(true);
-    try {
-      const res = await fetch("/api/time", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
-      });
-      if (res.ok) {
-        await fetchTimeStatus();
-        success("Time settings saved successfully");
-      } else {
-        throw new Error("Failed to save");
-      }
-    } catch (err) {
-      console.error("Failed to save time settings:", err);
-      error("Failed to save time settings. Please try again.");
+    
+    const success = sendCommand("set_time_config", settings as unknown as Record<string, unknown>, { 
+      successMessage: "Time settings saved" 
+    });
+    
+    if (success) {
+      setEditing(false);
+      // Refresh status after a delay to allow NTP to reconfigure
+      setTimeout(() => sendCommand("get_time_status"), 1000);
     }
-    setSaving(false);
+    
+    setTimeout(() => setSaving(false), 600);
   };
 
-  const syncNow = async () => {
+  const syncNow = () => {
     setSyncing(true);
-    try {
-      const res = await fetch("/api/time/sync", { method: "POST" });
-      if (res.ok) {
-        setTimeout(fetchTimeStatus, 2000); // Fetch status after sync
-        success("Time sync initiated");
-      } else {
-        throw new Error("Sync failed");
-      }
-    } catch (err) {
-      console.error("Failed to sync NTP:", err);
-      error("Failed to sync time. Please try again.");
-    }
-    setSyncing(false);
+    sendCommand("sync_time", undefined, { successMessage: "NTP sync initiated" });
+    
+    // Check status after a delay
+    setTimeout(() => {
+      sendCommand("get_time_status");
+      setSyncing(false);
+    }, 3000);
   };
 
   // Get timezone label from offset
@@ -266,10 +235,7 @@ export function TimeSettings() {
               Cancel
             </Button>
             <Button
-              onClick={() => {
-                saveSettings();
-                setEditing(false);
-              }}
+              onClick={saveSettings}
               loading={saving}
             >
               Save

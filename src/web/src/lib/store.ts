@@ -15,6 +15,8 @@ import type {
   WiFiStatus,
   MQTTStatus,
   CloudConfig,
+  TimeSettings,
+  TimeStatus,
   ESP32Info,
   PicoInfo,
   DeviceInfo,
@@ -87,6 +89,8 @@ interface BrewOSState {
   wifi: WiFiStatus;
   mqtt: MQTTStatus;
   cloud: CloudConfig;
+  time: TimeSettings;
+  timeStatus: TimeStatus | null;
 
   // Device info
   esp32: ESP32Info;
@@ -122,9 +126,9 @@ interface BrewOSState {
   // Diagnostics actions
   setDiagnosticsRunning: (running: boolean) => void;
   resetDiagnostics: () => void;
-  
+
   // OTA actions
-  startOTA: () => void;  // Called when OTA command is sent to show overlay immediately
+  startOTA: () => void; // Called when OTA command is sent to show overlay immediately
 }
 
 // Default state
@@ -233,6 +237,14 @@ const defaultCloud: CloudConfig = {
   connected: false,
   serverUrl: "",
   deviceId: "",
+};
+
+const defaultTime: TimeSettings = {
+  useNTP: true,
+  ntpServer: "pool.ntp.org",
+  utcOffsetMinutes: 0,
+  dstEnabled: false,
+  dstOffsetMinutes: 60,
 };
 
 const defaultEsp32: ESP32Info = {
@@ -474,6 +486,8 @@ export const useStore = create<BrewOSState>()(
     wifi: defaultWifi,
     mqtt: defaultMqtt,
     cloud: defaultCloud,
+    time: defaultTime,
+    timeStatus: null,
     esp32: defaultEsp32,
     pico: defaultPico,
     stats: defaultStats,
@@ -491,7 +505,8 @@ export const useStore = create<BrewOSState>()(
 
       // If OTA was in progress and we receive ANY message, the device is back online - reload
       const OTA_IN_PROGRESS_KEY = "brewos-ota-in-progress";
-      const wasOtaInProgress = localStorage.getItem(OTA_IN_PROGRESS_KEY) === "true";
+      const wasOtaInProgress =
+        localStorage.getItem(OTA_IN_PROGRESS_KEY) === "true";
       if (wasOtaInProgress) {
         console.log("[Store] Received message after OTA, reloading page...");
         localStorage.removeItem(OTA_IN_PROGRESS_KEY);
@@ -679,8 +694,7 @@ export const useStore = create<BrewOSState>()(
                   ...state.pico,
                   connected:
                     (picoData.connected as boolean) ?? state.pico.connected,
-                  version:
-                    (picoData.version as string) || state.pico.version,
+                  version: (picoData.version as string) || state.pico.version,
                 };
               }
               // Fallback to connections data
@@ -1051,6 +1065,17 @@ export const useStore = create<BrewOSState>()(
           addAlert("error", data.message as string, set, get);
           break;
 
+        case "time_status":
+          set({
+            timeStatus: {
+              synced: (data.synced as boolean) ?? false,
+              currentTime: (data.currentTime as string) ?? "",
+              timezone: (data.timezone as string) ?? "",
+              utcOffset: (data.utcOffset as number) ?? 0,
+            },
+          });
+          break;
+
         case "device_info": {
           // Process preferences from ESP32 if provided
           const prefsData = data.preferences as
@@ -1144,16 +1169,26 @@ export const useStore = create<BrewOSState>()(
                 }
               : state.preferences,
             // Update schedules if provided (nested under schedule.schedules)
-            schedules: (data.schedule as { schedules?: Schedule[] } | undefined)?.schedules ?? state.schedules,
+            schedules:
+              (data.schedule as { schedules?: Schedule[] } | undefined)
+                ?.schedules ?? state.schedules,
+            // Update time settings if provided
+            time: (data.time as TimeSettings | undefined) ?? state.time,
             autoPowerOff: (() => {
-              const scheduleData = data.schedule as {
-                autoPowerOffEnabled?: boolean;
-                autoPowerOffMinutes?: number;
-              } | undefined;
+              const scheduleData = data.schedule as
+                | {
+                    autoPowerOffEnabled?: boolean;
+                    autoPowerOffMinutes?: number;
+                  }
+                | undefined;
               if (!scheduleData) return state.autoPowerOff;
               return {
-                enabled: scheduleData.autoPowerOffEnabled ?? state.autoPowerOff.enabled,
-                minutes: scheduleData.autoPowerOffMinutes ?? state.autoPowerOff.minutes,
+                enabled:
+                  scheduleData.autoPowerOffEnabled ??
+                  state.autoPowerOff.enabled,
+                minutes:
+                  scheduleData.autoPowerOffMinutes ??
+                  state.autoPowerOff.minutes,
               };
             })(),
           }));
@@ -1270,9 +1305,11 @@ export const useStore = create<BrewOSState>()(
           const stage = (data.stage as OTAStatus["stage"]) || "download";
           const progress = (data.progress as number) ?? 0;
           const message = (data.message as string) || "";
-          
-          console.log(`[Store] OTA progress: ${stage} ${progress}% - ${message}`);
-          
+
+          console.log(
+            `[Store] OTA progress: ${stage} ${progress}% - ${message}`
+          );
+
           set((state) => ({
             ota: {
               isUpdating: stage !== "error" && stage !== "complete",
@@ -1282,12 +1319,15 @@ export const useStore = create<BrewOSState>()(
               startedAt: state.ota.startedAt || Date.now(),
             },
           }));
-          
+
           // If complete or error, device will restart - reset OTA state after delay
           if (stage === "complete" || stage === "error") {
-            setTimeout(() => {
-              set({ ota: defaultOTA });
-            }, stage === "complete" ? 5000 : 10000);
+            setTimeout(
+              () => {
+                set({ ota: defaultOTA });
+              },
+              stage === "complete" ? 5000 : 10000
+            );
           }
           break;
         }
@@ -1300,8 +1340,10 @@ export const useStore = create<BrewOSState>()(
         case "connected": {
           // Cloud server tells us if the target device is online
           const deviceOnline = (data.deviceOnline as boolean) ?? false;
-          console.log(`[Store] Cloud connected, device online: ${deviceOnline}`);
-          
+          console.log(
+            `[Store] Cloud connected, device online: ${deviceOnline}`
+          );
+
           // If device is offline, update machine state (but keep cloud connected)
           if (!deviceOnline) {
             set((state) => ({
@@ -1322,16 +1364,16 @@ export const useStore = create<BrewOSState>()(
         case "device_online": {
           // Device came online via cloud - update state immediately
           console.log("[Store] Device came online");
-          
+
           // Update AppStore (device list) to show device as online
           // This ensures Layout.tsx hides the offline banner
           const appStore = useAppStore.getState();
           const selectedId = appStore.selectedDeviceId;
           if (selectedId) {
             useAppStore.setState({
-              devices: appStore.devices.map(d => 
+              devices: appStore.devices.map((d) =>
                 d.id === selectedId ? { ...d, isOnline: true } : d
-              )
+              ),
             });
           }
 
@@ -1340,7 +1382,7 @@ export const useStore = create<BrewOSState>()(
           set((state) => ({
             machine: {
               ...state.machine,
-              state: "unknown" as const,  // Clear offline state, will be updated by status
+              state: "unknown" as const, // Clear offline state, will be updated by status
             },
             // Optimistically set connection flags
             cloud: { ...state.cloud, connected: true },
@@ -1353,16 +1395,16 @@ export const useStore = create<BrewOSState>()(
           // Device went offline via cloud - update machine state to reflect offline
           // Don't change connectionState - we're still connected to cloud
           console.log("[Store] Device went offline");
-          
+
           // Update AppStore (device list) to show device as offline
           // This ensures Layout.tsx shows the offline banner
           const appStore = useAppStore.getState();
           const selectedId = appStore.selectedDeviceId;
           if (selectedId) {
             useAppStore.setState({
-              devices: appStore.devices.map(d => 
+              devices: appStore.devices.map((d) =>
                 d.id === selectedId ? { ...d, isOnline: false } : d
-              )
+              ),
             });
           }
 
@@ -1439,7 +1481,7 @@ export const useStore = create<BrewOSState>()(
     resetDiagnostics: () => {
       set({ diagnostics: defaultDiagnostics });
     },
-    
+
     startOTA: () => {
       // Immediately show the OTA overlay when command is sent
       // This provides instant feedback before the ESP32 sends its first progress message

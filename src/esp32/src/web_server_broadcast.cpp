@@ -517,6 +517,11 @@ void WebServer::broadcastDeviceInfo() {
     JsonObject preferences = doc["preferences"].to<JsonObject>();
     prefs.toJson(preferences);
     
+    // Include time settings (for cloud sync)
+    const auto& timeSettings = State.settings().time;
+    JsonObject timeObj = doc["time"].to<JsonObject>();
+    timeSettings.toJson(timeObj);
+    
     // Include schedules for cloud clients (they can't access REST APIs)
     const auto& scheduleSettings = State.settings().schedule;
     JsonObject scheduleObj = doc["schedule"].to<JsonObject>();

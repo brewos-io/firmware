@@ -43,6 +43,7 @@ export type MessageType =
   | "scan_result"
   | "scan_complete"
   | "device_info"
+  | "time_status"
   | "diagnostics_header"
   | "diagnostics_result"
   // OTA update progress
@@ -185,6 +186,22 @@ export interface ShotStatus {
   duration: number;
   weight: number;
   flowRate: number;
+}
+
+// Time
+export interface TimeSettings {
+  useNTP: boolean;
+  ntpServer: string;
+  utcOffsetMinutes: number;
+  dstEnabled: boolean;
+  dstOffsetMinutes: number;
+}
+
+export interface TimeStatus {
+  synced: boolean;
+  currentTime: string;
+  timezone: string;
+  utcOffset: number;
 }
 
 // WiFi

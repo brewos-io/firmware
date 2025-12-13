@@ -93,6 +93,7 @@ export function CloudSettings() {
     isDemo ? DEMO_PAIRING : null
   );
   const [loadingQR, setLoadingQR] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(!isDemo);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -277,6 +278,8 @@ export function CloudSettings() {
       }
     } catch {
       // Device might not support cloud status endpoint yet
+    } finally {
+      setLoadingStatus(false);
     }
   }, [isDemo]);
 
@@ -324,35 +327,43 @@ export function CloudSettings() {
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2">
-                <Wifi className="w-4 h-4 text-theme-muted" />
-                <span className="text-sm text-theme-secondary">
-                  Cloud Connection
-                </span>
+            {loadingStatus ? (
+              <div className="py-4 flex justify-center">
+                <Loader2 className="w-6 h-6 animate-spin text-theme-muted" />
               </div>
-              <Badge variant={cloudConfig?.connected ? "success" : "default"}>
-                {cloudConfig?.connected ? "Connected" : "Disconnected"}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-theme-muted" />
-                <span className="text-sm text-theme-secondary">Server</span>
-              </div>
-              <span className="text-sm text-theme-muted font-mono">
-                {cloudConfig?.serverUrl || "Not configured"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-theme-muted" />
-                <span className="text-sm text-theme-secondary">Machine ID</span>
-              </div>
-              <span className="text-sm text-theme-muted font-mono">
-                {pairing?.deviceId || "—"}
-              </span>
-            </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-2">
+                    <Wifi className="w-4 h-4 text-theme-muted" />
+                    <span className="text-sm text-theme-secondary">
+                      Cloud Connection
+                    </span>
+                  </div>
+                  <Badge variant={cloudConfig?.connected ? "success" : "default"}>
+                    {cloudConfig?.connected ? "Connected" : "Disconnected"}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-theme-muted" />
+                    <span className="text-sm text-theme-secondary">Server</span>
+                  </div>
+                  <span className="text-sm text-theme-muted font-mono">
+                    {cloudConfig?.serverUrl || "Not configured"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-theme-muted" />
+                    <span className="text-sm text-theme-secondary">Machine ID</span>
+                  </div>
+                  <span className="text-sm text-theme-muted font-mono">
+                    {pairing?.deviceId || "—"}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </Card>
 
@@ -371,7 +382,11 @@ export function CloudSettings() {
           </div>
 
           <div className="bg-white rounded-xl p-6 border border-theme flex flex-col items-center">
-            {!cloudEnabled ? (
+            {loadingStatus ? (
+              <div className="w-48 h-48 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-accent" />
+              </div>
+            ) : !cloudEnabled ? (
               <div className="w-48 h-48 flex flex-col items-center justify-center text-center">
                 <Cloud className="w-8 h-8 text-theme-muted mb-2" />
                 <p className="text-sm text-theme-muted">

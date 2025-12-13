@@ -58,6 +58,12 @@ export function Schedules() {
     [preferences.firstDayOfWeek]
   );
 
+  const resetForm = useCallback(() => {
+    setIsEditing(null);
+    setIsAdding(false);
+    setFormData(DEFAULT_SCHEDULE);
+  }, []);
+
   const saveSchedule = useCallback(async () => {
     setSaving(true);
 
@@ -94,7 +100,7 @@ export function Schedules() {
     } finally {
       setSaving(false);
     }
-  }, [isDemo, isEditing, formData, sendCommand, success, error]);
+  }, [isDemo, isEditing, formData, sendCommand, success, error, resetForm]);
 
   const deleteSchedule = useCallback(
     async (id: number) => {
@@ -179,12 +185,6 @@ export function Schedules() {
   const startAdding = useCallback(() => {
     setIsAdding(true);
     setIsEditing(null);
-    setFormData(DEFAULT_SCHEDULE);
-  }, []);
-
-  const resetForm = useCallback(() => {
-    setIsEditing(null);
-    setIsAdding(false);
     setFormData(DEFAULT_SCHEDULE);
   }, []);
 

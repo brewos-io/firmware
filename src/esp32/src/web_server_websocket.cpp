@@ -676,7 +676,7 @@ void WebServer::processCommand(JsonDocument& doc) {
                 prefs.temperatureUnit = (strcmp(unit, "fahrenheit") == 0) ? 1 : 0;
             }
             if (!doc["electricityPrice"].isNull()) {
-                prefs.electricityPrice = doc["electricityPrice"];
+                prefs.electricityPrice = doc["electricityPrice"].as<float>();
             }
             if (!doc["currency"].isNull()) {
                 strncpy(prefs.currency, doc["currency"].as<const char*>(), sizeof(prefs.currency) - 1);
@@ -692,6 +692,60 @@ void WebServer::processCommand(JsonDocument& doc) {
             State.saveUserPreferences();
             broadcastDeviceInfo();
             broadcastLogLevel("info", "User preferences updated");
+        }
+        // Time settings
+        else if (cmd == "set_time_config") {
+            auto& timeSettings = State.settings().time;
+            
+            if (!doc["useNTP"].isNull()) timeSettings.useNTP = doc["useNTP"].as<bool>();
+            if (!doc["ntpServer"].isNull()) strncpy(timeSettings.ntpServer, doc["ntpServer"].as<const char*>(), sizeof(timeSettings.ntpServer) - 1);
+            if (!doc["utcOffsetMinutes"].isNull()) timeSettings.utcOffsetMinutes = doc["utcOffsetMinutes"].as<int16_t>();
+            if (!doc["dstEnabled"].isNull()) timeSettings.dstEnabled = doc["dstEnabled"].as<bool>();
+            if (!doc["dstOffsetMinutes"].isNull()) timeSettings.dstOffsetMinutes = doc["dstOffsetMinutes"].as<int16_t>();
+            
+            State.saveTimeSettings();
+            
+            // Apply new NTP settings
+            _wifiManager.configureNTP(
+                timeSettings.ntpServer,
+                timeSettings.utcOffsetMinutes,
+                timeSettings.dstEnabled,
+                timeSettings.dstOffsetMinutes
+            );
+            
+            broadcastDeviceInfo();
+            broadcastLogLevel("info", "Time settings updated");
+        }
+        // Get time status (for UI polling)
+        else if (cmd == "get_time_status") {
+            TimeStatus ts = _wifiManager.getTimeStatus();
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            StaticJsonDocument<512> tsDoc;
+            #pragma GCC diagnostic pop
+            tsDoc["type"] = "time_status";
+            tsDoc["synced"] = ts.ntpSynced;
+            tsDoc["currentTime"] = ts.currentTime;
+            tsDoc["timezone"] = ts.timezone;
+            tsDoc["utcOffset"] = ts.utcOffset;
+            
+            size_t jsonSize = measureJson(tsDoc) + 1;
+            char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            if (!jsonBuffer) jsonBuffer = (char*)malloc(jsonSize);
+            if (jsonBuffer) {
+                serializeJson(tsDoc, jsonBuffer, jsonSize);
+                broadcastRaw(jsonBuffer);
+                free(jsonBuffer);
+            }
+        }
+        // Force NTP sync
+        else if (cmd == "sync_time") {
+            if (_wifiManager.isConnected()) {
+                _wifiManager.syncNTP();
+                broadcastLogLevel("info", "NTP sync initiated");
+            } else {
+                broadcastLogLevel("error", "Cannot sync time: WiFi not connected");
+            }
         }
         // Maintenance records
         else if (cmd == "record_maintenance") {
