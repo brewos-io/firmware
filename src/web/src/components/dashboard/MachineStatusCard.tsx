@@ -260,6 +260,7 @@ export const MachineStatusCard = memo(function MachineStatusCard({
         {/* Power Controls */}
         <PowerControls
           mode={mode}
+          state={state}
           heatingStrategy={heatingStrategy}
           isDualBoiler={isDualBoiler}
           onSetMode={onSetMode}
@@ -451,8 +452,12 @@ const PowerControls = memo(function PowerControls({
   onSetMode,
   onQuickOn,
   onOpenStrategyModal,
-}: PowerControlsProps) {
+  state,
+}: PowerControlsProps & { state: string }) {
   const isOnActive = mode === "on";
+  
+  // Only allow turning on from idle, ready, or eco states
+  const canTurnOn = state === "idle" || state === "ready" || state === "eco";
 
   // Split "On" button for dual boiler
   const SplitOnButton = () => {
@@ -479,13 +484,16 @@ const PowerControls = memo(function PowerControls({
         {/* Main button - 70% - Turn On with strategy */}
         <button
           onClick={onQuickOn}
+          disabled={!canTurnOn}
           className={cn(
             "flex-[7] px-4 py-4 font-semibold transition-colors duration-200",
             "flex items-center justify-center gap-3",
+            !canTurnOn && "opacity-50 cursor-not-allowed",
             isOnActive
               ? "nav-active rounded-l-xl"
               : "bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary"
           )}
+          title={!canTurnOn ? "Machine must be in IDLE, READY, or ECO state to turn on" : undefined}
         >
           <StrategyIcon className="w-5 h-5" />
           <div className="flex flex-col items-start">
@@ -547,23 +555,61 @@ const PowerControls = memo(function PowerControls({
         {isDualBoiler ? (
           <SplitOnButton />
         ) : (
-          <PowerButton
-            icon={Zap}
-            label="On"
-            description="Full power"
-            isActive={isOnActive}
+          <button
             onClick={onQuickOn}
-          />
+            disabled={!canTurnOn}
+            className={cn(
+              "flex-1 px-5 py-4 rounded-xl font-semibold transition-colors duration-200",
+              "flex items-center justify-center gap-3",
+              !canTurnOn && "opacity-50 cursor-not-allowed",
+              isOnActive
+                ? "nav-active"
+                : "bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary"
+            )}
+            title={!canTurnOn ? "Machine must be in IDLE, READY, or ECO state to turn on" : undefined}
+          >
+            <Zap className="w-5 h-5" />
+            <div className="flex flex-col items-start">
+              <span className="text-sm">On</span>
+              <span
+                className={cn(
+                  "text-[10px] font-normal",
+                  isOnActive ? "opacity-70" : "text-theme-muted"
+                )}
+              >
+                Full power
+              </span>
+            </div>
+          </button>
         )}
 
         {/* Eco button */}
-        <PowerButton
-          icon={Leaf}
-          label="Eco"
-          description="Energy saving"
-          isActive={mode === "eco"}
+        <button
           onClick={handleEco}
-        />
+          disabled={!canTurnOn}
+          className={cn(
+            "flex-1 px-5 py-4 rounded-xl font-semibold transition-colors duration-200",
+            "flex items-center justify-center gap-3",
+            !canTurnOn && "opacity-50 cursor-not-allowed",
+            mode === "eco"
+              ? "nav-active"
+              : "bg-theme-secondary text-theme-secondary hover:bg-theme-tertiary"
+          )}
+          title={!canTurnOn ? "Machine must be in IDLE, READY, or ECO state to enter eco mode" : undefined}
+        >
+          <Leaf className="w-5 h-5" />
+          <div className="flex flex-col items-start">
+            <span className="text-sm">Eco</span>
+            <span
+              className={cn(
+                "text-[10px] font-normal",
+                mode === "eco" ? "opacity-70" : "text-theme-muted"
+              )}
+            >
+              Energy saving
+            </span>
+          </div>
+        </button>
       </div>
     </div>
   );

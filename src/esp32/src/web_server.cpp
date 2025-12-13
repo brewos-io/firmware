@@ -1433,6 +1433,20 @@ void WebServer::setupRoutes() {
             uint8_t cmd = 0;
             
             if (mode == "on" || mode == "ready") {
+                // Validate machine state before allowing turn on
+                // Only allow turning on from IDLE, READY, or ECO states
+                uint8_t currentState = machineState.machine_state;
+                if (currentState != UI_STATE_IDLE && 
+                    currentState != UI_STATE_READY && 
+                    currentState != UI_STATE_ECO) {
+                    const char* stateNames[] = {"INIT", "IDLE", "HEATING", "READY", "BREWING", "FAULT", "SAFE", "ECO"};
+                    char errorMsg[128];
+                    snprintf(errorMsg, sizeof(errorMsg), 
+                        "{\"error\":\"Cannot turn on machine: current state is %s. Machine must be in IDLE, READY, or ECO state.\"}",
+                        (currentState < 8) ? stateNames[currentState] : "UNKNOWN");
+                    request->send(400, "application/json", errorMsg);
+                    return;
+                }
                 cmd = 0x01;  // Turn on
             } else if (mode == "off" || mode == "standby") {
                 cmd = 0x00;  // Turn off

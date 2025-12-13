@@ -208,13 +208,39 @@ void WebServer::processCommand(JsonDocument& doc) {
             }
             
             if (mode == "on" || mode == "ready" || mode == "brew") {
+                // Validate machine state before allowing turn on
+                // Only allow turning on from IDLE, READY, or ECO states
+                uint8_t currentState = machineState.machine_state;
+                if (currentState != UI_STATE_IDLE && 
+                    currentState != UI_STATE_READY && 
+                    currentState != UI_STATE_ECO) {
+                    const char* stateNames[] = {"INIT", "IDLE", "HEATING", "READY", "BREWING", "FAULT", "SAFE", "ECO"};
+                    char errorMsg[128];
+                    snprintf(errorMsg, sizeof(errorMsg), 
+                        "Cannot turn on machine: current state is %s. Machine must be in IDLE, READY, or ECO state.",
+                        (currentState < 8) ? stateNames[currentState] : "UNKNOWN");
+                    broadcastLogLevel("error", errorMsg);
+                    return;
+                }
                 modeCmd = 0x01;  // MODE_BREW
             } else if (mode == "steam") {
                 modeCmd = 0x02;  // MODE_STEAM
             } else if (mode == "off" || mode == "standby" || mode == "idle") {
                 modeCmd = 0x00;  // MODE_IDLE
             } else if (mode == "eco") {
-                // Enter eco mode
+                // Enter eco mode - also validate state
+                uint8_t currentState = machineState.machine_state;
+                if (currentState != UI_STATE_IDLE && 
+                    currentState != UI_STATE_READY && 
+                    currentState != UI_STATE_ECO) {
+                    const char* stateNames[] = {"INIT", "IDLE", "HEATING", "READY", "BREWING", "FAULT", "SAFE", "ECO"};
+                    char errorMsg[128];
+                    snprintf(errorMsg, sizeof(errorMsg), 
+                        "Cannot enter eco mode: current state is %s. Machine must be in IDLE, READY, or ECO state.",
+                        (currentState < 8) ? stateNames[currentState] : "UNKNOWN");
+                    broadcastLogLevel("error", errorMsg);
+                    return;
+                }
                 uint8_t ecoPayload[1] = {1};
                 _picoUart.sendCommand(MSG_CMD_SET_ECO, ecoPayload, 1);
                 return;

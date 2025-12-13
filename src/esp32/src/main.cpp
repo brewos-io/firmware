@@ -306,6 +306,18 @@ static void onScheduleTriggered(const BrewOS::ScheduleEntry& schedule) {
     }
     
     if (schedule.action == BrewOS::ACTION_TURN_ON) {
+        // Validate machine state before allowing turn on
+        // Only allow turning on from IDLE, READY, or ECO states
+        uint8_t currentState = machineState.machine_state;
+        if (currentState != UI_STATE_IDLE && 
+            currentState != UI_STATE_READY && 
+            currentState != UI_STATE_ECO) {
+            const char* stateNames[] = {"INIT", "IDLE", "HEATING", "READY", "BREWING", "FAULT", "SAFE", "ECO"};
+            LOG_W("Schedule: Cannot turn on machine: current state is %s. Machine must be in IDLE, READY, or ECO state.",
+                  (currentState < 8) ? stateNames[currentState] : "UNKNOWN");
+            return;
+        }
+        
         // Turn on machine with specified heating strategy
         uint8_t modeCmd = 0x01;  // MODE_BREW
         picoUart->sendCommand(MSG_CMD_MODE, &modeCmd, 1);
@@ -1057,6 +1069,17 @@ void setup() {
             uint8_t modeCmd = 0;
             
             if (mode == "on" || mode == "ready") {
+                // Validate machine state before allowing turn on
+                // Only allow turning on from IDLE, READY, or ECO states
+                uint8_t currentState = machineState.machine_state;
+                if (currentState != UI_STATE_IDLE && 
+                    currentState != UI_STATE_READY && 
+                    currentState != UI_STATE_ECO) {
+                    const char* stateNames[] = {"INIT", "IDLE", "HEATING", "READY", "BREWING", "FAULT", "SAFE", "ECO"};
+                    LOG_W("MQTT: Cannot turn on machine: current state is %s. Machine must be in IDLE, READY, or ECO state.",
+                          (currentState < 8) ? stateNames[currentState] : "UNKNOWN");
+                    return;
+                }
                 modeCmd = 0x01;
             } else if (mode == "off" || mode == "standby") {
                 modeCmd = 0x00;
