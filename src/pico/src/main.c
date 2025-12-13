@@ -212,6 +212,18 @@ void handle_packet(const packet_t* packet) {
                 }
                 
                 control_set_setpoint(cmd.target, cmd.temperature);
+                
+                // Save setpoint to flash (Pico is the source of truth for setpoints)
+                persisted_config_t config;
+                config_persistence_get(&config);
+                if (cmd.target == 0) {
+                    config.brew_setpoint = cmd.temperature;
+                } else {
+                    config.steam_setpoint = cmd.temperature;
+                }
+                config_persistence_set(&config);
+                config_persistence_save();
+                
                 protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_SUCCESS);
             } else {
                 protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_ERROR_INVALID);
@@ -528,6 +540,7 @@ void handle_packet(const packet_t* packet) {
                     .eco_brew_temp = eco_temp,
                     .timeout_minutes = timeout
                 };
+                // state_set_eco_config() already saves to flash
                 state_set_eco_config(&eco_config);
                 
                 DEBUG_PRINT("Eco config set: enabled=%d, temp=%d, timeout=%d min\n",

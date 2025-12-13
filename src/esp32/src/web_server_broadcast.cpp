@@ -12,6 +12,7 @@
 
 // External references for status broadcast
 extern BrewByWeight* brewByWeight;
+extern ui_state_t machineState;
 
 // Internal helper to broadcast a formatted log message
 // CRITICAL: During OTA, the WebSocket queue can fill up quickly.
@@ -494,15 +495,20 @@ void WebServer::broadcastDeviceInfo() {
     doc["machineType"] = machineInfo.machineType;
     doc["firmwareVersion"] = ESP32_VERSION;
     
-    // Include power settings
+    // Include power settings (from Pico via MSG_ENV_CONFIG - Pico is source of truth)
+    // These are updated when Pico sends MSG_ENV_CONFIG message
     doc["mainsVoltage"] = powerSettings.mainsVoltage;
     doc["maxCurrent"] = powerSettings.maxCurrent;
     
-    // Include temperature setpoints (from NVS, used as initial values before Pico reports)
-    doc["brewSetpoint"] = tempSettings.brewSetpoint;
-    doc["steamSetpoint"] = tempSettings.steamSetpoint;
+    // Include temperature setpoints (from Pico via machineState - Pico is source of truth)
+    // These come from Pico's status messages, which reflect what Pico has persisted
+    doc["brewSetpoint"] = machineState.brew_setpoint;
+    doc["steamSetpoint"] = machineState.steam_setpoint;
     
-    // Include eco mode settings
+    // Include eco mode settings (from Pico - Pico is source of truth)
+    // Note: These are cached from last set_eco command until Pico reports them back
+    // Pico persists these in its flash, but doesn't currently send them in status/config
+    // For now, we use cached values (Pico will use its persisted values on boot)
     doc["ecoBrewTemp"] = tempSettings.ecoBrewTemp;
     doc["ecoTimeoutMinutes"] = tempSettings.ecoTimeoutMinutes;
     

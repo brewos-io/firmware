@@ -118,16 +118,17 @@ void WebServer::processCommand(JsonDocument& doc) {
         
         if (cmd == "set_eco") {
             // Set eco mode configuration
+            // Pico is the source of truth - we just relay the command and cache for UI
             // Payload: enabled (bool), brewTemp (float), timeout (int minutes)
             bool enabled = doc["enabled"] | true;
             float brewTemp = doc["brewTemp"] | 80.0f;
             int timeout = doc["timeout"] | 30;
             
-            // Save to State and NVS first
+            // Cache in memory for immediate UI feedback (not persisted - Pico handles persistence)
             auto& tempSettings = State.settings().temperature;
             tempSettings.ecoBrewTemp = brewTemp;
             tempSettings.ecoTimeoutMinutes = (uint16_t)timeout;
-            State.saveTemperatureSettings();
+            // Note: We don't call State.saveTemperatureSettings() - Pico is source of truth
             
             // Convert to Pico format: [enabled:1][eco_brew_temp:2][timeout_minutes:2]
             uint8_t payload[5];
@@ -167,17 +168,18 @@ void WebServer::processCommand(JsonDocument& doc) {
         }
         else if (cmd == "set_temp") {
             // Set temperature setpoint
+            // Pico is the source of truth - we just relay the command
             String boiler = doc["boiler"] | "brew";
             float temp = doc["temp"] | 0.0f;
             
-            // Save to State and NVS first
-            auto& tempSettings = State.settings().temperature;
+            // Update machineState immediately so status broadcasts show the new value
+            // This prevents Pico's old values from overwriting what we just set
+            // (Pico will persist and echo back the new value in its next status message)
             if (boiler == "steam") {
-                tempSettings.steamSetpoint = temp;
+                machineState.steam_setpoint = temp;
             } else {
-                tempSettings.brewSetpoint = temp;
+                machineState.brew_setpoint = temp;
             }
-            State.saveTemperatureSettings();
             
             uint8_t payload[5];
             payload[0] = (boiler == "steam") ? 0x02 : 0x01;
@@ -507,21 +509,22 @@ void WebServer::processCommand(JsonDocument& doc) {
         }
         // Power settings (accept both "set_power" and "set_power_config" for compatibility)
         else if (cmd == "set_power" || cmd == "set_power_config") {
+            // Pico is the source of truth - we just relay the command and cache for UI
             uint16_t voltage = doc["voltage"] | 230;
             uint8_t maxCurrent = doc["maxCurrent"] | 15;
             
-            // Send to Pico as environmental config
+            // Cache in memory for immediate UI feedback (not persisted - Pico handles persistence)
+            State.settings().power.mainsVoltage = voltage;
+            State.settings().power.maxCurrent = (float)maxCurrent;
+            // Note: We don't call State.savePowerSettings() - Pico is source of truth
+            
+            // Send to Pico as environmental config (Pico will persist it)
             uint8_t payload[4];
             payload[0] = CONFIG_ENVIRONMENTAL;  // Config type
             payload[1] = (voltage >> 8) & 0xFF;
             payload[2] = voltage & 0xFF;
             payload[3] = maxCurrent;
             _picoUart.sendCommand(MSG_CMD_CONFIG, payload, 4);
-            
-            // Also save to local settings
-            State.settings().power.mainsVoltage = voltage;
-            State.settings().power.maxCurrent = (float)maxCurrent;
-            State.savePowerSettings();
             
             broadcastLog("Power settings saved: %dV, %dA", voltage, maxCurrent);
             // Broadcast updated device info so UI refreshes

@@ -12,7 +12,6 @@ import { useMobileLandscape } from "@/lib/useMobileLandscape";
 import { Logo } from "./Logo";
 import { InstallPrompt, usePWAInstall } from "./InstallPrompt";
 import { ConnectionOverlay } from "./ConnectionOverlay";
-import { DeviceOfflineBanner } from "./DeviceOfflineBanner";
 import { VersionWarning } from "./VersionWarning";
 import { UserMenu } from "./UserMenu";
 import { BrewingModeOverlay } from "./BrewingModeOverlay";
@@ -116,7 +115,9 @@ export function Layout({ onExitDemo }: LayoutProps) {
   const navigation = getNavigation(isCloud, deviceId || selectedDevice?.id);
 
   // Check if device is offline (for hiding navigation)
-  const isDeviceOffline = isCloud && selectedDevice && !selectedDevice.isOnline;
+  // Use the same logic as ConnectionOverlay - check machine state from store
+  const machineState = useStore((s) => s.machine.state);
+  const isDeviceOffline = isCloud && machineState === "offline";
 
   // Get current page title from navigation
   const currentPageTitle =
@@ -216,11 +217,6 @@ export function Layout({ onExitDemo }: LayoutProps) {
             </div>
           </header>
 
-          {/* Device Offline Banner */}
-          {isCloud && selectedDevice && !selectedDevice.isOnline && (
-            <DeviceOfflineBanner deviceName={selectedDevice.name} />
-          )}
-
           {/* Main Content */}
           <main className="flex-1 overflow-y-auto px-4 py-3">
             <Outlet />
@@ -295,11 +291,6 @@ export function Layout({ onExitDemo }: LayoutProps) {
           </div>
         </div>
       </header>
-
-      {/* Device Offline Banner - Cloud mode only */}
-      {isCloud && selectedDevice && !selectedDevice.isOnline && (
-        <DeviceOfflineBanner deviceName={selectedDevice.name} />
-      )}
 
       {/* Install App Banner - shown to mobile users only, not in demo mode */}
       {showInstallBanner && isMobile && !isDemo && (

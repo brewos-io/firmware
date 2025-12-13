@@ -397,68 +397,16 @@ static void onPicoPacket(const PicoPacket& packet) {
                 }
             }
             
-            // Send environmental config to Pico immediately after boot
-            // This is required for Pico to exit STATE_FAULT (0x05)
-            // Pico will remain in fault state until environmental config is received
-            uint16_t voltage = State.settings().power.mainsVoltage;
-            uint8_t maxCurrent = (uint8_t)State.settings().power.maxCurrent;
+            // Request environmental config from Pico (Pico is source of truth)
+            // Pico will send MSG_ENV_CONFIG with its persisted settings
+            // This is required for Pico to exit STATE_FAULT (0x05) if config is missing
+            // But we request it first to see what Pico has stored
+            picoUart->sendCommand(MSG_CMD_GET_CONFIG, nullptr, 0);
+            LOG_I("Requested config from Pico (Pico is source of truth)");
             
-            // Only send if settings are valid (non-zero)
-            if (voltage > 0 && maxCurrent > 0) {
-                uint8_t envPayload[4];
-                envPayload[0] = CONFIG_ENVIRONMENTAL;  // Config type
-                envPayload[1] = (voltage >> 8) & 0xFF;
-                envPayload[2] = voltage & 0xFF;
-                envPayload[3] = maxCurrent;
-                
-                if (picoUart->sendCommand(MSG_CMD_CONFIG, envPayload, 4)) {
-                    LOG_I("Sent environmental config to Pico: %dV, %dA", voltage, maxCurrent);
-                } else {
-                    LOG_W("Failed to send environmental config to Pico");
-                }
-            } else {
-                LOG_W("Environmental config not set - Pico will remain in STATE_FAULT until power settings are configured");
-                if (webServer) {
-                    char msg[128];
-                    snprintf(msg, sizeof(msg), "Power settings not configured - please set voltage and max current in settings");
-                    webServer->broadcastLog(msg, "warn");
-                }
-            }
-            
-            // Send saved temperature setpoints to Pico after boot
-            // This ensures Pico uses user's saved settings instead of defaults
-            const auto& tempSettings = State.settings().temperature;
-            if (tempSettings.brewSetpoint > 0) {
-                uint8_t brewPayload[5];
-                brewPayload[0] = 0x01;  // BOILER_BREW
-                memcpy(&brewPayload[1], &tempSettings.brewSetpoint, sizeof(float));
-                if (picoUart->sendCommand(MSG_CMD_SET_TEMP, brewPayload, 5)) {
-                    LOG_I("Sent brew setpoint to Pico: %.1f°C", tempSettings.brewSetpoint);
-                }
-            }
-            if (tempSettings.steamSetpoint > 0) {
-                uint8_t steamPayload[5];
-                steamPayload[0] = 0x02;  // BOILER_STEAM
-                memcpy(&steamPayload[1], &tempSettings.steamSetpoint, sizeof(float));
-                if (picoUart->sendCommand(MSG_CMD_SET_TEMP, steamPayload, 5)) {
-                    LOG_I("Sent steam setpoint to Pico: %.1f°C", tempSettings.steamSetpoint);
-                }
-            }
-            
-            // Send eco mode config to Pico
-            if (tempSettings.ecoBrewTemp > 0 && tempSettings.ecoTimeoutMinutes > 0) {
-                uint8_t ecoPayload[5];
-                ecoPayload[0] = 1;  // enabled
-                int16_t tempScaled = (int16_t)(tempSettings.ecoBrewTemp * 10);
-                ecoPayload[1] = (tempScaled >> 8) & 0xFF;
-                ecoPayload[2] = tempScaled & 0xFF;
-                ecoPayload[3] = (tempSettings.ecoTimeoutMinutes >> 8) & 0xFF;
-                ecoPayload[4] = tempSettings.ecoTimeoutMinutes & 0xFF;
-                if (picoUart->sendCommand(MSG_CMD_SET_ECO, ecoPayload, 5)) {
-                    LOG_I("Sent eco config to Pico: %.1f°C, %d min", 
-                          tempSettings.ecoBrewTemp, tempSettings.ecoTimeoutMinutes);
-                }
-            }
+            // Pico is the source of truth for temperature setpoints and eco mode
+            // Pico loads settings from its own flash on boot and reports them in status messages
+            // No need to send from ESP32 - Pico already has the persisted values
             
             // Send pre-infusion config to Pico
             const auto& brewSettings = State.settings().brew;
@@ -540,12 +488,23 @@ static void onPicoPacket(const PicoPacket& packet) {
             break;
             
         case MSG_ENV_CONFIG: {
+            // Pico is the source of truth for power settings
             if (packet.length >= 18) {
                 uint16_t voltage = packet.payload[0] | (packet.payload[1] << 8);
                 float max_current = 0;
                 memcpy(&max_current, &packet.payload[2], sizeof(float));
-                LOG_I("Env config: %dV, %.1fA max", voltage, max_current);
-                if (webServer) webServer->broadcastLogLevel("info", "Env config: %dV, %.1fA max", voltage, max_current);
+                
+                // Store in machineState for use in broadcasts (Pico is source of truth)
+                // Note: We don't persist these on ESP32 - Pico handles persistence
+                State.settings().power.mainsVoltage = voltage;
+                State.settings().power.maxCurrent = max_current;
+                
+                LOG_I("Env config from Pico: %dV, %.1fA max", voltage, max_current);
+                if (webServer) {
+                    webServer->broadcastLogLevel("info", "Env config: %dV, %.1fA max", voltage, max_current);
+                    // Broadcast updated device info so UI refreshes
+                    webServer->broadcastDeviceInfo();
+                }
             }
             break;
         }

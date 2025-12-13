@@ -13,6 +13,5 @@ export { AlertToastBridge } from './AlertToastBridge';
 export { ConnectionOverlay } from './ConnectionOverlay';
 export { ConfirmDialog } from './ConfirmDialog';
 export { DemoBanner } from './DemoBanner';
-export { DeviceOfflineBanner } from './DeviceOfflineBanner';
 export { DeviceOfflineOverlay } from './DeviceOfflineOverlay';
 export { UserMenu } from './UserMenu';

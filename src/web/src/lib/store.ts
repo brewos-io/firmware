@@ -572,7 +572,8 @@ export const useStore = create<BrewOSState>()(
                       : state.machine.lastShotTimestamp,
                 }
               : state.machine,
-            // Temperatures (from device_info - always accept, it's authoritative)
+            // Temperatures (from status message - Pico is source of truth)
+            // Note: Setpoints come from Pico's status messages, which reflect persisted values
             temps: tempsData
               ? {
                   brew: {
@@ -594,7 +595,9 @@ export const useStore = create<BrewOSState>()(
                     max: state.temps.steam.max,
                   },
                   group: (tempsData.group as number) ?? state.temps.group,
-                  lastUpdated: Date.now(), // Device info is authoritative
+                  // Always update timestamp for status messages (they're authoritative from Pico)
+                  // Optimistic updates check this timestamp to avoid overwriting newer data
+                  lastUpdated: Date.now(),
                 }
               : state.temps,
             // Pressure
@@ -829,7 +832,9 @@ export const useStore = create<BrewOSState>()(
                 max: state.temps.steam.max,
               },
               group: (data.groupTemp as number) ?? state.temps.group,
-              lastUpdated: Date.now(), // Status updates are authoritative
+              // Always update timestamp for status messages (they're authoritative from Pico)
+              // Optimistic updates check this timestamp to avoid overwriting newer data
+              lastUpdated: Date.now(),
             },
             pressure: (data.pressure as number) ?? state.pressure,
             power: {
@@ -1134,7 +1139,8 @@ export const useStore = create<BrewOSState>()(
                 (data.preinfusionPauseMs as number) ??
                 state.preinfusion.pauseTimeMs,
             },
-            // Update temperature setpoints from saved settings (device_info is authoritative)
+            // Update temperature setpoints from device_info (Pico is source of truth)
+            // These come from Pico's status messages via machineState, which reflect persisted values
             temps: {
               ...state.temps,
               brew: {
@@ -1147,7 +1153,9 @@ export const useStore = create<BrewOSState>()(
                 setpoint:
                   (data.steamSetpoint as number) ?? state.temps.steam.setpoint,
               },
-              lastUpdated: Date.now(), // Device info is authoritative
+              // Always update timestamp for device_info (it's authoritative from Pico)
+              // Optimistic updates check this timestamp to avoid overwriting newer data
+              lastUpdated: Date.now(),
             },
             // Update preferences from ESP32 (synced across devices)
             preferences: prefsData
