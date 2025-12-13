@@ -32,6 +32,7 @@ import type {
   DiagnosticResult,
   DiagnosticHeader,
 } from "./types";
+import { useAppStore } from "./mode";
 import type { Schedule } from "@/components/schedules";
 import {
   diagStatusFromCode,
@@ -1321,6 +1322,19 @@ export const useStore = create<BrewOSState>()(
         case "device_online": {
           // Device came online via cloud - update state immediately
           console.log("[Store] Device came online");
+          
+          // Update AppStore (device list) to show device as online
+          // This ensures Layout.tsx hides the offline banner
+          const appStore = useAppStore.getState();
+          const selectedId = appStore.selectedDeviceId;
+          if (selectedId) {
+            useAppStore.setState({
+              devices: appStore.devices.map(d => 
+                d.id === selectedId ? { ...d, isOnline: true } : d
+              )
+            });
+          }
+
           // Set machine state to "unknown" so overlay hides
           // Real state will be updated when status messages arrive
           set((state) => ({
@@ -1328,6 +1342,9 @@ export const useStore = create<BrewOSState>()(
               ...state.machine,
               state: "unknown" as const,  // Clear offline state, will be updated by status
             },
+            // Optimistically set connection flags
+            cloud: { ...state.cloud, connected: true },
+            wifi: { ...state.wifi, connected: true },
           }));
           break;
         }
@@ -1336,6 +1353,19 @@ export const useStore = create<BrewOSState>()(
           // Device went offline via cloud - update machine state to reflect offline
           // Don't change connectionState - we're still connected to cloud
           console.log("[Store] Device went offline");
+          
+          // Update AppStore (device list) to show device as offline
+          // This ensures Layout.tsx shows the offline banner
+          const appStore = useAppStore.getState();
+          const selectedId = appStore.selectedDeviceId;
+          if (selectedId) {
+            useAppStore.setState({
+              devices: appStore.devices.map(d => 
+                d.id === selectedId ? { ...d, isOnline: false } : d
+              )
+            });
+          }
+
           set((state) => ({
             // Mark Pico as disconnected since we can't reach the device
             pico: {
@@ -1355,6 +1385,9 @@ export const useStore = create<BrewOSState>()(
               ...state.scale,
               connected: false,
             },
+            // Mark WiFi and Cloud as disconnected (device is unreachable)
+            wifi: { ...state.wifi, connected: false },
+            cloud: { ...state.cloud, connected: false },
           }));
           break;
         }
