@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import viteCompression from "vite-plugin-compression";
 import path from "path";
 import fs from "fs";
 
@@ -135,6 +136,17 @@ export default defineConfig(({ mode, command }) => {
       react(),
       // Inject version into service worker (all modes except ESP32)
       !isEsp32 && serviceWorkerVersionPlugin(version, isDev),
+      // Gzip compression for ESP32 builds - pre-compress files for faster serving
+      // ESPAsyncWebServer's serveStatic automatically serves .gz files when available
+      isEsp32 && viteCompression({
+        algorithm: "gzip",
+        ext: ".gz",
+        threshold: 1024, // Only compress files > 1KB
+        deleteOriginFile: true, // Delete originals to fit in 1.5MB partition
+        // Exclude index.html - keep it uncompressed for SPA fallback handler
+        // (only 2.5KB, not worth the complexity of handling gzipped default file)
+        filter: (file) => !/index\.html$/.test(file),
+      }),
     ].filter(Boolean),
     resolve: {
       alias: {
