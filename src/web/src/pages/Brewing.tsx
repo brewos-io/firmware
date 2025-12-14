@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "@/lib/store";
 import { useCommand } from "@/lib/useCommand";
 import { useMobileLandscape } from "@/lib/useMobileLandscape";
@@ -18,11 +18,13 @@ export function Brewing() {
 
   // Local form state for BBW
   const [formState, setFormState] = useState(bbw);
-  const [saving, setSaving] = useState(false);
 
   // Local form state for pre-infusion
   const [preinfusionForm, setPreinfusionForm] = useState(preinfusion);
-  const [savingPreinfusion, setSavingPreinfusion] = useState(false);
+
+  // Track if we've initialized to avoid saving on mount
+  const bbwInitialized = useRef(false);
+  const preinfusionInitialized = useRef(false);
 
   // Sync with store
   useEffect(() => {
@@ -43,34 +45,66 @@ export function Brewing() {
     }
   }, [scale.connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Validate BBW settings
+  const isBBWValid =
+    formState.doseWeight >= 10 &&
+    formState.doseWeight <= 30 &&
+    formState.targetWeight >= 20 &&
+    formState.targetWeight <= 80 &&
+    formState.stopOffset >= 0 &&
+    formState.stopOffset <= 10;
+
+  // Auto-save BBW settings when they change (debounced)
+  useEffect(() => {
+    // Skip first render (initial sync from store)
+    if (!bbwInitialized.current) {
+      bbwInitialized.current = true;
+      return;
+    }
+
+    // Don't save if values are invalid
+    if (!isBBWValid) return;
+
+    const timer = setTimeout(() => {
+      sendCommand("set_bbw", { ...formState });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [formState, isBBWValid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Validate pre-infusion settings
+  const isPreinfusionValid =
+    preinfusionForm.onTimeMs >= 500 &&
+    preinfusionForm.onTimeMs <= 10000 &&
+    preinfusionForm.pauseTimeMs >= 0 &&
+    preinfusionForm.pauseTimeMs <= 30000;
+
+  // Auto-save pre-infusion settings when they change (debounced)
+  useEffect(() => {
+    // Skip first render (initial sync from store)
+    if (!preinfusionInitialized.current) {
+      preinfusionInitialized.current = true;
+      return;
+    }
+
+    // Don't save if values are invalid
+    if (!isPreinfusionValid) return;
+
+    const timer = setTimeout(() => {
+      sendCommand("set_preinfusion", {
+        enabled: preinfusionForm.enabled,
+        onTimeMs: preinfusionForm.onTimeMs,
+        pauseTimeMs: preinfusionForm.pauseTimeMs,
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [preinfusionForm, isPreinfusionValid]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const ratio =
     formState.doseWeight > 0
       ? (formState.targetWeight / formState.doseWeight).toFixed(1)
       : "0.0";
-
-  const saveSettings = () => {
-    setSaving(true);
-    sendCommand(
-      "set_bbw",
-      { ...formState },
-      { successMessage: "Brewing settings saved" }
-    );
-    setSaving(false);
-  };
-
-  const savePreinfusion = () => {
-    setSavingPreinfusion(true);
-    sendCommand(
-      "set_preinfusion",
-      {
-        enabled: preinfusionForm.enabled,
-        onTimeMs: preinfusionForm.onTimeMs,
-        pauseTimeMs: preinfusionForm.pauseTimeMs,
-      },
-      { successMessage: "Pre-infusion settings saved" }
-    );
-    setSavingPreinfusion(false);
-  };
 
   const tareScale = () => {
     sendCommand("tare");
@@ -192,25 +226,19 @@ export function Brewing() {
           />
         </div>
 
-        <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={formState.autoTare}
-              onChange={(e) =>
-                setFormState({ ...formState, autoTare: e.target.checked })
-              }
-              className="w-4 h-4 rounded border-theme text-accent focus:ring-accent"
-            />
-            <span className="text-sm text-theme-secondary">
-              Auto-tare when portafilter placed
-            </span>
-          </label>
-
-          <Button onClick={saveSettings} loading={saving}>
-            Save Settings
-          </Button>
-        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={formState.autoTare}
+            onChange={(e) =>
+              setFormState({ ...formState, autoTare: e.target.checked })
+            }
+            className="w-4 h-4 rounded border-theme text-accent focus:ring-accent"
+          />
+          <span className="text-sm text-theme-secondary">
+            Auto-tare when portafilter placed
+          </span>
+        </label>
       </Card>
 
       {/* Pre-Infusion Settings - Doesn't require scale */}
@@ -275,7 +303,7 @@ export function Brewing() {
         )}
 
         {preinfusionForm.enabled && (
-          <div className="p-4 rounded-xl bg-theme-secondary mb-4">
+          <div className="p-4 rounded-xl bg-theme-secondary">
             <div className="text-sm font-medium text-theme mb-2">
               Brew Cycle Preview
             </div>
@@ -302,12 +330,6 @@ export function Brewing() {
             </div>
           </div>
         )}
-
-        <div className="flex justify-end">
-          <Button onClick={savePreinfusion} loading={savingPreinfusion}>
-            Save Pre-Infusion
-          </Button>
-        </div>
       </Card>
     </div>
   );

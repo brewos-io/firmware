@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useStore } from "@/lib/store";
 import { useCommand } from "@/lib/useCommand";
 import { useMobileLandscape } from "@/lib/useMobileLandscape";
@@ -18,7 +18,7 @@ import {
   getOrderedDays,
 } from "@/components/schedules";
 import { isDemoMode, getDemoSchedules } from "@/lib/demo-mode";
-import { Clock, Plus, Moon, Calendar, Save } from "lucide-react";
+import { Clock, Plus, Moon, Calendar } from "lucide-react";
 
 export function Schedules() {
   const preferences = useStore((s) => s.preferences);
@@ -377,6 +377,29 @@ function AutoPowerOffCard({
   onChange,
   onSave,
 }: AutoPowerOffCardProps) {
+  const initialized = useRef(false);
+
+  // Validate: minutes must be between 5 and 480
+  const isValid = autoPowerOff.minutes >= 5 && autoPowerOff.minutes <= 480;
+
+  // Auto-save when values change (debounced)
+  useEffect(() => {
+    // Skip first render (initial sync from store)
+    if (!initialized.current) {
+      initialized.current = true;
+      return;
+    }
+
+    // Don't save if values are invalid
+    if (!isValid) return;
+
+    const timer = setTimeout(() => {
+      onSave();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [autoPowerOff.enabled, autoPowerOff.minutes, isValid, onSave]);
+
   return (
     <Card>
       <CardHeader
@@ -396,26 +419,19 @@ function AutoPowerOffCard({
         Automatically turn off the machine after a period of inactivity.
       </p>
 
-      <div className="flex items-center gap-4 mb-4">
-        <Input
-          label="Idle timeout"
-          type="number"
-          min={5}
-          max={480}
-          step={5}
-          value={autoPowerOff.minutes}
-          onChange={(e) =>
-            onChange({ ...autoPowerOff, minutes: parseInt(e.target.value) })
-          }
-          unit="minutes"
-          disabled={!autoPowerOff.enabled}
-        />
-      </div>
-
-      <Button onClick={onSave}>
-        <Save className="w-4 h-4" />
-        Save Auto Power-Off
-      </Button>
+      <Input
+        label="Idle timeout"
+        type="number"
+        min={5}
+        max={480}
+        step={5}
+        value={autoPowerOff.minutes}
+        onChange={(e) =>
+          onChange({ ...autoPowerOff, minutes: parseInt(e.target.value) })
+        }
+        unit="minutes"
+        disabled={!autoPowerOff.enabled}
+      />
     </Card>
   );
 }
