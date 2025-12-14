@@ -182,7 +182,7 @@ void WebServer::processCommand(JsonDocument& doc) {
             }
             
             // Pico expects: [target:1][temperature:int16] where temperature is Celsius * 10
-            // Note: Pico (RP2040) is little-endian, so send LSB first
+            // Note: Pico (RP2350) is little-endian, so send LSB first
             uint8_t payload[3];
             payload[0] = (boiler == "steam") ? 0x01 : 0x00;  // 0=brew, 1=steam
             int16_t tempScaled = (int16_t)(temp * 10.0f);  // Convert to 0.1°C units

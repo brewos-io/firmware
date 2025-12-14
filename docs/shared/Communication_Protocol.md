@@ -2,7 +2,7 @@
 
 ## Overview
 
-Binary protocol for communication between the Pico (RP2040) and ESP32 display module.
+Binary protocol for communication between the Pico (RP2350) and ESP32 display module.
 
 **See also:**
 

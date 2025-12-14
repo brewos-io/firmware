@@ -21,7 +21,7 @@
   <a href="https://github.com/mizrachiran/brewos/releases">
     <img src="https://img.shields.io/github/v/release/mizrachiran/brewos?include_prereleases" alt="Release">
   </a>
-  <img src="https://img.shields.io/badge/platform-RP2040%20%7C%20ESP32-brightgreen" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-RP2350%20%7C%20ESP32-brightgreen" alt="Platform">
   <img src="https://img.shields.io/badge/status-development-orange" alt="Status">
 </p>
 
@@ -88,7 +88,7 @@ BrewOS is an open-source control system designed to replace factory controllers 
 | --------------- | --------------------------------- | --------------------------------- |
 | **Cloud**       | Google OAuth, Node.js, SQLite     | Remote access via WebSocket relay |
 | **ESP32-S3**    | WiFi, Web Server, MQTT, BLE, LVGL | Connectivity & UI hub             |
-| **Pico RP2040** | PID, Boiler, Pump, Valve control  | Real-time machine control         |
+| **Pico RP2350** | PID, Boiler, Pump, Valve control  | Real-time machine control         |
 | **Hardware**    | SSRs, Sensors, Valves             | Physical machine interface        |
 
 **Pico Dual-Core Design:**

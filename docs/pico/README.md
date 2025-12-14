@@ -41,10 +41,10 @@ The Raspberry Pi Pico handles real-time machine control for the BrewOS coffee ma
 
 ## Hardware
 
-- **MCU:** Raspberry Pi Pico (RP2040)
-- **Cores:** Dual-core ARM Cortex-M0+ @ 133 MHz
-- **RAM:** 264 KB
-- **Flash:** 2 MB
+- **MCU:** Raspberry Pi Pico 2 (RP2350)
+- **Cores:** Dual-core ARM Cortex-M33 @ 150 MHz
+- **RAM:** 520 KB
+- **Flash:** 4 MB
 
 ## Building
 

@@ -2,8 +2,8 @@
 
 ## Firmware Requirements Specification
 
-**Document Purpose:** Define all functional, safety, and interface requirements for the RP2040 firmware  
-**Target Platform:** Raspberry Pi Pico (RP2040)  
+**Document Purpose:** Define all functional, safety, and interface requirements for the RP2350 firmware  
+**Target Platform:** Raspberry Pi Pico 2 (RP2350)  
 **Language:** C (Pico SDK)  
 **Revision:** 1.0  
 **Date:** November 2025  
@@ -96,7 +96,7 @@ Failure to implement these correctly can result in:
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| SAF-001 | Enable RP2040 watchdog timer immediately on boot | CRITICAL |
+| SAF-001 | Enable RP2350 watchdog timer immediately on boot | CRITICAL |
 | SAF-002 | Watchdog timeout: 2000ms maximum | CRITICAL |
 | SAF-003 | Feed watchdog only from main control loop after safety checks pass | CRITICAL |
 | SAF-004 | On watchdog timeout: all outputs must go to safe state (OFF) | CRITICAL |

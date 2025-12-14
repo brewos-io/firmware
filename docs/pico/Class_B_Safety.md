@@ -2,7 +2,7 @@
 
 ## Overview
 
-BrewOS implements IEC 60730/60335 Annex R Class B safety self-test routines on the Pico (RP2040) firmware. These routines detect hardware and software faults that could lead to unsafe operation.
+BrewOS implements IEC 60730/60335 Annex R Class B safety self-test routines on the Pico (RP2350) firmware. These routines detect hardware and software faults that could lead to unsafe operation.
 
 > **IMPORTANT DISCLAIMER**: This implementation provides Class B safety self-tests following IEC 60730 Annex R guidelines, but has **NOT been certified** by an accredited test laboratory (TÜV, UL, etc.). For safety-critical production use in commercial products, formal certification is required.
 

@@ -4,7 +4,7 @@
 
 BrewOS is an open-source espresso machine controller with:
 
-- **Pico (RP2040)** - Real-time machine control
+- **Pico (RP2350)** - Real-time machine control
 - **ESP32-S3** - Connectivity, UI, and smart features
 - **Web Interface** - Modern React dashboard
 - **Cloud Service** - Remote access from anywhere

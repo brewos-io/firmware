@@ -154,7 +154,7 @@ Professional debugger with faster performance.
 
 ```bash
 # Start J-Link GDB Server
-JLinkGDBServer -device RP2040_M0_0 -if SWD -speed 4000
+JLinkGDBServer -device RP2350_M33_0 -if SWD -speed 4000
 
 # Connect GDB
 arm-none-eabi-gdb build/ecm_firmware.elf

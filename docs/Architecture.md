@@ -8,7 +8,7 @@ The diagram shows the complete BrewOS ecosystem:
 
 - **Cloud Layer** (`cloud.brewos.io`) - Google OAuth, Node.js WebSocket relay, SQLite database
 - **Home Network** - ESP32-S3 connectivity hub with React Web UI, cloud client, MQTT, and BLE
-- **Real-time Controller** - Pico RP2040 handling PID, boiler, pump, and valve control
+- **Real-time Controller** - Pico RP2350 handling PID, boiler, pump, and valve control
 - **Machine Hardware** - SSRs, pumps, valves, and temperature sensors
 
 ## Communication Paths
@@ -71,7 +71,7 @@ User Request → ESP32 → Pico → Machine Hardware
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| **Pico** | C, RP2040 | Real-time machine control, safety |
+| **Pico** | C, RP2350 | Real-time machine control, safety |
 | **ESP32** | C++, ESP-IDF | Connectivity, UI, state management |
 | **Web UI** | React, TypeScript | Dashboard, settings, control |
 | **Cloud** | Node.js, Express | WebSocket relay, auth, device registry |

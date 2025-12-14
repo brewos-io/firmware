@@ -2,11 +2,11 @@
 
 ## Overview
 
-The ECM firmware runs on the RP2040 microcontroller (Raspberry Pi Pico), utilizing both cores for real-time control and communication.
+The ECM firmware runs on the RP2350 microcontroller (Raspberry Pi Pico 2), utilizing both cores for real-time control and communication.
 
 **Language:** C (Pico SDK)  
-**Cores:** Dual-core ARM Cortex-M0+ @ 133MHz  
-**Memory:** 264KB SRAM, 2MB Flash  
+**Cores:** Dual-core ARM Cortex-M33 @ 150MHz  
+**Memory:** 520KB SRAM, 4MB Flash  
 
 ---
 
@@ -14,7 +14,7 @@ The ECM firmware runs on the RP2040 microcontroller (Raspberry Pi Pico), utilizi
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           RP2040 DUAL-CORE ARCHITECTURE                      │
+│                           RP2350 DUAL-CORE ARCHITECTURE                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │   ┌───────────────────────────────┐   ┌───────────────────────────────┐     │

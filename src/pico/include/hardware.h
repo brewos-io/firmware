@@ -146,7 +146,7 @@ uint8_t hw_max31855_get_fault(uint32_t data);
 
 /**
  * PWM SSR configuration structure
- * Tracks both slice and channel to properly handle RP2040 PWM architecture
+ * Tracks both slice and channel to properly handle RP2350 PWM architecture
  * where two adjacent GPIOs share a slice but use different channels.
  */
 typedef struct {

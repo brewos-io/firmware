@@ -1,7 +1,7 @@
 /**
  * Coffee Machine Controller - Pico Firmware
  * 
- * Main entry point for the RP2040-based control board.
+ * Main entry point for the RP2350-based control board (Raspberry Pi Pico 2).
  * 
  * Core 0: Real-time control loop (safety, sensors, PID, outputs)
  * Core 1: Communication with ESP32
