@@ -22,6 +22,7 @@
 #include <FS.h>
 #include <AsyncTCP.h>
 #include <AsyncWebSocket.h>
+#include <memory>
 
 // Forward declare PicoUART class if not already included
 class PicoUART;
@@ -204,7 +205,7 @@ constexpr unsigned long OTA_HTTP_TIMEOUT_MS = 30000;       // 30 seconds HTTP ti
 constexpr unsigned long OTA_WATCHDOG_FEED_INTERVAL_MS = 50;// Feed watchdog every 50ms
 
 // Buffer sizes
-constexpr size_t OTA_BUFFER_SIZE = 2048;                   // Increased buffer for responsiveness vs stack usage
+constexpr size_t OTA_BUFFER_SIZE = 512;                    // Smaller buffer for stack safety
 
 // Retry configuration
 constexpr int OTA_MAX_RETRIES = 3;
@@ -899,7 +900,16 @@ void WebServer::startGitHubOTA(const String& version) {
     
     // Stream firmware to flash
     WiFiClient* stream = http.getStreamPtr();
-    uint8_t buffer[OTA_BUFFER_SIZE];
+    const size_t HEAP_BUFFER_SIZE = 4096;
+    std::unique_ptr<uint8_t[]> buffer(new (std::nothrow) uint8_t[HEAP_BUFFER_SIZE]);
+    if (!buffer) {
+        LOG_E("Failed to allocate buffer");
+        Update.abort();
+        http.end();
+        broadcastLogLevel("error", "Update error: Out of memory");
+        broadcastOtaProgress(&_ws, "error", 0, "Out of memory");
+        return;
+    }
     size_t written = 0;
     unsigned long lastYield = millis();
     unsigned long downloadStart = millis();
@@ -941,11 +951,11 @@ void WebServer::startGitHubOTA(const String& version) {
         size_t available = stream->available();
         if (available > 0) {
             lastDataReceived = millis();  // Reset stall timer
-            size_t toRead = min(available, sizeof(buffer));
-            size_t bytesRead = stream->readBytes(buffer, toRead);
+            size_t toRead = min(available, HEAP_BUFFER_SIZE);
+            size_t bytesRead = stream->readBytes(buffer.get(), toRead);
             
             if (bytesRead > 0) {
-                size_t bytesWritten = Update.write(buffer, bytesRead);
+                size_t bytesWritten = Update.write(buffer.get(), bytesRead);
                 if (bytesWritten != bytesRead) {
                     LOG_E("Write error at %d", written);
                     Update.abort();
@@ -1069,7 +1079,13 @@ void WebServer::updateLittleFS(const char* tag) {
     broadcastOtaProgress(&_ws, "flash", 98, "Installing web UI...");
     
     WiFiClient* stream = http.getStreamPtr();
-    uint8_t buffer[OTA_BUFFER_SIZE];
+    const size_t HEAP_BUFFER_SIZE = 4096;
+    std::unique_ptr<uint8_t[]> buffer(new (std::nothrow) uint8_t[HEAP_BUFFER_SIZE]);
+    if (!buffer) {
+        LOG_W("Failed to allocate buffer for LittleFS update");
+        http.end();
+        return;
+    }
     size_t written = 0;
     size_t offset = 0;
     unsigned long lastYield = millis();
@@ -1082,11 +1098,11 @@ void WebServer::updateLittleFS(const char* tag) {
         
         size_t available = stream->available();
         if (available > 0) {
-            size_t toRead = min(available, sizeof(buffer));
-            size_t bytesRead = stream->readBytes(buffer, toRead);
+            size_t toRead = min(available, HEAP_BUFFER_SIZE);
+            size_t bytesRead = stream->readBytes(buffer.get(), toRead);
             
             if (bytesRead > 0) {
-                if (esp_partition_write(partition, offset, buffer, bytesRead) != ESP_OK) {
+                if (esp_partition_write(partition, offset, buffer.get(), bytesRead) != ESP_OK) {
                     LOG_W("LittleFS write failed at offset %d", offset);
                     break;
                 }
@@ -1094,7 +1110,7 @@ void WebServer::updateLittleFS(const char* tag) {
                 offset += bytesRead;
             }
         } else {
-            delay(1);
+            yield();
             feedWatchdog();
         }
     }
