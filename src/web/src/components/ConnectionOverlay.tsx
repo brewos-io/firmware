@@ -44,9 +44,9 @@ export function ConnectionOverlay() {
 
   // Consider updating if store says so, OR if we have stored state
   // This ensures overlay stays visible even if connection drops or store resets during reboot
+  // Note: Don't check ota.stage === "complete" here - let the page reload logic handle completion
   const isUpdating =
     ota.isUpdating ||
-    ota.stage === "complete" ||
     (storedOtaInProgress && (!isConnected || isDeviceOffline));
 
   // Track stable overlay state with debouncing to prevent flickering
@@ -70,17 +70,24 @@ export function ConnectionOverlay() {
     }
   }, [ota.isUpdating]);
 
-  // Clear OTA state when finished or device comes back online
+  // Clear OTA state on error or when device is confirmed back online after OTA
+  // Don't clear on "complete" - the page reload logic in store.ts handles that case
+  // (when the device reboots and reconnects, store.ts will detect the flag and reload)
   useEffect(() => {
-    const isFinished = ota.stage === "complete" || ota.stage === "error";
+    const isError = ota.stage === "error";
     // Device is back online if state is valid (not unknown/offline) and connected
+    // Only clear localStorage if OTA is not in progress (device truly back to normal)
     const isBackOnline =
-      machineState !== "offline" && machineState !== "unknown" && isConnected;
+      machineState !== "offline" &&
+      machineState !== "unknown" &&
+      isConnected &&
+      !ota.isUpdating &&
+      ota.stage === "idle";
 
-    if (isFinished || isBackOnline) {
+    if (isError || isBackOnline) {
       localStorage.removeItem(OTA_IN_PROGRESS_KEY);
     }
-  }, [ota.stage, machineState, isConnected]);
+  }, [ota.stage, ota.isUpdating, machineState, isConnected]);
 
   // Track device offline state - once confirmed offline, stay that way until device comes back
   useEffect(() => {
@@ -254,11 +261,7 @@ export function ConnectionOverlay() {
   // This ensures the UI matches the debounced overlay state
   const getStatus = () => {
     // OTA in progress - show simple animation without progress bar
-    if (
-      overlayState === "updating" ||
-      ota.isUpdating ||
-      ota.stage === "complete"
-    ) {
+    if (overlayState === "updating" || ota.isUpdating) {
       return {
         icon: <Download className="w-16 h-16 text-accent" />,
         title: "Updating BrewOS...",
