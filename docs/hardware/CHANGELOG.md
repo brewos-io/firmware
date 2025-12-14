@@ -4,8 +4,8 @@
 
 | Rev        | Date            | Description                                                                               |
 | ---------- | --------------- | ----------------------------------------------------------------------------------------- |
-| **2.26.1** | **Dec 11 2025** | **CURRENT** - Improved SSR wiring diagrams, fixed J26 pin number inconsistencies          |
-| 2.26       | Dec 9 2025      | SPARE1/SPARE2 both connect ESP32↔Pico (GPIO16/22), added R74/R75 pull-downs               |
+| **2.27**   | **Dec 14 2025** | **CURRENT** - Schematic diagram clarifications (VREF, Level Probe, 5V Protection), Netlist cleanup |
+| 2.26.1   | Dec 11 2025     | Improved SSR wiring diagrams, fixed J26 pin number inconsistencies                        |
 | 2.25     | Dec 9 2025     | J15 Pin 6 SPARE1, removed SW2/R72 (BOOTSEL not available on Pico header)                  |
 | 2.24.2   | Dec 7 2025     | 🔴 SAFETY FIXES: Wien gain corrected, MOV relocated, JP5 added                            |
 | 2.24.1   | Dec 7 2025     | CRITICAL FIXES: Buck feedback, Wien gain (wrong value), VREF isolation (DO NOT FABRICATE) |
@@ -18,6 +18,41 @@
 | 2.19     | Dec 2025       | Removed spare relay K4                                                                    |
 | 2.17     | Nov 2025       | Brew-by-weight support (J15 8-pin)                                                        |
 | 2.16     | Nov 2025       | Production-ready specification                                                            |
+
+---
+
+## v2.27 (December 14, 2025) - Schematic Diagram Improvements
+
+**Comprehensive diagram updates for clarity and consistency. No functional hardware changes from v2.26.**
+
+### Diagram Improvements (Schematic_Reference.md)
+
+1.  **5V Rail Protection:**
+    -   Redesigned to clearly show FB2 in series and D20/C2 in parallel
+    -   Added clear signal flow and "Why" section
+
+2.  **JP4 Mode Selection:**
+    -   Clarified 3-pad jumper topology (RS485 vs TTL)
+    -   Added distinct visual guides for both modes
+
+3.  **Level Probe Circuit:**
+    -   Complete redesign of the 3-stage circuit (Wien Bridge, Interface, Comparator)
+    -   Fixed broken connection lines and incorrect resistor values in diagram
+    -   Added explicit signal flow explanation
+
+4.  **ADC Voltage Reference:**
+    -   Clarified distinction between `REF_3V0` (LM4040) and `ADC_VREF` (Buffered)
+    -   Added unity-gain buffer schematic to show how high-current drive is achieved
+
+5.  **GPIO Pull-downs (E9 Errata):**
+    -   Fixed diagrams for WEIGHT_STOP (GPIO21), SPARE1 (GPIO16), SPARE2 (GPIO22)
+    -   Corrected pull-down connection to GND (was ambiguously drawn)
+    -   Verified 4.7kΩ values match component list
+
+### Documentation Fixes
+
+-   **Netlist Summary:** Renamed `+3.3V_ANALOG` to `ADC_VREF (3.0V)` for accuracy
+-   **Pin Mapping:** Corrected GPIO28 source in Netlist from J26-16 to J26-14 (matching J26 pinout)
 
 ---
 

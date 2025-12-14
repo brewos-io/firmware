@@ -171,90 +171,158 @@ critical for reliable operation inside hot espresso machine enclosures.
 
 ## 1.4 Precision ADC Voltage Reference (Buffered)
 
-**Purpose:** Provides stable reference for NTC measurements, eliminating supply drift errors.
+**Purpose:** Provides stable 3.0V reference for NTC measurements, eliminating supply drift errors.
 
-The LM4040 is buffered by an op-amp to drive the NTC pull-up network without voltage collapse.
+The LM4040 generates a precision 3.0V reference, but cannot source enough current for the NTC
+pull-up resistors. An op-amp buffer (U9A) provides the current drive capability.
 
 ```
                       PRECISION ADC VOLTAGE REFERENCE (BUFFERED)
     ════════════════════════════════════════════════════════════════════════════
 
-    +3.3V ──────[FB1: 600Ω @ 100MHz]───────┬──────────────────────────────────┐
-                                           │                                   │
-                                      ┌────┴────┐                              │
-                                      │  100nF  │ C80 (U9 decoupling)          │
-                                      └────┬────┘                              │
-                                           │                                   │
-                                      ┌────┴────┐                              │
-                                      │   1kΩ   │ R7 (bias)                    │
-                                      │   1%    │ I = 0.3mA (buffer input only)│
-                                      └────┬────┘                              │
-                                           │                                   │
-                                           ├────────► LM4040_VREF (3.0V unloaded)
-                                           │                │
-                                      ┌────┴────┐           │
-                                      │ LM4040  │           │    U9A (OPA2342)
-                                      │  3.0V   │ U5        │   ┌───────────┐
-                                      │  Ref    │           └───┤ +   OUT   ├────┐
-                                      └────┬────┘           ┌───┤ -         │    │
-                                           │                │   └───────────┘    │
-                                          ─┴─               │        │           │
-                                          GND               │    ┌───┴───┐       │
-                                                            │    │ 47Ω  │ R_ISO │
-                                                            │    │ 1%   │       │
-                                                            │    └───┬───┘       │
-                                                            │        │           │
-                                                            └────────┴───────────┤
-                                                                (feedback)       │
-                                                                                 │
-                                                      ADC_VREF (3.0V BUFFERED) ◄─┘
-                                                                 │
-                                         ┌───────────────────────┼────────────────┐
-                                         │                       │                │
-                                    ┌────┴────┐             ┌────┴────┐      ┌────┴────┐
-                                    │  22µF   │ C7          │  100nF  │ C7A  │  R1/R2  │
-                                    │  10V    │             │  25V    │      │Pull-ups │
-                                    └────┬────┘             └────┬────┘      └────┬────┘
-                                         │                       │                │
-                                        ─┴─                     ─┴─         To NTC ADCs
-                                        GND                     GND
-
-    Buffer Design Rationale:
-    ────────────────────────────────────────
-    Without buffer, R7 provides only 0.3mA to share between LM4040 and sensor loads.
-
-    NTC Load Current (at operating temperatures):
-    • Brew NTC at 93°C: R_NTC ≈ 3.5kΩ → I = 3.0V/(3.3kΩ+3.5kΩ) ≈ 441µA
-    • Steam NTC at 135°C: R_NTC ≈ 1kΩ → I = 3.0V/(1.2kΩ+1kΩ) ≈ 1.36mA
-    • Total: ~1.8mA (6× more than available 0.3mA!)
-
-    Without buffer: ADC_VREF collapses to ~0.5V → SYSTEM FAILURE
-    With buffer: Op-amp drives load from 3.3V rail → ADC_VREF stable at 3.0V
-
-    Component Values:
+    CIRCUIT OVERVIEW:
     ─────────────────
-    U5:    TI LM4040DIM3-3.0, 3.0V shunt ref, SOT-23-3
-    U9:    TI OPA2342UA, dual RRIO op-amp, SOIC-8 (U9A used, U9B spare)
-    R7:    1kΩ 1%, 0805 (bias resistor - now loads only pA into buffer input)
-    R_ISO: 47Ω 1%, 0805 (buffer output isolation - prevents oscillation with C7 load)
-    FB1:   Murata BLM18PG601SN1D, 600Ω @ 100MHz, 0603
-    C7:    22µF 10V X5R Ceramic, 1206 (bulk, on ADC_VREF output)
-    C7A:   100nF 25V Ceramic, 0805 (HF decoupling, on ADC_VREF output)
-    C80:   100nF 25V Ceramic, 0805 (U9 VCC decoupling)
+    Two distinct voltage nodes exist in this circuit:
 
-    R_ISO (47Ω) isolates the op-amp output from the 22µF capacitive load,
-    preventing oscillation while maintaining DC accuracy.
+      NODE A: "REF_3V0" - LM4040 output (3.0V, ~0.3mA max, HIGH IMPEDANCE)
+              → Feeds op-amp non-inverting input only (pA load)
 
-    Connection to NTC Pull-ups:
+      NODE B: "ADC_VREF" - Op-amp buffered output (3.0V, ~25mA capable, LOW IMPEDANCE)
+              → Powers NTC pull-up resistors R1, R2
+
+    Both nodes are 3.0V, but ADC_VREF can drive heavy loads without voltage drop.
+
+    ═══════════════════════════════════════════════════════════════════════════
+                              SCHEMATIC
+    ═══════════════════════════════════════════════════════════════════════════
+
+                            +3.3V_FILTERED
+                                  │
+                    ┌─────────────┴─────────────┐
+                    │                           │
+               ┌────┴────┐                 ┌────┴────┐
+               │  FB1    │                 │  C80    │
+               │ Ferrite │                 │  100nF  │  U9 VCC decoupling
+               │ 600Ω@   │                 └────┬────┘
+               │ 100MHz  │                      │
+               └────┬────┘                      ├─────────────► U9 Pin 8 (VCC)
+                    │                           │
+               ┌────┴────┐                      │
+               │   R7    │                      │
+               │   1kΩ   │ Bias current         │
+               │   1%    │ I_bias = 0.3mA       │
+               └────┬────┘                      │
+                    │                           │
+                    │ ◄── NODE A: "REF_3V0"     │
+                    │     (3.0V, high-Z)        │
+                    │                           │
+               ┌────┴────┐                      │
+               │   U5    │                      │
+               │ LM4040  │                      │
+               │  3.0V   │                      │
+               │  Shunt  │                      │
+               │   Ref   │                      │
+               └────┬────┘                      │
+                    │                           │
+                   ─┴─                          │
+                   GND                          │
+                                                │
+    ═══════════════════════════════════════════════════════════════════════════
+                         UNITY-GAIN BUFFER (U9A)
+    ═══════════════════════════════════════════════════════════════════════════
+
+                                                     VCC (+3.3V)
+                                                         │
+        NODE A ─────────────────────────────┐            │
+        "REF_3V0"                           │       ┌────┴────┐
+        (from LM4040)                       │       │   U9A   │
+                                            │       │OPA2342  │
+                                            └──────►│+       O├────┬──────────┐
+                                                    │         │    │          │
+                                            ┌──────►│-        │    │     ┌────┴────┐
+                                            │       └────┬────┘    │     │  R_ISO  │
+                                            │            │         │     │   47Ω   │
+                                            │           ─┴─        │     │   1%    │
+                                            │           GND        │     └────┬────┘
+                                            │                      │          │
+                                            │                      │          │
+                                            └──────────────────────┘          │
+                                                 100% FEEDBACK                │
+                                                 (Unity Gain)                 │
+                                                                              │
+                                                                              │
+                                      NODE B: "ADC_VREF" (3.0V, low-Z) ◄──────┘
+                                                        │
+                          ┌─────────────────────────────┼─────────────────────┐
+                          │                             │                     │
+                     ┌────┴────┐                   ┌────┴────┐           ┌────┴────┐
+                     │   C7    │                   │  C7A    │           │  LOAD   │
+                     │  22µF   │ Bulk              │  100nF  │ HF        │ R1, R2  │
+                     │  10V    │ decoupling        │  25V    │ bypass    │ NTC     │
+                     └────┬────┘                   └────┬────┘           │ pull-ups│
+                          │                             │                └────┬────┘
+                         ─┴─                           ─┴─                    │
+                         GND                           GND              To NTC ADCs
+                                                                       (Sheet 5)
+
+    ═══════════════════════════════════════════════════════════════════════════
+                            SIGNAL FLOW
+    ═══════════════════════════════════════════════════════════════════════════
+
+      +3.3V ──► FB1 ──► R7 ──┬──► LM4040 ──► GND
+                             │
+                             │ REF_3V0 (3.0V, ~0.3mA available, high impedance)
+                             │
+                             └──► U9A (+) ──► U9A (OUT) ──► R_ISO ──► ADC_VREF
+                                     │                                   │
+                                     └─────────── FEEDBACK ──────────────┘
+                                                                         │
+                                                    (3.0V, ~25mA capable, low impedance)
+                                                                         │
+                                              ┌──────────────────────────┼──────────┐
+                                              │                          │          │
+                                             C7                        C7A      R1, R2
+                                            22µF                      100nF    (NTC loads)
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    WHY THE BUFFER IS NEEDED:
+    ─────────────────────────
+    R7 (1kΩ) limits current to ~0.3mA. The LM4040 needs some of this to regulate.
+    Without buffer, this 0.3mA must also power the NTC pull-up resistors:
+
+      NTC Load Current (at operating temperatures):
+      • Brew NTC at 93°C: R_NTC ≈ 3.5kΩ → I = 3.0V/(3.3kΩ+3.5kΩ) ≈ 441µA
+      • Steam NTC at 135°C: R_NTC ≈ 1kΩ → I = 3.0V/(1.2kΩ+1kΩ) ≈ 1.36mA
+      • Total: ~1.8mA needed (6× more than 0.3mA available!)
+
+      WITHOUT BUFFER: REF_3V0 collapses to ~0.5V → ADC readings invalid
+      WITH BUFFER:    U9A sources current from +3.3V rail → ADC_VREF stable
+
+    WHY R_ISO (47Ω) IS NEEDED:
     ──────────────────────────
-    R1 (Brew NTC) and R2 (Steam NTC) connect to ADC_VREF (buffered output)
-    instead of 3.3V rail. This eliminates supply variations.
+    The 22µF capacitive load (C7) can cause op-amp oscillation.
+    R_ISO isolates the op-amp output, ensuring stability.
+    DC accuracy: 47Ω × 1.8mA = 85mV drop (negligible for ratiometric ADC)
 
-    Test Point: TP2 provides access to ADC_VREF for verification.
+    COMPONENT VALUES:
+    ─────────────────
+    U5:    TI LM4040DIM3-3.0, 3.0V shunt reference, SOT-23-3
+    U9:    TI OPA2342UA, dual RRIO op-amp, SOIC-8 (U9A used here, U9B spare)
+    R7:    1kΩ 1%, 0805 (bias - loads only pA into op-amp input)
+    R_ISO: 47Ω 1%, 0805 (output isolation - prevents oscillation)
+    FB1:   Murata BLM18PG601SN1D, 600Ω @ 100MHz, 0603
+    C7:    22µF 10V X5R Ceramic, 1206 (bulk decoupling on ADC_VREF)
+    C7A:   100nF 25V Ceramic, 0805 (HF bypass on ADC_VREF)
+    C80:   100nF 25V Ceramic, 0805 (U9 VCC pin decoupling)
 
-    U9B (Spare):
-    ────────────
-    Second half of OPA2342 available for future use (e.g., pressure buffer).
+    TEST POINT:
+    ───────────
+    TP2 provides access to ADC_VREF for verification. Expected: 3.0V ±1%
+
+    U9B (SPARE OP-AMP):
+    ───────────────────
+    Second half of OPA2342 available for future use (e.g., pressure sensor buffer).
     Tie unused inputs to prevent oscillation: IN+ to GND, IN- to OUT.
 ```
 
@@ -994,123 +1062,274 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
 
     ⚠️  AC sensing prevents electrolysis and probe corrosion!
 
-    STAGE 1: WIEN BRIDGE OSCILLATOR (~1.6kHz)
-    ────────────────────────────────────────
-                          +3.3V
-                            │
-                       ┌────┴────┐
-                       │  100nF  │  C60 (OPA342 decoupling)
-                       └────┬────┘
-                            │
-                     VCC────┤
-                            │ U6: OPA342
-    ┌────[R81 10kΩ]─────────┤-  (Op-Amp)  ├──┬───────────► AC_OUT
-    │                  ┌────┤+             │  │              (to probe)
-    │                  │    │     GND      │  │
-    │                  │    └──────┬───────┘  │
-    │                  │           │          │
-    │                  │          ─┴─         │
-    │                  │          GND         │
-    │             ┌────┴────┐                 │
-    │             │  4.7kΩ  │ R82             │
-    │             │   1%    │ (Gain setting)  │
-    │             └────┬────┘                 │
-    │                  │                      │
-    │                 ─┴─                     │
-    │                 GND                     │
-    │                  │                      │
-    │             ┌────┴────┐           ┌────┴────┐
-    │             │  10kΩ   │           │  10kΩ   │
-    │             │  R83    │           │  R84    │
-    │             └────┬────┘           └────┬────┘
-    │                  │                     │
-    │                  ├─────────────────────┤
-    │                  │                     │
-    │             ┌────┴────┐           ┌────┴────┐
-    │             │  10nF   │           │  10nF   │
-    │             │  C61    │           │  C62    │
-    │             └────┬────┘           └────┬────┘
-    │                  │                     │
-    │                 ─┴─                   ─┴─
-    │                 GND                   GND
-    │
-    └─────────────────────────────────────────────────────────────────────────┐
-                                                                              │
-    STAGE 2: PROBE & SIGNAL CONDITIONING                                     │
-    ────────────────────────────────────                                      │
-                                                                              │
-    AC_OUT ───[100Ω R85]───┬────────────────────► J26 Pin 5 (Level Probe S3) │
-           (current limit) │                      Screw terminal (LV)         │
-                           │                           │                      │
-                      ┌────┴────┐                 ┌────┴────┐                 │
-                      │   1µF   │                 │  Probe  │                 │
-                      │   C64   │                 │   ~~~   │                 │
-                      │(coupling)│                 │  Water  │                 │
-                      └────┬────┘                 │  Level  │                 │
-                           │                      └────┬────┘                 │
-                           ▼                           │                      │
-                       AC_SENSE                   Boiler Body                 │
-                           │                      (Ground via PE)             │
-                           │                          ─┴─                     │
-                           │                          GND                     │
+    This circuit has 3 stages:
+      1. Wien Bridge Oscillator (U6) - Generates ~1.6kHz AC signal
+      2. Probe Interface - Sends AC to probe, receives attenuated signal
+      3. Comparator (U7) - Converts analog signal to digital GPIO
 
-    STAGE 3: RECTIFIER & COMPARATOR
-    ────────────────────────────────
-                                 +3.3V
-                                   │
-                              ┌────┴────┐
-                              │  100nF  │  C63 (TLV3201 decoupling)
-                              └────┬────┘
-                                   │
-                              VCC──┤
-                                   │ U7: TLV3201
-    AC_SENSE ────[10kΩ R86]───┬────┤+  (Comparator) ├───────────► GPIO4
-                              │    │                 │
-                         ┌────┴────┐    VREF ────────┤-
-                         │  100nF  │    (1.65V)      │
-                         │   C65   │                 │
-                         │(filter) │    └────┬───────┘
-                         └────┬────┘         │
-                              │             ─┴─
-                             ─┴─            GND
-                             GND
+    ═══════════════════════════════════════════════════════════════════════════
+                    STAGE 1: WIEN BRIDGE OSCILLATOR (~1.6kHz)
+    ═══════════════════════════════════════════════════════════════════════════
 
-    VREF Divider:   +3.3V ──[100kΩ R87]──┬──[100kΩ R88]── GND
-                                         │
-                                         └──► VREF (~1.65V)
-
-    Hysteresis:     GPIO4 ────[1MΩ R89]────► + input (TLV3201)
-
-    Logic States:
-    ─────────────
-    Water BELOW probe → GPIO4 reads HIGH → Low Water / UNSAFE for heater
-    Water AT/ABOVE probe → GPIO4 reads LOW → Level OK
-
-    Component Values:
+    CIRCUIT TOPOLOGY:
     ─────────────────
-    U6:   OPA342UA (SOIC-8) or OPA2342UA (use one section)
-          Alt: OPA207 for lower noise
-    U7:   TLV3201AIDBVR (SOT-23-5)
-    R81:  10kΩ 1%, 0805 (oscillator feedback)
-    R82:  4.7kΩ 1%, 0805 (gain setting resistor to GND, sets A_CL=3.13)
-    R83:  10kΩ 1%, 0805 (Wien bridge)
-    R84:  10kΩ 1%, 0805 (Wien bridge)
-    R85:  100Ω 5%, 0805 (probe current limit)
-    R86:  10kΩ 5%, 0805 (AC bias)
-    R87:  100kΩ 1%, 0805 (reference divider upper)
-    R88:  100kΩ 1%, 0805 (reference divider lower)
-    R89:  1MΩ 5%, 0805 (hysteresis)
-    C60:  100nF 25V, 0805 (OPA342 decoupling)
-    C61:  10nF 50V, 0805 (Wien bridge timing - 1.6kHz for probe longevity)
-    C62:  10nF 50V, 0805 (Wien bridge timing - 1.6kHz for probe longevity)
+    Non-inverting amplifier with Wien bridge positive feedback network.
+    Gain = 1 + R81/R82 = 3.13 (must be >3 for oscillation startup)
 
-    Oscillator Gain Calculation:
-    ────────────────────────────
+                                        +3.3V
+                                          │
+                                     ┌────┴────┐
+                                     │  C60    │
+                                     │  100nF  │ U6 VCC decoupling
+                                     └────┬────┘
+                                          │
+                                          │ VCC (pin 7)
+                                          │
+                 WIEN BRIDGE           ┌──┴──────────────────┐
+                 NETWORK               │                     │
+                    │                  │    U6: OPA342       │
+                    │            ┌─────┤(-)                  │
+                    │            │     │     (Op-Amp)    OUT ├───────┬──► AC_OUT
+                    │            │  ┌──┤(+)                  │       │
+                    │            │  │  │                     │       │
+                    │            │  │  │         GND (pin 4) │       │
+                    │            │  │  └──────────┬──────────┘       │
+                    │            │  │             │                  │
+                    │            │  │            ─┴─                 │
+                    │            │  │            GND                 │
+                    │            │  │                                │
+                    │   R81      │  │                                │
+                    │   10kΩ     │  │                                │
+    ┌───────────────┼────[████]──┘  │                                │
+    │               │   (feedback)  │                                │
+    │               │               │                                │
+    │               │   R82         │                                │
+    │               │   4.7kΩ       │                                │
+    │               └────[████]─────┤ (gain set)                     │
+    │                    │          │                                │
+    │                   ─┴─         │                                │
+    │                   GND         │                                │
+    │                               │                                │
+    │                    ┌──────────┘                                │
+    │                    │  (+) INPUT NODE                           │
+    │                    │                                           │
+    │               ┌────┴────┐                                      │
+    │               │   R84   │                                      │
+    │               │  10kΩ   │  Wien bridge                         │
+    │               │ (shunt) │  parallel RC                         │
+    │               └────┬────┘                                      │
+    │                    │                                           │
+    │               ┌────┴────┐                                      │
+    │               │   C62   │                                      │
+    │               │  10nF   │                                      │
+    │               │ (shunt) │                                      │
+    │               └────┬────┘                                      │
+    │                    │                                           │
+    │                   ─┴─                                          │
+    │                   GND                                          │
+    │                                                                │
+    │   ┌────────────────────────────────────────────────────────────┘
+    │   │  FEEDBACK PATH (from AC_OUT back to + input)
+    │   │
+    │   │        R83              C61
+    │   │       10kΩ             10nF
+    │   └───────[████]───────────┤├───────────┐
+    │           (series)        (series)      │
+    │                                         │
+    │                                         │
+    └─────────────────────────────────────────┤
+              (to + input node above)         │
+                                              │
+                                              │
+                                              ↓
+                                           AC_OUT
+                                      (to Stage 2)
+
+    WIEN BRIDGE SIGNAL FLOW:
+    ────────────────────────
+      AC_OUT ──► R83 ──► C61 ──┬──► (+) input
+                               │
+                          R84 ─┴─ C62
+                               │
+                              GND
+
+      The RC network provides frequency-selective positive feedback.
+      At f = 1/(2π×R×C) = 1/(2π×10kΩ×10nF) ≈ 1.6kHz, phase shift = 0°
+
+    ═══════════════════════════════════════════════════════════════════════════
+                    STAGE 2: PROBE INTERFACE & SIGNAL CONDITIONING
+    ═══════════════════════════════════════════════════════════════════════════
+
+    AC_OUT ─────────────────────────────────────────────────────────────────┐
+    (from U6)                                                               │
+                                                                            │
+                     R85                                                    │
+                    100Ω                                                    │
+               ┌────[████]────┬──────────────────────► J26 Pin 5            │
+               │  (current    │                        (LEVEL_PROBE S3)     │
+               │   limit)     │                        Screw Terminal       │
+               │              │                              │              │
+               │         ┌────┴────┐                         │              │
+               │         │   C64   │                    ┌────┴────┐         │
+               │         │   1µF   │                    │  PROBE  │         │
+               │         │   AC    │                    │   ~~~   │         │
+               │         │coupling │                    │  Water  │         │
+               │         └────┬────┘                    │  Level  │         │
+               │              │                         │ Sensor  │         │
+               │              │                         └────┬────┘         │
+               │              ↓                              │              │
+               │          AC_SENSE ◄─────────────────────────┘              │
+               │         (attenuated                    Boiler Body         │
+               │          if water                      (Grounded via       │
+               │          present)                       Protective Earth)  │
+               │              │                              │              │
+               │              │                             ─┴─             │
+               │              │                             GND             │
+               │              │                             (PE)            │
+               │              │                                             │
+               └──────────────┼─────────────────────────────────────────────┘
+                              │
+                              ↓
+                         (to Stage 3)
+
+    PROBE OPERATION:
+    ────────────────
+      • R85 limits current to probe (protects circuit if probe shorts)
+      • C64 provides AC coupling (blocks DC, passes AC signal)
+      • When water touches probe: AC signal is attenuated (water = resistive load)
+      • When no water: AC signal passes with minimal attenuation
+
+    ═══════════════════════════════════════════════════════════════════════════
+                    STAGE 3: COMPARATOR & DIGITAL OUTPUT
+    ═══════════════════════════════════════════════════════════════════════════
+
+    AC_SENSE ───────────────────────────────────────────────────────────────┐
+    (from Stage 2)                                                          │
+                                                                            │
+                                            +3.3V                           │
+                                              │                             │
+                                         ┌────┴────┐                        │
+                                         │   C63   │                        │
+                                         │  100nF  │ U7 VCC decoupling      │
+                                         └────┬────┘                        │
+                                              │                             │
+                                              │ VCC                         │
+                                              │                             │
+                      R86               ┌─────┴─────────────────┐           │
+                     10kΩ               │                       │           │
+               ┌─────[████]──────┬──────┤(+)   U7: TLV3201  OUT ├───► GPIO4 │
+               │    (bias)       │      │      (Comparator)     │    (Pico) │
+               │                 │   ┌──┤(-)                    │           │
+               │            ┌────┴───┤  │                       │           │
+               │            │   C65  │  │          GND          │           │
+               │            │  100nF │  │           │           │           │
+               │            │(filter)│  └───────────┼───────────┘           │
+               │            └────┬───┘              │                       │
+               │                 │                 ─┴─                      │
+               │                ─┴─                GND                      │
+               │                GND                                         │
+               │                                                            │
+               │                                                            │
+               │   R89                                                      │
+               │   1MΩ                                                      │
+               │   [████]◄──────────────────────────────────────── GPIO4    │
+               │(hysteresis)                                     (feedback) │
+               │     │                                                      │
+               └─────┴──────────────────────────────────────────────────────┘
+                     │
+                     └──► to (+) input (positive feedback for hysteresis)
+
+
+    VREF VOLTAGE DIVIDER (sets comparator threshold):
+    ─────────────────────────────────────────────────
+
+          +3.3V ─────┬─────────────────────────────────────────────┐
+                     │                                             │
+                ┌────┴────┐                                        │
+                │   R87   │                                        │
+                │  100kΩ  │                                        │
+                │   1%    │                                        │
+                └────┬────┘                                        │
+                     │                                             │
+                     ├───────────────────────► VREF ──► U7 (-) input
+                     │                         (~1.65V)            │
+                ┌────┴────┐                                        │
+                │   R88   │                                        │
+                │  100kΩ  │                                        │
+                │   1%    │                                        │
+                └────┬────┘                                        │
+                     │                                             │
+                    ─┴─                                            │
+                    GND                                            │
+                                                                   │
+          VREF = 3.3V × R88/(R87+R88) = 3.3V × 100k/200k = 1.65V   │
+                                                                   │
+               ─────────────────────────────────────────────────────┘
+
+    ═══════════════════════════════════════════════════════════════════════════
+                              LOGIC STATES
+    ═══════════════════════════════════════════════════════════════════════════
+
+      Water BELOW probe:
+        → AC signal passes through unattenuated
+        → AC_SENSE amplitude > VREF (1.65V)
+        → Comparator output HIGH
+        → GPIO4 = HIGH → LOW WATER ALARM / UNSAFE FOR HEATER
+
+      Water AT or ABOVE probe:
+        → AC signal attenuated by water conductivity
+        → AC_SENSE amplitude < VREF (1.65V)
+        → Comparator output LOW
+        → GPIO4 = LOW → LEVEL OK
+
+    ═══════════════════════════════════════════════════════════════════════════
+                              COMPONENT VALUES
+    ═══════════════════════════════════════════════════════════════════════════
+
+    OSCILLATOR (U6):
+    ────────────────
+    U6:   OPA342UA, SOIC-8 (or OPA2342UA, use one section)
+          - Rail-to-rail input/output, single supply
+          - Alt: OPA207 for lower noise
+    R81:  10kΩ 1%, 0805 (feedback resistor, sets gain with R82)
+    R82:  4.7kΩ 1%, 0805 (gain setting, to GND)
+    R83:  10kΩ 1%, 0805 (Wien bridge series R)
+    R84:  10kΩ 1%, 0805 (Wien bridge shunt R)
+    C60:  100nF 25V, 0805 (U6 VCC decoupling)
+    C61:  10nF 50V, 0805 (Wien bridge series C)
+    C62:  10nF 50V, 0805 (Wien bridge shunt C)
+
+    PROBE INTERFACE:
+    ────────────────
+    R85:  100Ω 5%, 0805 (probe current limit, protects against shorts)
+    C64:  1µF 25V, 0805 (AC coupling capacitor)
+
+    COMPARATOR (U7):
+    ────────────────
+    U7:   TLV3201AIDBVR, SOT-23-5 (push-pull output, rail-to-rail)
+    R86:  10kΩ 5%, 0805 (AC_SENSE input bias)
+    R87:  100kΩ 1%, 0805 (VREF divider upper)
+    R88:  100kΩ 1%, 0805 (VREF divider lower)
+    R89:  1MΩ 5%, 0805 (hysteresis feedback)
+    C63:  100nF 25V, 0805 (U7 VCC decoupling)
+    C65:  100nF 25V, 0805 (AC_SENSE low-pass filter)
+
+    ═══════════════════════════════════════════════════════════════════════════
+                              DESIGN CALCULATIONS
+    ═══════════════════════════════════════════════════════════════════════════
+
+    OSCILLATOR FREQUENCY:
+    ─────────────────────
+    f = 1 / (2π × R × C) = 1 / (2π × 10kΩ × 10nF) = 1.59 kHz ≈ 1.6 kHz
+
+    OSCILLATOR GAIN:
+    ────────────────
     A_CL = 1 + (R81/R82) = 1 + (10kΩ/4.7kΩ) = 3.13
-    Loop gain = A_CL × β = 3.13 × (1/3) = 1.043 > 1 ✓
 
-    Barkhausen Criterion Satisfied: Loop gain >1 ensures robust oscillation startup
-    and sustained oscillation even with component tolerances.
+    Wien bridge attenuation β = 1/3 at resonance
+    Loop gain = A_CL × β = 3.13 × (1/3) = 1.04 > 1 ✓
+
+    Barkhausen Criterion satisfied: Loop gain >1 ensures startup.
 
     ⚠️ WHY 1.6kHz (NOT 160Hz)?
     ──────────────────────────
@@ -1118,32 +1337,29 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     each AC half-cycle, corroding the probe. Industry standard: 1-10 kHz.
     At 1.6kHz, probe life extends from months to 5-10+ years.
 
-    ⚠️ NOTE ON WAVEFORM SHAPE:
-    ──────────────────────────
-    Without AGC (automatic gain control), the oscillator will produce a
-    clipped/saturated waveform (rail-to-rail square-ish wave) rather than
-    a pure sine wave. This is ACCEPTABLE for conductivity sensing - we only
-    need AC excitation at the correct frequency, not a pure sinusoid.
-    C63: 100nF 25V, 0805 (TLV3201 decoupling)
-    C64: 1µF 25V, 0805 (AC coupling to probe)
-    C65: 100nF 25V, 0805 (sense filter)
+    ⚠️ NOTE ON WAVEFORM:
+    ────────────────────
+    Without AGC (automatic gain control), the oscillator produces a clipped
+    waveform (rail-to-rail square-ish wave) rather than pure sine wave.
+    This is ACCEPTABLE for conductivity sensing - we only need AC excitation
+    at the correct frequency, not a pure sinusoid.
 
-    ⚠️ PCB LAYOUT: GUARD RING REQUIRED
-    ───────────────────────────────────
-    The trace from J26 Pin 5 (Level Probe) to OPA342 input is HIGH-IMPEDANCE
-    and will pick up 50/60Hz mains hum if not properly shielded.
+    ═══════════════════════════════════════════════════════════════════════════
+                              PCB LAYOUT NOTES
+    ═══════════════════════════════════════════════════════════════════════════
 
-    REQUIRED: Surround probe trace with GND guard ring on both sides.
-    Place OPA342 as CLOSE as possible to J26 terminal (< 2cm trace).
-    Avoid routing near relay coils or mains traces.
+    ⚠️ GUARD RING REQUIRED:
+    ───────────────────────
+    The trace from J26 Pin 5 (Level Probe) is HIGH IMPEDANCE and will pick
+    up 50/60Hz mains hum if not properly shielded.
 
-    Benefits of OPA342 + TLV3201:
-    ─────────────────────────────
-    • Uses commonly available, modern components
-    • AC excitation prevents electrolysis and probe corrosion
-    • Adjustable threshold via R87/R88 ratio
-    • Clean hysteresis via R89
-    • Low power consumption (<1mA)
+    REQUIRED:
+      • Surround probe trace with GND guard ring on BOTH PCB layers
+      • Place U6 (OPA342) as CLOSE as possible to J26 terminal (<2cm trace)
+      • Avoid routing near relay coils or mains traces
+      • Keep C60 and C63 within 5mm of their respective IC VCC pins
+
+    ═══════════════════════════════════════════════════════════════════════════
 
     Other Switches (unchanged):
     ───────────────────────────
@@ -1233,62 +1449,66 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     WEIGHT_STOP Signal (J15 Pin 7 → GPIO21) - BREW BY WEIGHT:
     ──────────────────────────────────────────────────────────
 
-                                 +3.3V
-                                    │
-                               ┌────┴────┐
-                               │  10kΩ   │  R73
-                               │Pull-down│  (Normally LOW - no brew stop)
+    GPIO21 ◄────────────────────────┬────────────────── J15 Pin 7 (WEIGHT_STOP)
+    (Input)                         │                         │
+                               ┌────┴────┐                    │
+                               │  R73    │               ESP32 GPIO
+                               │  4.7kΩ  │             (Push-Pull Output)
+                               │Pull-down│
+                               │(E9 fix) │
                                └────┬────┘
                                     │
-    GPIO21 ◄────────────────────────┴────────────────── J15 Pin 7 (WEIGHT_STOP)
-    (Input)                                                   │
-                                                              │
-                                                         ESP32 GPIO
-                                                       (Push-Pull Output)
+                                   ─┴─
+                                   GND
+                                (Normally LOW - no brew stop)
 
+    • R73 pull-down keeps GPIO21 LOW when ESP32 is not driving the line
     • ESP32 connects to Bluetooth scale (Acaia, Decent, etc.)
     • ESP32 monitors weight during brew
-    • When target weight reached → ESP32 sets Pin 7 HIGH
+    • When target weight reached → ESP32 drives Pin 7 HIGH (overrides pull-down)
     • Pico detects HIGH on GPIO21 → Stops pump (K2) immediately
-    • ESP32 sets Pin 7 LOW → Ready for next brew
+    • ESP32 drives Pin 7 LOW → Ready for next brew
+    • If ESP32 disconnected/reset → GPIO21 stays LOW (safe state, no false triggers)
 
 
     SPARE1 Signal (J15 Pin 6 → GPIO16):
     ────────────────────────────────────
 
-                                    GND
-                                    │
-                               ┌────┴────┐
-                               │  4.7kΩ  │  R74
-                               │Pull-down│  (RP2350 E9 mitigation)
+    GPIO16 ◄────────────────────────┬────────────────── J15 Pin 6 (SPARE1)
+    (I/O)                           │                         │
+                               ┌────┴────┐                    │
+                               │  R74    │               ESP32 GPIO9
+                               │  4.7kΩ  │             (Push-Pull I/O)
+                               │Pull-down│
+                               │(E9 fix) │
                                └────┬────┘
                                     │
-    GPIO16 ◄────────────────────────┴────────────────── J15 Pin 6 (SPARE1)
-    (I/O)                                                     │
-                                                              │
-                                                         ESP32 GPIO9
+                                   ─┴─
+                                   GND
+                                (Normally LOW when unused)
 
     • General-purpose spare I/O between ESP32 and Pico
-    • 4.7kΩ pull-down ensures defined LOW state when unused
+    • 4.7kΩ pull-down ensures defined LOW state when unused (RP2350 E9 errata)
 
 
     SPARE2 Signal (J15 Pin 8 → GPIO22):
     ────────────────────────────────────
 
-                                    GND
-                                    │
-                               ┌────┴────┐
-                               │  4.7kΩ  │  R75
-                               │Pull-down│  (RP2350 E9 mitigation)
+    GPIO22 ◄────────────────────────┬────────────────── J15 Pin 8 (SPARE2)
+    (I/O)                           │                         │
+                               ┌────┴────┐                    │
+                               │  R75    │               ESP32 GPIO22
+                               │  4.7kΩ  │             (Push-Pull I/O)
+                               │Pull-down│
+                               │(E9 fix) │
                                └────┬────┘
                                     │
-    GPIO22 ◄────────────────────────┴────────────────── J15 Pin 8 (SPARE2)
-    (I/O)                                                     │
-                                                              │
-                                                         ESP32 GPIO22
+                                   ─┴─
+                                   GND
+                                (Normally LOW when unused)
 
     • General-purpose spare I/O between ESP32 and Pico
-    • 4.7kΩ pull-down ensures defined LOW state when unused
+    • 4.7kΩ pull-down ensures defined LOW state when unused (RP2350 E9 errata)
 
 
     OTA Update Sequence:
@@ -1650,47 +1870,106 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
 
     JP4 Hardware Mode Selection:
 
-    JP4 solder jumper selects the GPIO7 signal source to prevent bus contention:
+    JP4 is a 3-pad solder jumper that selects the GPIO7 (RX) signal source.
+    This prevents bus contention by physically disconnecting the unused source.
 
-                U8 (MAX3485)                  J17 (External Meter)
-                    RO                              RX (via divider)
-                     │                               │
-                     │        JP4 (3-pad)            │
-                     1 ◄──────  2  ──────► 3
-                     │      (center)        │
-                     │          │           │
-                     └──────────┴───────────┘
-                                │
-                             GPIO7
+    CIRCUIT TOPOLOGY:
+    ─────────────────
 
-    JP4 Solder Jumper Settings:
-    ───────────────────────────
-    • Pad 1-2 bridged (RS485 MODE): U8 RO → GPIO7 (J17_DIV disconnected)
-    • Pad 2-3 bridged (TTL MODE):   J17_DIV → GPIO7 (U8 RO disconnected)
-    • Center pad (2) always connects to GPIO7
+        ┌───────────────┐                              ┌───────────────┐
+        │  U8 (MAX3485) │                              │ J17 Connector │
+        │   RS485 IC    │                              │ (Ext. Meter)  │
+        │               │                              │               │
+        │      RO ○─────┼──────────┐      ┌───────────┼───○ Pin 4     │
+        │               │          │      │           │   (RX signal) │
+        └───────────────┘          │      │           └───────────────┘
+                                   │      │
+                                   │      ↓
+                                   │   ┌─────┐  R_DIV
+                                   │   │     │  Voltage
+                                   │   └──┬──┘  Divider
+                                   │      │     (5V→3.3V)
+                                   │      │
+                                   ↓      ↓
+                          ┌────────────────────────┐
+                          │    JP4 (3-Pad Jumper)  │
+                          │                        │
+                          │   [1]    [2]    [3]    │
+                          │    ●──────●──────●     │
+                          │    │      │      │     │
+                          └────┼──────┼──────┼─────┘
+                               │      │      │
+                   From U8 RO ─┘      │      └─ From J17 RX (divided)
+                                      │
+                                      ↓
+                                   GPIO7
+                                (Pico RX input)
+
+    JUMPER PAD CONNECTIONS:
+    ───────────────────────
+        Pad 1 ────► U8 (MAX3485) RO pin output
+        Pad 2 ────► GPIO7 (Pico UART RX) ← CENTER, always connects to MCU
+        Pad 3 ────► J17 pin 4 via voltage divider (5V-safe → 3.3V)
+
+    ═══════════════════════════════════════════════════════════════════════
+                           CONFIGURATION MODES
+    ═══════════════════════════════════════════════════════════════════════
+
+    MODE 1: TTL UART (PZEM, JSY meters - Most Common)
+    ─────────────────────────────────────────────────
+
+        Solder bridge pads 2-3:
+
+             U8 RO                              J17 RX (via divider)
+               │                                       │
+               ○                                       ○
+              [1]         [2]═══════════════[3]
+                           │     BRIDGED
+                           ↓
+                        GPIO7
+
+        Signal path: J17 Pin 4 → Voltage Divider → JP4 Pad 3 → Pad 2 → GPIO7
+        U8 RO is DISCONNECTED (floating, no contention)
+
+        • GPIO6 (TX) connects directly to J17-5 via series resistor
+        • GPIO7 (RX) receives level-shifted signal from J17-4
+        • GPIO20 (DE/RE) unused - can be repurposed or left floating
+        • U8 MAX3485 is inactive (can be left unpopulated)
 
 
-    TTL UART MODE (PZEM, JSY - Most Common):
-    ────────────────────────────────────────
-    • JP4: Bridge pads 2-3 (center to J17 side)
-    • U8 RO physically disconnected from GPIO7
-    • GPIO6/7 communicate directly with external meter via J17-4/5
-    • RX line level-shifted via on-board resistor divider (safe for RP2350)
-    • GPIO20 can be left floating or used for other purposes
+    MODE 2: RS485 (Eastron SDM, Industrial Modbus meters)
+    ─────────────────────────────────────────────────────
 
+        Solder bridge pads 1-2:
 
-    RS485 MODE (Eastron, Industrial):
-    ──────────────────────────────────
-    • JP4: Bridge pads 1-2 (center to U8 side)
-    • J17 RX physically disconnected from GPIO7
-    • U8 (MAX3485) ACTIVE - transceiver converts TTL to differential RS485
-    • GPIO6/7 connect through U8 (DI/RO pins)
-    • GPIO20 controls DE/RE for half-duplex direction (HIGH=TX, LOW=RX)
-    • J17-4/5 become differential A/B pair
+             U8 RO                              J17 RX (via divider)
+               │                                       │
+               ○                                       ○
+              [1]═══════════[2]               [3]
+                  BRIDGED    │
+                             ↓
+                          GPIO7
 
+        Signal path: U8 RO → JP4 Pad 1 → Pad 2 → GPIO7
+        J17-4 divider is DISCONNECTED (no contention)
 
-    JP4 provides hardware-level source selection, ensuring only one signal path
-    to GPIO7 is active. This eliminates bus contention regardless of firmware state.
+        • GPIO6 (TX) → U8 DI → Differential A/B output
+        • GPIO7 (RX) ← U8 RO ← Differential A/B input
+        • GPIO20 controls DE/RE (HIGH=transmit, LOW=receive)
+        • J17-4/5 become RS485 differential A/B lines
+
+    ═══════════════════════════════════════════════════════════════════════
+
+    WHY JP4 IS NEEDED:
+    ──────────────────
+    Without JP4, both U8 RO and the J17 voltage divider would drive GPIO7
+    simultaneously, causing:
+      • Bus contention (two outputs fighting)
+      • Corrupted data on GPIO7
+      • Potential damage to U8 or the meter
+
+    JP4 provides hardware-level isolation - only ONE signal source can
+    reach GPIO7, regardless of firmware configuration or GPIO states.
 
 
     FIRMWARE AUTO-DETECTION:
@@ -1715,28 +1994,96 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
                         5V RAIL TRANSIENT PROTECTION
     ════════════════════════════════════════════════════════════════════════════
 
-    From AC/DC                                              To 5V Distribution
-    Module                                                  (Pico, Relays, etc.)
-        │                                                           │
-        │      ┌────────────┐                                       │
-        └──────┤  Ferrite   ├───────────┬───────────────────────────┘
-               │   Bead     │           │
-               │   FB2      │           │
-               └────────────┘           │
-                                   ┌────┴────┐    ┌────┴────┐
-                                   │  D20    │    │  C2     │
-                                   │  TVS    │    │  470µF  │
-                                   │ SMBJ5.0A│    │  6.3V   │
-                                   └────┬────┘    └────┬────┘
-                                        │              │
-                                       ─┴─            ─┴─
-                                       GND            GND
-
-    Component Values:
+    CIRCUIT OVERVIEW:
     ─────────────────
-    FB2: Ferrite Bead, 600Ω @ 100MHz, 0805 (optional, for noise)
-    D20: SMBJ5.0A, SMB package, 5V TVS diode (absorbs transients)
-    C2:  470µF 6.3V Polymer (low ESR, better for hot environment inside machine)
+    This protection circuit sits between the AC/DC power module output and
+    the 5V distribution bus. It provides:
+      • EMI filtering (ferrite bead FB2)
+      • Transient voltage clamping (TVS diode D20)
+      • Bulk capacitance for load transients (C2)
+
+    SCHEMATIC:
+    ──────────
+
+                              FB2 (Ferrite Bead)
+                              600Ω @ 100MHz
+      AC/DC Module                 │
+      5V Output      ┌─────────────┴─────────────┐
+          │          │                           │
+          │     ┌────┴────┐                      │
+          ○─────┤ ░░░░░░░ ├──────────────────────┼──○ +5V_FILTERED
+      5V_RAW    └─────────┘                      │     (To Pico VSYS,
+          │                                      │      Relays, SSRs,
+          │                        5V_FILTERED   │      ESP32 J15-1)
+          │                        Bus Node      │
+          │                            │         │
+          │                    ┌───────┴───────┐ │
+          │                    │               │ │
+          │               ┌────┴────┐    ┌─────┴─┴───┐
+          │               │   D20   │    │    C2     │
+          │               │   TVS   │    │   470µF   │
+          │               │SMBJ5.0A │    │   6.3V    │
+          │               │  ──┬──  │    │  Polymer  │
+          │               │  ──┴──  │    │     │     │
+          │               │    │    │    │   ═══     │
+          │               └────┬────┘    └─────┬─────┘
+          │                    │               │
+          │                    └───────┬───────┘
+          │                            │
+      ────┴────────────────────────────┴────────────────────────
+                                  GND
+
+    SIGNAL FLOW:
+    ────────────
+      [AC/DC 5V Out] ──► [FB2 Ferrite] ──► [5V_FILTERED Bus] ──► [Load]
+                                                  │
+                                          ┌───────┴───────┐
+                                          │               │
+                                        [D20]           [C2]
+                                        TVS             Bulk Cap
+                                          │               │
+                                          └───────┬───────┘
+                                                 GND
+
+    CONNECTION POINTS:
+    ──────────────────
+      • Input:  5V_RAW from AC/DC module (e.g., HLK-5M05 or Mean Well IRM-05)
+      • Output: 5V_FILTERED to distribution points:
+                - Pico VSYS (main MCU power)
+                - Relay coil supply
+                - SSR driver supply
+                - ESP32 connector J15-1
+
+    COMPONENT VALUES:
+    ─────────────────
+      FB2: Ferrite Bead, 600Ω @ 100MHz, 0805 package
+           - Purpose: Filters high-frequency noise from switching supply
+           - Note: Optional if AC/DC module has clean output
+
+      D20: SMBJ5.0A, SMB package
+           - Standoff voltage: 6.4V (won't conduct during normal operation)
+           - Clamping voltage: 9.2V @ 1A
+           - Peak pulse power: 600W (10/1000µs)
+           - Purpose: Clamps voltage spikes to protect downstream ICs
+
+      C2:  470µF, 6.3V, Polymer Electrolytic (low ESR)
+           - Purpose: Bulk decoupling, absorbs load transients
+           - Note: Polymer type chosen for low ESR and better life in
+                   hot environment inside espresso machine (~60-80°C)
+
+    PROTECTION BEHAVIOR:
+    ────────────────────
+      Normal operation (5V ±5%):
+        → D20 does not conduct (below 6.4V standoff)
+        → C2 provides bulk capacitance for load current spikes
+
+      Voltage transient (>6.4V spike):
+        → D20 clamps immediately, shunting excess energy to GND
+        → Protects Pico and other 5V components from damage
+
+      EMI/RFI noise:
+        → FB2 attenuates high-frequency noise (>10MHz)
+        → Keeps noise from propagating to sensitive digital circuits
 ```
 
 ---
@@ -1751,7 +2098,7 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     ───────────
     +5V          → Pico VSYS, Relay coils, SSR drivers, ESP32 (J15-1), LED anodes
     +3.3V        → Pico 3V3, Digital I/O, pull-ups, MAX3485 (U8)
-    +3.3V_ANALOG → ADC reference, NTC dividers
+    ADC_VREF     → 3.0V Buffered Reference, NTC dividers (R1/R2)
     GND          → System ground (isolated from mains PE)
 
     HIGH VOLTAGE NETS (⚠️ MAINS):
@@ -1799,7 +2146,7 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     GPIO23-25 → INTERNAL (Pico 2 module - NOT on header)
     GPIO26 → ADC0_BREW_NTC (J26-8/9)
     GPIO27 → ADC1_STEAM_NTC (J26-10/11)
-    GPIO28 → ADC2_PRESSURE (from J26-16 voltage divider)
+    GPIO28 → ADC2_PRESSURE (from J26-14 voltage divider)
     RUN    → SW1_RESET
 
     220V AC RELAY OUTPUTS (6.3mm Spade Terminals):
