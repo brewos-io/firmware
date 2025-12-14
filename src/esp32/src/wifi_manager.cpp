@@ -159,6 +159,10 @@ bool WiFiManager::connectToWiFi() {
     
     WiFi.begin(_storedSSID, _storedPassword);
     
+    // Always disable WiFi power save for maximum performance (low latency)
+    // This is critical for WebSocket responsiveness and OTA speed
+    WiFi.setSleep(false);
+    
     _mode = WiFiManagerMode::STA_CONNECTING;
     _connectStartTime = millis();
     _lastConnectAttempt = millis();
