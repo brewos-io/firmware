@@ -97,21 +97,21 @@ jobs:
           echo "All 3 machine types built successfully!"
 
       - name: Upload Dual Boiler Firmware
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: brewos-dual-boiler
           path: src/pico/build/brewos_dual_boiler.uf2
           retention-days: 30
 
       - name: Upload Single Boiler Firmware
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: brewos-single-boiler
           path: src/pico/build/brewos_single_boiler.uf2
           retention-days: 30
 
       - name: Upload Heat Exchanger Firmware
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: brewos-heat-exchanger
           path: src/pico/build/brewos_heat_exchanger.uf2
