@@ -1,11 +1,5 @@
 import "dotenv/config";
 import express from "express";
-
-// Extend global to include gc (available with --expose-gc flag)
-declare global {
-  // eslint-disable-next-line no-var
-  var gc: (() => void) | undefined;
-}
 import rateLimit from "express-rate-limit";
 import cors from "cors";
 import path from "path";
