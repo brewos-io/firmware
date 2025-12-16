@@ -9,7 +9,8 @@
 #define LOG_D(fmt, ...) Serial.printf("[Cloud] DEBUG: " fmt "\n", ##__VA_ARGS__)
 
 // Minimum free heap required for SSL connection (SSL needs ~40KB + margin)
-#define MIN_FREE_HEAP_FOR_SSL 70000
+// Reduced from 70000 to 45000 as we're using internal RAM for LVGL buffer
+#define MIN_FREE_HEAP_FOR_SSL 45000
 
 // If disconnected within this time of connecting, it's a "quick disconnect" (likely server rejection)
 #define QUICK_DISCONNECT_THRESHOLD_MS 5000
