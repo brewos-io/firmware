@@ -201,13 +201,16 @@
          rom->flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE, 0x20);
          rom->flash_range_program(FLASH_MAIN_OFFSET + offset, g_sector_buffer, FLASH_SECTOR_SIZE);
          rom->flash_flush_cache();
-         rom->flash_exit_xip();
-     }
- 
-    // 4. Force Watchdog Reset (Cleaner than AIRCR)
-    // Use TRIGGER bit (31) and ENABLE bit (30)
-    // This forces an immediate reset by the watchdog hardware
-    watchdog_hw->ctrl = 0xC0000000; // TRIGGER | ENABLE
+        rom->flash_exit_xip();
+    }
+
+    // 4. Force System Reset via AIRCR (Application Interrupt and Reset Control Register)
+    // This is the standard ARM Cortex-M method to reset the system.
+    // SCB->AIRCR = 0x05FA0004 (VECTKEY | SYSRESETREQ)
+    #define AIRCR_VECTKEY_MASK    0x05FA0000
+    #define AIRCR_SYSRESETREQ_MASK 0x00000004
+    
+    scb_hw->aircr = AIRCR_VECTKEY_MASK | AIRCR_SYSRESETREQ_MASK;
     
     while(1) __asm volatile("nop");
 }
@@ -308,11 +311,26 @@
          flash_safe_program(current_page_start, page_buffer, FLASH_PAGE_SIZE);
      }
      
-     const uint8_t* staged = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
-     uint32_t crc = crc32_calculate(staged, g_received_size);
-     LOG_PRINT("Bootloader: CRC32=0x%08lX (size=%lu)\n", (unsigned long)crc, (unsigned long)g_received_size);
-     
-     uart_write_byte(0xAA); uart_write_byte(0x55); uart_write_byte(0x00);
+    const uint8_t* staged = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
+    
+    // [VALIDATION] Check for valid ARM Cortex-M Vector Table
+    // Word 0: Initial Stack Pointer (Must be in RAM: 0x20xxxxxx)
+    // Word 1: Reset Vector (Must be in Flash: 0x10xxxxxx)
+    uint32_t* staged_vectors = (uint32_t*)staged;
+    bool valid_sp = (staged_vectors[0] & 0xFF000000) == 0x20000000;
+    bool valid_pc = (staged_vectors[1] & 0xFF000000) == 0x10000000;
+    
+    if (!valid_sp || !valid_pc) {
+        LOG_PRINT("Bootloader: Invalid firmware image (SP=%08lX, PC=%08lX)\n", 
+                 staged_vectors[0], staged_vectors[1]);
+        uart_write_byte(0xFF); uart_write_byte(BOOTLOADER_ERROR_INVALID_SIZE); // Re-use generic error
+        return BOOTLOADER_ERROR_INVALID_SIZE;
+    }
+    
+    uint32_t crc = crc32_calculate(staged, g_received_size);
+    LOG_PRINT("Bootloader: CRC32=0x%08lX (size=%lu)\n", (unsigned long)crc, (unsigned long)g_received_size);
+    
+    uart_write_byte(0xAA); uart_write_byte(0x55); uart_write_byte(0x00);
      sleep_ms(50);
      
      LOG_PRINT("Bootloader: Starting flash copy. USB will disconnect...\n");

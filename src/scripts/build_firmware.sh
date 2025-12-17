@@ -114,7 +114,13 @@ build_pico() {
         echo "  Output files:"
         for uf2 in brewos_*.uf2; do
             SIZE=$(ls -lh "$uf2" | awk '{print $5}')
-            echo "    - $uf2 ($SIZE)"
+            echo "    - $uf2 ($SIZE) [USB Drag-and-Drop]"
+        done
+        for bin in brewos_*.bin; do
+            if [ -f "$bin" ]; then
+                SIZE=$(ls -lh "$bin" | awk '{print $5}')
+                echo "    - $bin ($SIZE) [OTA Update]"
+            fi
         done
     else
         print_error "No UF2 files found after build"
