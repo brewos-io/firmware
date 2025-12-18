@@ -1704,216 +1704,314 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     ✅ Compatible with PZEM-004T, JSY-MK-163T/194T, Eastron SDM, and more
 
     ═══════════════════════════════════════════════════════════════════════════
-    OFF-BOARD POWER METER DESIGN (User mounts module externally)
+                         COMPLETE PIN CONNECTION DIAGRAM
     ═══════════════════════════════════════════════════════════════════════════
 
-    SYSTEM TOPOLOGY:
-    ────────────────
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                              RP2350 MCU                                 │
+    │   ┌─────────────────────────────────────────────────────────────────┐   │
+    │   │                                                                 │   │
+    │   │  GPIO6 ─── UART1_TX ───► Transmit data TO meter                │   │
+    │   │  GPIO7 ─── UART1_RX ◄─── Receive data FROM meter               │   │
+    │   │  GPIO20 ── DE/RE ──────► RS485 direction control               │   │
+    │   │                                                                 │   │
+    │   └─────────────────────────────────────────────────────────────────┘   │
+    │         │           │             │                                     │
+    │         │           │             │                                     │
+    │         ▼           ▼             ▼                                     │
+    └─────────────────────────────────────────────────────────────────────────┘
 
-    ┌────────────────────────────────────────────────────────────────────────┐
-    │                         CONTROL PCB                                    │
-    │                                                                        │
-    │   J17 (JST-XH 6-pin)                                                   │
-    │   ┌─────┬─────┬─────┬─────┬─────┬─────┐                               │
-    │   │ 3V3 │ 5V  │ GND │ RX  │ TX  │DE/RE│                               │
-    │   │  1  │  2  │  3  │  4  │  5  │  6  │                               │
-    │   └──┬──┴──┬──┴──┬──┴──┬──┴──┬──┴──┬──┘                               │
-    │      │     │     │     │     │     │                                   │
-    │      │     │     │     │     │     └──► GPIO20 (RS485 DE/RE control)  │
-    │      │     │     │     │     └────────► GPIO6 (UART TX to meter)       │
-    │      │     │     │     └──────────────► GPIO7 (UART RX from meter)     │
-    │      │     │     └────────────────────► GND                            │
-    │      │     └──────────────────────────► 5V (for 5V meters)             │
-    │      └────────────────────────────────► 3.3V (for 3.3V meters)         │
-    │                                                                        │
-    │   ═══════════════════════════════════════════════════════════════════  │
-    │                                                                        │
-    │   RS485 TRANSCEIVER (U8: MAX3485) - For Industrial Meters              │
-    │   ───────────────────────────────────────────────────────              │
-    │                                                                        │
-    │                               +3.3V                                    │
-    │                                 │                                      │
-    │                            ┌────┴────┐                                 │
-    │                            │  100nF  │ C70                             │
-    │                            └────┬────┘                                 │
-    │                            VCC──┤                                      │
-    │                                 │  U8: MAX3485                         │
-    │                       ┌─────────┴─────────┐                            │
-    │   GPIO6 (TX) ────────►│ DI            A   │◄───► J17-4 (RS485 mode)    │
-    │                       │                   │      or METER_RX (TTL)     │
-    │   GPIO7 (RX) ◄────────│ RO            B   │◄───► J17-5 (RS485 mode)    │
-    │                       │                   │      or METER_TX (TTL)     │
-    │   GPIO20 (DE/RE) ────►│ DE/RE         GND │                            │
-    │                       │                   │                            │
-    │                       └─────────┬─────────┘                            │
-    │                                ─┴─                                     │
-    │                                GND                                     │
-    │                                                                        │
-    │   FAILSAFE BIASING:                                                      │
-    │   ──────────────────                                                   │
-    │   R93: 20kΩ pull-up on A line (to +3.3V)                               │
-    │   R94: 20kΩ pull-down on B line (to GND)                               │
-    │                                                                        │
-    │   Defines bus idle state when no driver active, prevents noise         │
-    │   from being interpreted as data in electrically noisy environment.    │
-    │                                                                        │
-    │   TERMINATION:                                                         │
-    │   ─────────────                                                        │
-    │   No termination resistor (not required for short cable runs)          │
-    │                                                                        │
-    └────────────────────────────────────────────────────────────────────────┘
+    ═══════════════════════════════════════════════════════════════════════════
+                         SIGNAL PATH - TTL UART MODE
+    ═══════════════════════════════════════════════════════════════════════════
 
+    For TTL meters (PZEM-004T, JSY-MK-163T) - JP4 bridges pads 2-3
 
-    EXTERNAL POWER METER (User-mounted, off-board):
-    ────────────────────────────────────────────────
+    ┌──────────┐                                    ┌───────────────────────┐
+    │  RP2350  │                                    │     J17 CONNECTOR     │
+    │   MCU    │                                    │     (JST-XH 6-pin)    │
+    │          │                                    │                       │
+    │  GPIO6 ──┼────────► [R44 33Ω] ───────────────┼──► Pin 5 (TX) ────────┼──► Meter RX
+    │ (UART TX)│                                    │                       │
+    │          │      ┌───────────────────────────◄─┼──◄ Pin 4 (RX) ◄───────┼──◄ Meter TX
+    │          │      │                             │                       │
+    │          │      ▼                             │   Pin 1 ── 3.3V       │
+    │          │   ┌─────┐                          │   Pin 2 ── 5V  ───────┼──► Meter VCC
+    │          │   │R45  │ 2.2kΩ                    │   Pin 3 ── GND ───────┼──► Meter GND
+    │          │   └──┬──┘                          │   Pin 6 ── DE/RE (NC) │
+    │          │      │                             │                       │
+    │          │      ├─►[R45B 33Ω]──┐              └───────────────────────┘
+    │          │      │              │
+    │          │   ┌──┴──┐           │   JP4 (Pads 2-3 bridged)
+    │          │   │R45A │ 3.3kΩ     │   ┌─────────────────────┐
+    │          │   └──┬──┘           └──►│ [1]  [2]════[3]     │
+    │          │      │                  │       │     bridged │
+    │          │     GND                 └───────┼─────────────┘
+    │          │                                 │
+    │  GPIO7 ◄─┼─────────────────────────────────┘
+    │ (UART RX)│
+    │          │
+    │  GPIO20 ─┼──► (Unused in TTL mode - leave floating or LOW)
+    │ (DE/RE)  │
+    └──────────┘
 
-    ┌────────────────────────────────────────────────────────────────────────┐
-    │              EXTERNAL POWER METER MODULE                               │
-    │              (PZEM-004T, JSY-MK-163T, Eastron SDM, etc.)              │
-    │                                                                        │
-    │   ┌──────────────────┐     ┌──────────────────────────────────────┐   │
-    │   │   LV INTERFACE   │     │         HV INTERFACE                 │   │
-    │   │   (JST or wire)  │     │    (Screw terminals on module)       │   │
-    │   │                  │     │                                      │   │
-    │   │   5V ◄───────────│     │   L ◄──────── Machine Mains Live     │   │
-    │   │   GND ◄──────────│     │   N ◄──────── Machine Mains Neutral  │   │
-    │   │   TX ────────────│     │                                      │   │
-    │   │   RX ◄───────────│     │   CT+ ◄────┬───── CT Clamp           │   │
-    │   │                  │     │   CT- ◄────┘      (on Live wire)     │   │
-    │   └──────────────────┘     └──────────────────────────────────────┘   │
-    │         │                              │                              │
-    │         │ JST cable                    │ User wires directly          │
-    │         │ to J17                       │ to mains                     │
-    │         ▼                              ▼                              │
-    │   CONTROL PCB                    MACHINE WIRING                       │
-    │                                  (NOT through PCB)                    │
-    │                                                                        │
-    └────────────────────────────────────────────────────────────────────────┘
+    TTL MODE SIGNAL FLOW SUMMARY:
+    ─────────────────────────────
+    TX Path:  GPIO6 ──► R44 (33Ω) ──► J17 Pin 5 ──► Meter RX pin
+    RX Path:  Meter TX ──► J17 Pin 4 ──► R45/R45A divider ──► R45B ──► JP4 ──► GPIO7
 
+    ═══════════════════════════════════════════════════════════════════════════
+                         SIGNAL PATH - RS485 MODE
+    ═══════════════════════════════════════════════════════════════════════════
 
-    Design Note: No HV measurement circuitry on control PCB
-    ────────────────────────────────────────────────────────────
-    • J24 routes L/N/PE to external meter (in PCB's existing HV zone)
-    • CT clamp wires directly to meter module (not via this PCB)
-    • Control PCB provides ONLY 5V/3.3V power and UART/RS485 data
-    • User wires machine mains directly to external module terminals
-    • CT clamp connects directly to external module (not through PCB)
+    For RS485 meters (Eastron SDM120/230) - JP4 bridges pads 1-2
 
+    ┌──────────┐                                    ┌───────────────────────┐
+    │  RP2350  │                                    │     J17 CONNECTOR     │
+    │   MCU    │      ┌───────────────────────┐     │     (JST-XH 6-pin)    │
+    │          │      │    U8: MAX3485        │     │                       │
+    │          │      │    ┌─────────────┐    │     │   Pin 1 ── 3.3V       │
+    │          │      │    │   +3.3V     │    │     │   Pin 2 ── 5V         │
+    │          │      │    │     │       │    │     │   Pin 3 ── GND        │
+    │          │      │    │  ┌──┴──┐    │    │     │                       │
+    │          │      │    │  │C70  │    │    │     │                       │
+    │          │      │    │  │100nF│    │    │     │                       │
+    │          │      │    │  └──┬──┘    │    │     │                       │
+    │  GPIO6 ──┼──────┼───►│DI  VCC     │    │     │                       │
+    │ (UART TX)│      │    │            │    │     │                       │
+    │          │      │    │         A  │◄───┼─────┼──► Pin 4 (RS485 A+) ──┼──► Meter A+
+    │          │      │    │            │    │     │                       │
+    │  GPIO7 ◄─┼──┐   │    │         B  │◄───┼─────┼──► Pin 5 (RS485 B-) ──┼──► Meter B-
+    │ (UART RX)│  │   │    │            │    │     │                       │
+    │          │  │   │    │RO      GND │    │     │   Pin 6 ── DE/RE ─────┼──► (routed
+    │          │  │   │    └──┬─────┬───┘    │     │       for expansion)  │   internally)
+    │          │  │   │       │     │        │     │                       │
+    │          │  │   └───────┼─────┼────────┘     └───────────────────────┘
+    │          │  │           │    GND
+    │          │  │           │
+    │          │  │   JP4 (Pads 1-2 bridged)
+    │          │  │   ┌─────────────────────┐
+    │          │  │   │ [1]════[2]  [3]     │
+    │          │  │   │ bridged │          │
+    │          │  │   └────┬────┼───────────┘
+    │          │  │        │    │
+    │          │  └────────┘    └──► (disconnected from J17 divider)
+    │          │
+    │  GPIO20 ─┼──► U8 DE/RE pin (HIGH=TX, LOW=RX)
+    │ (DE/RE)  │
+    └──────────┘
 
-    SUPPORTED MODULES:
-    ──────────────────
-    │ Module          │ Baud  │ Protocol   │ Interface │ CT Type        │
-    │─────────────────│───────│────────────│───────────│────────────────│
-    │ PZEM-004T V3    │ 9600  │ Modbus RTU │ TTL UART  │ Split-core 100A│
-    │ JSY-MK-163T     │ 4800  │ Modbus RTU │ TTL UART  │ Internal shunt │
-    │ JSY-MK-194T     │ 4800  │ Modbus RTU │ TTL UART  │ Dual-channel   │
-    │ Eastron SDM120  │ 2400  │ Modbus RTU │ RS485     │ DIN-rail CT    │
-    │ Eastron SDM230  │ 9600  │ Modbus RTU │ RS485     │ DIN-rail CT    │
+    RS485 MODE SIGNAL FLOW SUMMARY:
+    ────────────────────────────────
+    TX Path:  GPIO6 ──► U8 DI ──► U8 drives A/B ──► J17 Pins 4,5 ──► Meter A+/B-
+    RX Path:  Meter A+/B- ──► J17 Pins 4,5 ──► U8 A/B ──► U8 RO ──► JP4 ──► GPIO7
+    DE/RE:    GPIO20 ──► U8 DE/RE (HIGH to transmit, LOW to receive)
 
+    ═══════════════════════════════════════════════════════════════════════════
+                              J17 CONNECTOR PINOUT
+    ═══════════════════════════════════════════════════════════════════════════
 
-    J17 PINOUT (JST-XH 6-pin):
-    ──────────────────────────
-    Pin 1: 3V3    → Power for 3.3V logic modules
-    Pin 2: 5V     → Power for 5V modules (PZEM, JSY)
-    Pin 3: GND    → System ground
-    Pin 4: RX     → GPIO7 (from meter TX, via level shifter)
-    Pin 5: TX     → GPIO6 (to meter RX, via 33Ω R44)
-    Pin 6: DE/RE  → GPIO20 (RS485 direction control)
+                              J17 (JST-XH 6-pin)
+                  ┌─────┬─────┬─────┬─────┬─────┬─────┐
+                  │ 3V3 │ 5V  │ GND │ RX  │ TX  │DE/RE│
+                  │  1  │  2  │  3  │  4  │  5  │  6  │
+                  └──┬──┴──┬──┴──┬──┴──┬──┴──┬──┴──┬──┘
+                     │     │     │     │     │     │
+    ┌────────────────┼─────┼─────┼─────┼─────┼─────┼──────────────────────────┐
+    │ Pin │ Label    │ MCU Connection        │ TTL Mode        │ RS485 Mode  │
+    │─────┼──────────┼───────────────────────┼─────────────────┼─────────────│
+    │  1  │ 3V3      │ 3.3V rail             │ 3.3V power out  │ 3.3V power  │
+    │  2  │ 5V       │ 5V rail               │ Meter VCC       │ Meter VCC   │
+    │  3  │ GND      │ Ground                │ Meter GND       │ Meter GND   │
+    │  4  │ RX/A     │ GPIO7 (via divider)   │ ◄── Meter TX    │ ◄──► A+ line│
+    │  5  │ TX/B     │ GPIO6 (via R44)       │ ──► Meter RX    │ ◄──► B- line│
+    │  6  │ DE/RE    │ GPIO20                │ Unused (NC)     │ Dir control │
+    └─────┴──────────┴───────────────────────┴─────────────────┴─────────────┘
 
+    ═══════════════════════════════════════════════════════════════════════════
+                         WIRING EXAMPLES BY METER TYPE
+    ═══════════════════════════════════════════════════════════════════════════
 
-    5V to 3.3V Level Shifting (J17 RX Line):
-    ─────────────────────────────────────────────────────
-    Some power meters (PZEM, JSY, etc.) output 5V TTL. RP2350 is NOT 5V tolerant!
-    Without level shifting, 5V signals cause GPIO damage over time.
-
-    SOLUTION: Resistive voltage divider on J17-4 (RX input):
-
-         J17 Pin 4 (5V from PZEM TX)
-              │
-         ┌────┴────┐
-         │  2.2kΩ  │  R45 (upper)
-         │   1%    │
-         └────┬────┘
-              │
-              ├──────[33Ω R45B]─────────────► GPIO7 (PZEM_RX)
-              │
-         ┌────┴────┐
-         │  3.3kΩ  │  R45A (lower)
-         │   1%    │
-         └────┬────┘
-              │
-             GND
-
-    V_out = 5V × 3.3k / (2.2k + 3.3k) = 5V × 0.6 = 3.0V ✓
-
-
-    COMPONENT VALUES:
-    ─────────────────
-    U8:     MAX3485ESA+ or SP3485EN-L/TR (SOIC-8 or SOT-23-8)
-    D21:    SM712 (SOT-23) - RS485 A/B line TVS protection
-    C70:    100nF 25V Ceramic, 0805 (U8 decoupling)
-    R44:    33Ω 5%, 0805 (TX series protection)
-    R45:    2.2kΩ 1%, 0805 (J17 RX 5V→3.3V level shift, upper)
-    R45A:   3.3kΩ 1%, 0805 (J17 RX 5V→3.3V level shift, lower)
-    R45B:   33Ω 5%, 0805 (RX series after divider)
-    R93:    20kΩ 5%, 0805 (RS485 failsafe bias - A line pull-up)
-    R94:    20kΩ 5%, 0805 (RS485 failsafe bias - B line pull-down)
-
-    ⚠️ RS485 SURGE PROTECTION (D21):
+    PZEM-004T V3 (TTL UART, 4-wire):
     ─────────────────────────────────
-    SM712 asymmetric TVS protects A/B lines from industrial EMI:
-    • Clamps to -7V / +12V (matches RS485 common-mode range)
-    • Protects against lightning surges and motor switching noise
-    • Place close to J17 connector, between connector and MAX3485
-    J17:    JST-XH 6-pin header (B6B-XH-A)
+    Set JP4: Bridge pads 2-3
 
+    J17 Connector                    PZEM-004T
+    ┌─────────────┐                  ┌─────────────┐
+    │ Pin 2 (5V)  ├──────────────────┤ VCC (5V)    │
+    │ Pin 3 (GND) ├──────────────────┤ GND         │
+    │ Pin 4 (RX)  │◄─────────────────┤ TX          │ Data FROM meter
+    │ Pin 5 (TX)  ├─────────────────►│ RX          │ Data TO meter
+    └─────────────┘                  └─────────────┘
+    Note: Pin 1, Pin 6 not connected
 
-    JP4 Hardware Mode Selection:
+    JSY-MK-163T (TTL UART, 4-wire):
+    ─────────────────────────────────
+    Set JP4: Bridge pads 2-3
+
+    J17 Connector                    JSY-MK-163T
+    ┌─────────────┐                  ┌─────────────┐
+    │ Pin 2 (5V)  ├──────────────────┤ VCC (5V)    │
+    │ Pin 3 (GND) ├──────────────────┤ GND         │
+    │ Pin 4 (RX)  │◄─────────────────┤ TXD         │ Data FROM meter
+    │ Pin 5 (TX)  ├─────────────────►│ RXD         │ Data TO meter
+    └─────────────┘                  └─────────────┘
+    Note: Pin 1, Pin 6 not connected
+
+    Eastron SDM120/230 (RS485, 2-wire + power):
+    ────────────────────────────────────────────
+    Set JP4: Bridge pads 1-2
+
+    J17 Connector                    Eastron SDM
+    ┌─────────────┐                  ┌─────────────┐
+    │ Pin 3 (GND) ├──────────────────┤ GND (opt)   │ May not need GND
+    │ Pin 4 (A)   ├◄────────────────►│ A+ (Data+)  │ RS485 differential
+    │ Pin 5 (B)   ├◄────────────────►│ B- (Data-)  │ RS485 differential
+    └─────────────┘                  └─────────────┘
+    Note: Eastron uses mains power, no 5V needed. Pin 1, 2, 6 not connected
+
+    ═══════════════════════════════════════════════════════════════════════════
+                         COMPLETE CIRCUIT SCHEMATIC
+    ═══════════════════════════════════════════════════════════════════════════
+
+                                    +3.3V
+                                      │
+                   ┌──────────────────┴──────────────────┐
+                   │                                     │
+              ┌────┴────┐                           ┌────┴────┐
+              │  R93    │                           │  C70    │
+              │  20kΩ   │ Failsafe bias             │  100nF  │ Decoupling
+              └────┬────┘                           └────┬────┘
+                   │                                     │
+                   │ ┌───────────────────────────────────┤
+                   │ │                                   │
+                   │ │            U8: MAX3485            │
+                   │ │     ┌───────────────────────┐     │
+                   │ └────►│ VCC               DI  │◄────────────────── GPIO6 (TX)
+                   │       │                       │
+                   └──────►│ A              DE/RE  │◄────────────────── GPIO20
+                           │                       │
+              ┌───────────►│ B                 RO  │───┐
+              │            │                       │   │
+              │     ┌─────►│ GND                   │   │
+              │     │      └───────────────────────┘   │
+              │     │                                  │
+         ┌────┴────┐│                                  │
+         │  R94    ││                                  │
+         │  20kΩ   ││ Failsafe bias                    │
+         └────┬────┘│                                  │
+              │     │                                  │
+             GND   GND                                 │
+                                                       │
+    ┌──────────────────────────────────────────────────┼───────────────────────┐
+    │                                                  │                       │
+    │   JP4 (3-Pad Solder Jumper)                      │                       │
+    │   ┌─────────────────────────────────────────┐    │                       │
+    │   │                                         │    │                       │
+    │   │   [Pad 1]───────[Pad 2]───────[Pad 3]   │    │                       │
+    │   │      │             │             │      │    │                       │
+    │   └──────┼─────────────┼─────────────┼──────┘    │                       │
+    │          │             │             │           │                       │
+    │          │             │             │           │                       │
+    │     From U8 RO ────────┘             │           │                       │
+    │     (RS485 mode)       │             │           │                       │
+    │                        │             └───────────┼───── From J17 Pin 4   │
+    │                        │                         │      (via divider,    │
+    │                        ▼                         │       TTL mode)       │
+    │                     GPIO7                        │                       │
+    │                   (UART RX)                      │                       │
+    │                                                  │                       │
+    └──────────────────────────────────────────────────┘                       │
+                                                                               │
+    ┌──────────────────────────────────────────────────────────────────────────┘
+    │
+    │   5V→3.3V Level Shifter (for TTL mode RX line)
+    │   ─────────────────────────────────────────────
+    │
+    │            J17 Pin 4
+    │            (5V TTL from meter TX)
+    │                 │
+    │            ┌────┴────┐
+    │            │  R45    │
+    │            │  2.2kΩ  │ 1%
+    │            └────┬────┘
+    │                 │
+    │                 ├────[R45B 33Ω]────► To JP4 Pad 3
+    │                 │
+    │            ┌────┴────┐
+    │            │  R45A   │
+    │            │  3.3kΩ  │ 1%
+    │            └────┬────┘
+    │                 │
+    │                GND
+    │
+    │        V_out = 5V × 3.3k/(2.2k+3.3k) = 3.0V ✓
+    │
+    └──────────────────────────────────────────────────────────────────────────
+
+    TX Line (GPIO6 to J17 Pin 5):
+    ─────────────────────────────
+              GPIO6 ──────[R44 33Ω]──────► J17 Pin 5 (TX/B)
+                          (series protection)
+
+    ═══════════════════════════════════════════════════════════════════════════
+                              RS485 TRANSCEIVER DETAIL
+    ═══════════════════════════════════════════════════════════════════════════
+
+                           U8: MAX3485 / SP3485 PINOUT
+                           ──────────────────────────────
+
+                                  ┌─────────────┐
+                       RO (1) ────┤ ●           ├──── VCC (8)
+                                  │             │
+                      /RE (2) ────┤             ├──── B (7)
+                                  │   MAX3485   │
+                       DE (3) ────┤             ├──── A (6)
+                                  │             │
+                       DI (4) ────┤             ├──── GND (5)
+                                  └─────────────┘
+
+    PIN DESCRIPTIONS:
+    ─────────────────
+    │ Pin │ Name │ Direction │ Connection                    │ Function            │
+    │─────┼──────┼───────────┼───────────────────────────────┼─────────────────────│
+    │  1  │ RO   │ Output    │ JP4 Pad 1 → GPIO7             │ Receiver Output     │
+    │  2  │ /RE  │ Input     │ Tied to DE (Pin 3)            │ Receiver Enable (L) │
+    │  3  │ DE   │ Input     │ GPIO20                        │ Driver Enable (H)   │
+    │  4  │ DI   │ Input     │ GPIO6                         │ Driver Input        │
+    │  5  │ GND  │ Power     │ Ground                        │ Ground              │
+    │  6  │ A    │ I/O       │ J17 Pin 4 + R93 pull-up       │ Non-inverting line  │
+    │  7  │ B    │ I/O       │ J17 Pin 5 + R94 pull-down     │ Inverting line      │
+    │  8  │ VCC  │ Power     │ 3.3V + C70 (100nF)            │ Supply voltage      │
+    └─────┴──────┴───────────┴───────────────────────────────┴─────────────────────┘
+
+    DE/RE OPERATION:
+    ─────────────────
+    • DE and /RE are tied together → GPIO20 controls both
+    • GPIO20 = HIGH: Transmit mode (DI → A/B, RO = Hi-Z)
+    • GPIO20 = LOW:  Receive mode (A/B → RO, driver disabled)
+
+    FAILSAFE BIASING:
+    ─────────────────
+    R93: 20kΩ pull-up on A line (to +3.3V)
+    R94: 20kΩ pull-down on B line (to GND)
+
+    When bus is idle (no driver active), biasing ensures:
+    • A > B → Receiver sees idle/mark state (logic 1)
+    • Prevents noise from being interpreted as data
+
+    ═══════════════════════════════════════════════════════════════════════════
+                         JP4 HARDWARE MODE SELECTION
+    ═══════════════════════════════════════════════════════════════════════════
 
     JP4 is a 3-pad solder jumper that selects the GPIO7 (RX) signal source.
     This prevents bus contention by physically disconnecting the unused source.
-
-    CIRCUIT TOPOLOGY:
-    ─────────────────
-
-        ┌───────────────┐                              ┌───────────────┐
-        │  U8 (MAX3485) │                              │ J17 Connector │
-        │   RS485 IC    │                              │ (Ext. Meter)  │
-        │               │                              │               │
-        │      RO ○─────┼──────────┐      ┌───────────┼───○ Pin 4     │
-        │               │          │      │           │   (RX signal) │
-        └───────────────┘          │      │           └───────────────┘
-                                   │      │
-                                   │      ↓
-                                   │   ┌─────┐  R_DIV
-                                   │   │     │  Voltage
-                                   │   └──┬──┘  Divider
-                                   │      │     (5V→3.3V)
-                                   │      │
-                                   ↓      ↓
-                          ┌────────────────────────┐
-                          │    JP4 (3-Pad Jumper)  │
-                          │                        │
-                          │   [1]    [2]    [3]    │
-                          │    ●──────●──────●     │
-                          │    │      │      │     │
-                          └────┼──────┼──────┼─────┘
-                               │      │      │
-                   From U8 RO ─┘      │      └─ From J17 RX (divided)
-                                      │
-                                      ↓
-                                   GPIO7
-                                (Pico RX input)
 
     JUMPER PAD CONNECTIONS:
     ───────────────────────
         Pad 1 ────► U8 (MAX3485) RO pin output
         Pad 2 ────► GPIO7 (Pico UART RX) ← CENTER, always connects to MCU
         Pad 3 ────► J17 pin 4 via voltage divider (5V-safe → 3.3V)
-
-    ═══════════════════════════════════════════════════════════════════════
-                           CONFIGURATION MODES
-    ═══════════════════════════════════════════════════════════════════════
 
     MODE 1: TTL UART (PZEM, JSY meters - Most Common)
     ─────────────────────────────────────────────────
@@ -1928,11 +2026,11 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
                            ↓
                         GPIO7
 
-        Signal path: J17 Pin 4 → Voltage Divider → JP4 Pad 3 → Pad 2 → GPIO7
+        Signal path: J17 Pin 4 → R45/R45A divider → R45B → JP4 Pad 3 → Pad 2 → GPIO7
         U8 RO is DISCONNECTED (floating, no contention)
 
-        • GPIO6 (TX) connects directly to J17-5 via series resistor
-        • GPIO7 (RX) receives level-shifted signal from J17-4
+        • GPIO6 (TX) ─► R44 ─► J17 Pin 5 ─► Meter RX
+        • GPIO7 (RX) ◄─ JP4 ◄─ R45B ◄─ divider ◄─ J17 Pin 4 ◄─ Meter TX
         • GPIO20 (DE/RE) unused - can be repurposed or left floating
         • U8 MAX3485 is inactive (can be left unpopulated)
 
@@ -1953,12 +2051,9 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
         Signal path: U8 RO → JP4 Pad 1 → Pad 2 → GPIO7
         J17-4 divider is DISCONNECTED (no contention)
 
-        • GPIO6 (TX) → U8 DI → Differential A/B output
-        • GPIO7 (RX) ← U8 RO ← Differential A/B input
-        • GPIO20 controls DE/RE (HIGH=transmit, LOW=receive)
-        • J17-4/5 become RS485 differential A/B lines
-
-    ═══════════════════════════════════════════════════════════════════════
+        • GPIO6 (TX) ─► U8 DI ─► U8 drives A/B ─► J17 Pin 4/5 ─► Meter
+        • GPIO7 (RX) ◄─ JP4 ◄─ U8 RO ◄─ U8 receives A/B ◄─ J17 Pin 4/5 ◄─ Meter
+        • GPIO20 ─► U8 DE/RE (HIGH=transmit, LOW=receive)
 
     WHY JP4 IS NEEDED:
     ──────────────────
@@ -1968,12 +2063,83 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
       • Corrupted data on GPIO7
       • Potential damage to U8 or the meter
 
-    JP4 provides hardware-level isolation - only ONE signal source can
-    reach GPIO7, regardless of firmware configuration or GPIO states.
+    ═══════════════════════════════════════════════════════════════════════════
+                            EXTERNAL POWER METER MODULE
+    ═══════════════════════════════════════════════════════════════════════════
 
+    ┌────────────────────────────────────────────────────────────────────────┐
+    │              EXTERNAL POWER METER MODULE                               │
+    │              (PZEM-004T, JSY-MK-163T, Eastron SDM, etc.)              │
+    │                                                                        │
+    │   ┌──────────────────────────┐  ┌──────────────────────────────────┐   │
+    │   │    LV INTERFACE          │  │       HV INTERFACE               │   │
+    │   │    (JST or screw term.)  │  │   (Screw terminals on module)    │   │
+    │   │                          │  │                                  │   │
+    │   │  ┌───────┬────────────┐  │  │  ┌────────┬───────────────────┐ │   │
+    │   │  │ Pin   │ Function   │  │  │  │ Term   │ Connection        │ │   │
+    │   │  ├───────┼────────────┤  │  │  ├────────┼───────────────────┤ │   │
+    │   │  │ VCC   │ 5V power   │  │  │  │ L      │ Mains Live wire   │ │   │
+    │   │  │ GND   │ Ground     │  │  │  │ N      │ Mains Neutral     │ │   │
+    │   │  │ TX    │ Data out   │  │  │  │ CT+    │ CT clamp wire 1   │ │   │
+    │   │  │ RX    │ Data in    │  │  │  │ CT-    │ CT clamp wire 2   │ │   │
+    │   │  └───────┴────────────┘  │  │  └────────┴───────────────────┘ │   │
+    │   │          │               │  │            │                    │   │
+    │   └──────────┼───────────────┘  └────────────┼────────────────────┘   │
+    │              │                               │                        │
+    │              ▼                               ▼                        │
+    │     To J17 via JST cable            Direct to mains wiring           │
+    │     (NOT through PCB HV zone)       (User responsibility)            │
+    │                                                                        │
+    └────────────────────────────────────────────────────────────────────────┘
 
-    FIRMWARE AUTO-DETECTION:
-    ────────────────────────
+    Design Note: No HV measurement circuitry on control PCB
+    ────────────────────────────────────────────────────────
+    • J24 routes L/N/PE to external meter (in PCB's existing HV zone)
+    • CT clamp wires directly to meter module (not via this PCB)
+    • Control PCB provides ONLY 5V/3.3V power and UART/RS485 data
+    • User wires machine mains directly to external module terminals
+
+    ═══════════════════════════════════════════════════════════════════════════
+                              SUPPORTED MODULES
+    ═══════════════════════════════════════════════════════════════════════════
+
+    │ Module          │ Baud  │ Protocol   │ Interface │ CT Type         │ JP4  │
+    │─────────────────│───────│────────────│───────────│─────────────────│──────│
+    │ PZEM-004T V3    │ 9600  │ Modbus RTU │ TTL UART  │ Split-core 100A │ 2-3  │
+    │ JSY-MK-163T     │ 4800  │ Modbus RTU │ TTL UART  │ Internal shunt  │ 2-3  │
+    │ JSY-MK-194T     │ 4800  │ Modbus RTU │ TTL UART  │ Dual-channel    │ 2-3  │
+    │ Eastron SDM120  │ 2400  │ Modbus RTU │ RS485     │ DIN-rail CT     │ 1-2  │
+    │ Eastron SDM230  │ 9600  │ Modbus RTU │ RS485     │ DIN-rail CT     │ 1-2  │
+
+    ═══════════════════════════════════════════════════════════════════════════
+                              COMPONENT VALUES
+    ═══════════════════════════════════════════════════════════════════════════
+
+    │ Ref   │ Value                   │ Package    │ Function                     │
+    │───────│─────────────────────────│────────────│──────────────────────────────│
+    │ U8    │ MAX3485ESA+ / SP3485EN  │ SOIC-8     │ RS485 transceiver            │
+    │ C70   │ 100nF 25V Ceramic       │ 0805       │ U8 decoupling                │
+    │ D21   │ SM712                   │ SOT-23     │ RS485 A/B TVS protection     │
+    │ R44   │ 33Ω 5%                  │ 0805       │ TX series protection         │
+    │ R45   │ 2.2kΩ 1%                │ 0805       │ RX level shift upper         │
+    │ R45A  │ 3.3kΩ 1%                │ 0805       │ RX level shift lower         │
+    │ R45B  │ 33Ω 5%                  │ 0805       │ RX series after divider      │
+    │ R93   │ 20kΩ 5%                 │ 0805       │ RS485 A line pull-up         │
+    │ R94   │ 20kΩ 5%                 │ 0805       │ RS485 B line pull-down       │
+    │ J17   │ JST-XH 6-pin (B6B-XH-A) │ THT        │ External meter connector     │
+    │ JP4   │ 3-pad solder jumper     │ SMD pads   │ TTL/RS485 mode selection     │
+
+    ⚠️ RS485 SURGE PROTECTION (D21):
+    ─────────────────────────────────
+    SM712 asymmetric TVS protects A/B lines from industrial EMI:
+    • Clamps to -7V / +12V (matches RS485 common-mode range)
+    • Protects against lightning surges and motor switching noise
+    • Place close to J17 connector, between connector and MAX3485
+
+    ═══════════════════════════════════════════════════════════════════════════
+                           FIRMWARE AUTO-DETECTION
+    ═══════════════════════════════════════════════════════════════════════════
+
     On startup, firmware scans:
     1. 9600 baud → Try PZEM registers
     2. 4800 baud → Try JSY registers
