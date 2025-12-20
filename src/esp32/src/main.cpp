@@ -202,8 +202,9 @@ static void onWiFiAPStarted() {
     snprintf(apIPStr, sizeof(apIPStr), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
     LOG_I("Open http://%s to configure", apIPStr);
     
+    // AP is active - check if we also have STA connection (AP+STA mode)
     machineState.wifi_ap_mode = true;
-    machineState.wifi_connected = false;
+    machineState.wifi_connected = (WiFi.status() == WL_CONNECTED);  // May still be connected in AP+STA mode
     
     // Stop DNS server first if it was running (clean restart)
     if (dnsServerRunning) {
@@ -592,14 +593,12 @@ void setup() {
     // Print immediately - minimal code
     Serial.println();
     Serial.println("SETUP START");
-    Serial.flush();
     delay(100);
     
     Serial.print("Heap: ");
     Serial.println(ESP.getFreeHeap());
     Serial.print("PSRAM size: ");
     Serial.println(ESP.getPsramSize());
-    Serial.flush();
     
     // Verify PSRAM is disabled for heap allocations
     // ESP32-S3 PSRAM address range
@@ -619,53 +618,43 @@ void setup() {
     // Initialize NVS (Non-Volatile Storage) FIRST
     // This ensures Preferences library works correctly after fresh flash
     Serial.println("[1/8] Initializing NVS...");
-    Serial.flush();
     esp_err_t nvs_err = nvs_flash_init();
     if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         Serial.print("NVS needs erase (err=");
         Serial.print(nvs_err);
         Serial.println(") - erasing...");
-        Serial.flush();
         nvs_flash_erase();
         nvs_err = nvs_flash_init();
     }
     if (nvs_err != ESP_OK) {
         Serial.print("NVS init FAILED: ");
         Serial.println(nvs_err);
-        Serial.flush();
         // Continue anyway - Preferences will handle missing NVS gracefully
     } else {
         Serial.println("NVS initialized OK");
-        Serial.flush();
     }
     
     // Initialize LittleFS (needed by State, WebServer, etc.)
     Serial.println("[2/8] Initializing LittleFS...");
-    Serial.flush();
     if (!LittleFS.begin(true)) {
         Serial.println("LittleFS mount failed - formatting...");
-        Serial.flush();
         LittleFS.format();
         if (!LittleFS.begin(true)) {
             Serial.println("ERROR: LittleFS format failed!");
-            Serial.flush();
             // Continue anyway - web server will handle missing files gracefully
         } else {
             Serial.println("LittleFS formatted and mounted OK");
-            Serial.flush();
         }
     } else {
         Serial.println("LittleFS mounted OK");
-        Serial.flush();
     }
     
     // Turn on backlight so user knows device is running
+    // IMPORTANT: Backlight is ACTIVE LOW on VIEWESMART UEDX48480021-MD80E!
     Serial.println("[3/8] Turning on backlight...");
-    Serial.flush();
     pinMode(7, OUTPUT);
-    digitalWrite(7, HIGH);
-    Serial.println("Backlight ON");
-    Serial.flush();
+    digitalWrite(7, LOW);  // Active LOW - LOW = ON, HIGH = OFF
+    Serial.println("Backlight ON (active low)");
     
     // Construct global objects NOW (after Serial is initialized)
     // CRITICAL: Allocate in internal RAM (not PSRAM) to avoid InstructionFetchError
@@ -718,30 +707,69 @@ void setup() {
     Serial.println("All global objects created OK");
     Serial.flush();
     
-    /*
-    // Initialize display
-    LOG_I("Initializing display...");
+    // Initialize display (PSRAM enabled for RGB frame buffer)
+    Serial.println("[4/8] Initializing display...");
+    Serial.flush();
     if (!display.begin()) {
-        LOG_E("Display initialization failed!");
+        Serial.println("ERROR: Display initialization failed!");
+        Serial.flush();
+    } else {
+        Serial.println("Display initialized OK");
+        Serial.flush();
     }
     
     // Initialize encoder
-    LOG_I("Initializing encoder...");
+    Serial.println("[4.5/8] Initializing encoder...");
+    Serial.flush();
     if (!encoder.begin()) {
-        LOG_E("Encoder initialization failed!");
+        Serial.println("ERROR: Encoder initialization failed!");
+        Serial.flush();
+    } else {
+        Serial.println("Encoder initialized OK");
+        Serial.flush();
     }
     encoder.setCallback(handleEncoderEvent);
     
-    // Initialize UI
-    LOG_I("Initializing UI...");
-    if (!ui.begin()) {
-        LOG_E("UI initialization failed!");
+    // Check if WiFi setup is needed BEFORE initializing UI
+    // This ensures the setup screen shows immediately if no credentials exist
+    Serial.println("[4.7/8] Checking WiFi credentials...");
+    Serial.flush();
+    bool needsWifiSetup = !wifiManager->checkCredentials();
+    if (needsWifiSetup) {
+        Serial.println("No WiFi credentials found - setup screen will be shown");
+        machineState.wifi_ap_mode = true;
+        machineState.wifi_connected = false;
+    } else {
+        Serial.println("WiFi credentials found");
+        machineState.wifi_ap_mode = false;
+        machineState.wifi_connected = false;  // Will be updated when WiFi connects
     }
-    */
+    Serial.flush();
     
-    // UI callbacks - DISABLED (no display)
-    /*
-    // Set up UI callbacks
+    // Initialize UI
+    Serial.println("[4.8/8] Initializing UI...");
+    Serial.flush();
+    if (!ui.begin()) {
+        Serial.println("ERROR: UI initialization failed!");
+        Serial.flush();
+    } else {
+        Serial.println("UI initialized OK");
+        Serial.flush();
+        
+        // Update UI with initial state (including WiFi setup status)
+        ui.update(machineState);
+        
+        // If WiFi setup is needed, show setup screen immediately
+        if (needsWifiSetup) {
+            Serial.println("Showing WiFi setup screen...");
+            Serial.flush();
+        }
+        
+        // Force display update to show initial screen immediately
+        display.update();
+    }
+    
+    // UI callbacks
     ui.onTurnOn([]() {
         LOG_I("UI: Turn on requested");
         uint8_t cmd = 0x01;
@@ -756,13 +784,11 @@ void setup() {
     
     ui.onSetTemp([](bool is_steam, float temp) {
         LOG_I("UI: Set %s temp to %.1f°C", is_steam ? "steam" : "brew", temp);
-        // Pico expects: [target:1][temperature:int16] where temperature is Celsius * 10
-        // Note: Pico (RP2350) is little-endian, so send LSB first
         uint8_t payload[3];
-        payload[0] = is_steam ? 0x01 : 0x00;  // 0=brew, 1=steam
+        payload[0] = is_steam ? 0x01 : 0x00;
         int16_t tempScaled = (int16_t)(temp * 10.0f);
-        payload[1] = tempScaled & 0xFF;         // LSB first
-        payload[2] = (tempScaled >> 8) & 0xFF;  // MSB second
+        payload[1] = tempScaled & 0xFF;
+        payload[2] = (tempScaled >> 8) & 0xFF;
         picoUart->sendCommand(MSG_CMD_SET_TEMP, payload, 3);
     });
     
@@ -782,7 +808,6 @@ void setup() {
         wifiManager->setStaticIP(false);
         wifiManager->startAP();
     });
-    */
     
     // Initialize Pico UART
     Serial.println("[4/8] Initializing Pico UART...");
@@ -797,11 +822,16 @@ void setup() {
     Serial.flush();
     picoUart->onPacket(onPicoPacket);
     
-    // Reset Pico to ensure fresh boot
-    Serial.println("[4.5/8] Resetting Pico...");
-    Serial.flush();
-    picoUart->resetPico();
-    delay(1000);  // Give Pico time to reset and start booting (Core 1 needs time to init)
+    // NOTE: Skipping Pico reset during initialization because:
+    // 1. PICO_RUN_PIN (GPIO8) conflicts with DISPLAY_RST_PIN (GPIO8)
+    // 2. Resetting Pico would reset the display, causing screen to disappear
+    // 3. Pico is not wired in current configuration
+    // If Pico reset is needed later, it should be done before display initialization
+    // or use a different GPIO pin for Pico reset
+    // Serial.println("[4.5/8] Resetting Pico...");
+    // Serial.flush();
+    // picoUart->resetPico();
+    // delay(1000);  // Give Pico time to reset and start booting (Core 1 needs time to init)
     
     // Wait for Pico to connect (sends boot message)
     // Pico Core 1 needs time to initialize and send boot message
@@ -815,6 +845,10 @@ void setup() {
     
     while (millis() - picoWaitStart < 10000) {
         picoUart->loop();  // Process any incoming packets
+        
+        // Skip display.update() during this wait to minimize PSRAM bandwidth contention
+        // The hardware LCD controller will keep the last frame displayed automatically.
+        // Running LVGL here can cause display noise due to memory bus contention.
         
         // Check if we're receiving any raw data at all
         if (picoUart->bytesAvailable() > 0) {
@@ -834,7 +868,9 @@ void setup() {
             Serial.flush();
             break;
         }
-        delay(10);
+        
+        // Increase delay to reduce CPU/memory load
+        delay(100);
     }
     
     if (!picoConnected) {
@@ -919,12 +955,18 @@ void setup() {
     Serial.println("WiFi Manager initialized OK");
     Serial.flush();
     
+    // Stagger initialization to reduce power supply load and EMI spikes
+    delay(500);
+    
     // Start web server
     Serial.println("[6/8] Starting web server...");
     Serial.flush();
     webServer->begin();
     Serial.println("Web server started OK");
     Serial.flush();
+    
+    // Stagger initialization
+    delay(200);
     
     // Record server ready time
     serverReadyTime = millis();
@@ -1135,7 +1177,11 @@ void setup() {
     Serial.println("Entering main loop...");
     Serial.println("========================================");
     Serial.flush();
-    Serial.flush();
+    
+    // Final display update before entering main loop to ensure screen is visible
+    display.update();
+    ui.update(machineState);
+    display.update();
 }
 
 // =============================================================================
@@ -1282,12 +1328,32 @@ void loop() {
     // State Manager - handles schedules, idle timeout, etc.
     State.loop();
     
-    // Reset idle timer on user activity (brewing, encoder, etc.)
-    // Encoder disabled - just check brewing
-    if (machineState.is_brewing) {
-        State.resetIdleTimer();
+    // Update display and encoder
+    // Reduce update rate when WiFi is active to minimize EMI interference
+    // Normal: 20 FPS (50ms), WiFi active or just started: 10 FPS (100ms) to reduce interference
+    // During startup (first 20s), keep updates slow to avoid contention during connection
+    unsigned long now = millis();
+    unsigned long uiUpdateInterval = 50;
+    
+    if (machineState.wifi_connected || machineState.wifi_ap_mode || now < 20000) {
+        uiUpdateInterval = 100; // 10 FPS when WiFi active or during startup
     }
-    /*
+    
+    // Update encoder state FAST (every loop) to ensure responsiveness
+    // Do not throttle input polling!
+    encoder.update();
+    
+    if (now - lastUIUpdate >= uiUpdateInterval) {
+        lastUIUpdate = now;
+        
+        // Update UI with machine state
+        ui.update(machineState);
+        
+        // Run LVGL timer
+        display.update();
+    }
+    
+    // Reset idle timer on user activity (brewing, encoder, etc.)
     static bool lastPressed = false;
     bool currentPressed = encoder.isPressed();
     if (machineState.is_brewing || (currentPressed && !lastPressed) || encoder.getPosition() != 0) {
@@ -1295,7 +1361,6 @@ void loop() {
         encoder.resetPosition();
     }
     lastPressed = currentPressed;
-    */
     
     // Sync BBW state to machine state (with null check)
     if (brewByWeight && brewByWeight->isActive()) {
@@ -1393,6 +1458,23 @@ void loop() {
         mDNSStarted = false;
         ntpConfigured = false;
     }
+    
+    // =========================================================================
+    // PHASE 8: Memory monitoring (every 30 seconds)
+    // =========================================================================
+    static unsigned long lastMemoryLog = 0;
+    if (millis() - lastMemoryLog >= 30000) {
+        lastMemoryLog = millis();
+        size_t freeHeap = ESP.getFreeHeap();
+        size_t minFreeHeap = ESP.getMinFreeHeap();
+        LOG_I("Memory: free=%zu, min=%zu, largest=%zu", 
+              freeHeap, minFreeHeap, ESP.getMaxAllocHeap());
+        
+        // Warn if memory is critically low
+        if (freeHeap < 10000) {
+            LOG_W("CRITICAL: Low memory! Consider reducing LVGL buffer or disabling features");
+        }
+    }
 }
 
 /**
@@ -1486,13 +1568,9 @@ void parsePicoStatus(const uint8_t* payload, uint8_t length) {
 }
 
 /**
- * Handle encoder rotation and button events - DISABLED
+ * Handle encoder rotation and button events
  */
 void handleEncoderEvent(int32_t diff, button_state_t btn) {
-    // Encoder/UI disabled
-    (void)diff;
-    (void)btn;
-    /*
     if (diff != 0) {
         LOG_D("Encoder: %+d", diff);
         ui.handleEncoder(diff);
@@ -1505,5 +1583,4 @@ void handleEncoderEvent(int32_t diff, button_state_t btn) {
     } else if (btn == BTN_DOUBLE_PRESSED) {
         ui.handleDoublePress();
     }
-    */
 }

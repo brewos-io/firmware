@@ -62,6 +62,7 @@ public:
     
     // Configuration
     bool hasStoredCredentials();
+    bool checkCredentials();  // Load and check if credentials exist (without starting WiFi)
     bool setCredentials(const String& ssid, const String& password);
     void clearCredentials();
     

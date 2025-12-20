@@ -45,25 +45,29 @@
 #define DISPLAY_HSYNC_PIN       46      // Horizontal Sync
 #define DISPLAY_PCLK_PIN        9       // Pixel Clock
 
-// RGB data pins (RGB565/RGB666)
-#define DISPLAY_R0_PIN          1
-#define DISPLAY_R1_PIN          40
-#define DISPLAY_R2_PIN          41
-#define DISPLAY_R3_PIN          42
-#define DISPLAY_R4_PIN          2
+// RGB data pins - OFFICIAL VIEWESMART UEDX48480021-MD80E pinout
+// From: https://github.com/VIEWESMART/ESP32-IDF/blob/main/examples/2.1inch/UEDX48480021-MD80E-SDK/components/bsp/include/bsp/esp-bsp.h
+// Uses RGB666 format (16 data lines mapped to 18-bit color)
+// DATA0-4 = Blue, DATA5-10 = Green, DATA11-15 = Red
 
-#define DISPLAY_G0_PIN          39
-#define DISPLAY_G1_PIN          21
-#define DISPLAY_G2_PIN          47
-#define DISPLAY_G3_PIN          48
-#define DISPLAY_G4_PIN          45
-#define DISPLAY_G5_PIN          38
+#define DISPLAY_R0_PIN          40      // DATA11 (R3)
+#define DISPLAY_R1_PIN          41      // DATA12 (R4)
+#define DISPLAY_R2_PIN          42      // DATA13 (R5)
+#define DISPLAY_R3_PIN          2       // DATA14 (R6)
+#define DISPLAY_R4_PIN          1       // DATA15 (R7)
 
-#define DISPLAY_B0_PIN          14
-#define DISPLAY_B1_PIN          10
-#define DISPLAY_B2_PIN          11
-#define DISPLAY_B3_PIN          12
-#define DISPLAY_B4_PIN          13
+#define DISPLAY_G0_PIN          21      // DATA5 (G2)
+#define DISPLAY_G1_PIN          47      // DATA6 (G3)
+#define DISPLAY_G2_PIN          48      // DATA7 (G4)
+#define DISPLAY_G3_PIN          45      // DATA8 (G5)
+#define DISPLAY_G4_PIN          38      // DATA9 (G6)
+#define DISPLAY_G5_PIN          39      // DATA10 (G7)
+
+#define DISPLAY_B0_PIN          10      // DATA0 (B3)
+#define DISPLAY_B1_PIN          11      // DATA1 (B4)
+#define DISPLAY_B2_PIN          12      // DATA2 (B5)
+#define DISPLAY_B3_PIN          13      // DATA3 (B6)
+#define DISPLAY_B4_PIN          14      // DATA4 (B7)
 
 // Backlight control
 #define DISPLAY_BL_PIN          7       // Backlight PWM
@@ -108,17 +112,18 @@
 // Auto-dim settings
 #define BACKLIGHT_DIM_TIMEOUT   30000   // Dim after 30s idle
 #define BACKLIGHT_DIM_LEVEL     50      // Dimmed brightness
-#define BACKLIGHT_OFF_TIMEOUT   60000   // Turn off after 60s idle (0 = never)
+#define BACKLIGHT_OFF_TIMEOUT   0       // Turn off after 60s idle (0 = never) - DISABLED to prevent screen turning off
 
 // =============================================================================
 // LVGL Display Buffer
 // =============================================================================
 
 // Partial buffer for RGB displays (full buffer would be too large)
-#define LVGL_BUFFER_SIZE        (DISPLAY_WIDTH * DISPLAY_HEIGHT / 8)
+// For systems without PSRAM, use smaller buffer to save internal RAM
+#define LVGL_BUFFER_SIZE        (DISPLAY_WIDTH * DISPLAY_HEIGHT / 10)
 
-// Double buffering for smoother display
-#define LVGL_DOUBLE_BUFFER      1
+// Double buffering disabled for low memory systems (no PSRAM)
+#define LVGL_DOUBLE_BUFFER      0
 
 #endif // DISPLAY_CONFIG_H
 

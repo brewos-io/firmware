@@ -60,6 +60,9 @@ lv_obj_t* screen_idle_create(void) {
     
     // Create screen with dark background
     screen = lv_obj_create(NULL);
+    // Ensure screen fills entire display
+    lv_obj_set_size(screen, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    lv_obj_set_pos(screen, 0, 0);
     lv_obj_set_style_bg_color(screen, COLOR_BG_DARK, 0);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     

@@ -16,12 +16,15 @@
 /* Color depth: 16 (RGB565) */
 #define LV_COLOR_DEPTH 16
 
-/* Swap the 2 bytes of RGB565 color for SPI displays */
-/* Disabled for simulator (native builds) */
+/* Swap the 2 bytes of RGB565 color. 
+ * - Set to 1 for SPI displays (data sent serially needs big-endian)
+ * - Set to 0 for parallel RGB displays (native format)
+ * Disabled for both simulator and RGB panel displays */
 #ifdef SIMULATOR
     #define LV_COLOR_16_SWAP 0
 #else
-    #define LV_COLOR_16_SWAP 1
+    /* RGB parallel panel uses native byte order - no swap needed */
+    #define LV_COLOR_16_SWAP 0
 #endif
 
 /* Enable more complex drawing routines for gradient, etc. */

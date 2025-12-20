@@ -105,6 +105,14 @@ bool WiFiManager::hasStoredCredentials() {
     return strlen(_storedSSID) > 0 && strlen(_storedPassword) > 0;
 }
 
+bool WiFiManager::checkCredentials() {
+    // Load credentials from NVS (if not already loaded)
+    if (_storedSSID[0] == '\0' && _storedPassword[0] == '\0') {
+        loadCredentials();
+    }
+    return hasStoredCredentials();
+}
+
 bool WiFiManager::setCredentials(const String& ssid, const String& password) {
     if (ssid.length() == 0 || password.length() < 8) {
         LOG_E("Invalid credentials");
@@ -163,6 +171,12 @@ bool WiFiManager::connectToWiFi() {
     // This is critical for WebSocket responsiveness and OTA speed
     WiFi.setSleep(false);
     
+    // Reduce WiFi transmit power to minimize EMI interference with display
+    // Default is WIFI_POWER_19_5dBm
+    // Using 11dBm as a balance between range and EMI reduction
+    // 8.5dBm was too low causing connection issues
+    WiFi.setTxPower(WIFI_POWER_11dBm);  // 11dBm (was 8.5dBm)
+    
     _mode = WiFiManagerMode::STA_CONNECTING;
     _connectStartTime = millis();
     _lastConnectAttempt = millis();
@@ -173,21 +187,55 @@ bool WiFiManager::connectToWiFi() {
 void WiFiManager::startAP() {
     LOG_I("Starting AP mode: %s", WIFI_AP_SSID);
     
-    // Disconnect from any station
-    WiFi.disconnect(true);
+    // Use AP+STA mode to keep existing WiFi connection while starting AP
+    // This allows cloud connection to remain active during setup
+    WiFiMode_t current_mode = WiFi.getMode();
+    if (current_mode == WIFI_STA || current_mode == WIFI_AP_STA) {
+        // Already in STA or AP+STA mode - keep STA connection
+        WiFi.mode(WIFI_AP_STA);
+        LOG_I("Switching to AP+STA mode (keeping existing WiFi connection)");
+    } else {
+        // No existing connection - use AP only
+        WiFi.mode(WIFI_AP);
+        LOG_I("Starting in AP-only mode (no existing WiFi connection)");
+    }
     
-    // Configure AP
-    WiFi.mode(WIFI_AP);
+    // For AP mode, use maximum power (19.5dBm) for maximum visibility
+    // Station mode uses 11dBm to reduce EMI, but AP needs maximum range
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);  // Maximum power for AP visibility
+    
+    // Disable WiFi power save for AP mode
+    WiFi.setSleep(false);
+    
+    // Configure AP IP settings
     WiFi.softAPConfig(WIFI_AP_IP, WIFI_AP_GATEWAY, WIFI_AP_SUBNET);
-    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD, WIFI_AP_CHANNEL, false, WIFI_AP_MAX_CONNECTIONS);
     
-    _mode = WiFiManagerMode::AP_MODE;
+    // Start AP with hidden=false to ensure network is visible
+    // Channel 1 is in the standard range (1-11) for best compatibility
+    bool ap_started = WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD, WIFI_AP_CHANNEL, false, WIFI_AP_MAX_CONNECTIONS);
+    
+    if (!ap_started) {
+        LOG_E("Failed to start AP!");
+        return;
+    }
+    
+    // Give AP time to initialize and start broadcasting
+    delay(100);
+    
+    // Update mode - if we have STA connection, we're in AP+STA mode
+    if (WiFi.status() == WL_CONNECTED) {
+        _mode = WiFiManagerMode::STA_MODE;  // Still connected to router
+        LOG_I("AP started while maintaining STA connection to: %s", WiFi.SSID().c_str());
+    } else {
+        _mode = WiFiManagerMode::AP_MODE;  // AP only
+    }
     
     // Get AP IP without String allocation
     IPAddress apIP = WiFi.softAPIP();
     char apIPStr[16];
     snprintf(apIPStr, sizeof(apIPStr), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
     LOG_I("AP started. IP: %s", apIPStr);
+    LOG_I("AP SSID: %s, Channel: %d, Power: 19.5dBm", WIFI_AP_SSID, WIFI_AP_CHANNEL);
     
     safeCallback(_onAPStarted);
 }

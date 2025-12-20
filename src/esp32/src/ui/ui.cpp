@@ -17,6 +17,8 @@
 #ifndef SIMULATOR
 #include "ui/screen_temp.h"
 #include "ui/screen_scale.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #endif
 #include "display/theme.h"
 #include "display/display_config.h"
@@ -28,6 +30,8 @@ UI ui;
 static bool was_brewing = false;
 static uint32_t last_brew_time = 0;
 static float last_brew_weight = 0;
+static bool last_alarm_state = false;  // Track previous alarm state for debouncing
+static uint32_t last_alarm_change_time = 0;  // Timestamp of last alarm state change
 
 // =============================================================================
 // UI Manager Implementation
@@ -76,9 +80,29 @@ bool UI::begin() {
     createCloudScreen();
     createAlarmScreen();
     
-    // Show initial screen based on WiFi state
-    // In practice, main.cpp will call showScreen based on actual state
-    showScreen(SCREEN_HOME);
+    // Show initial screen immediately (no animation for first load)
+    // Use direct load instead of animation to ensure it shows right away
+    if (_screens[SCREEN_HOME]) {
+        _currentScreen = SCREEN_HOME;
+        _previousScreen = SCREEN_HOME;
+        lv_scr_load(_screens[SCREEN_HOME]);
+        
+        // Don't update with zero state initially - screen is created with default values
+        // The main loop will update it with real state data
+        // Just invalidate to ensure it's drawn
+        lv_obj_invalidate(_screens[SCREEN_HOME]);
+        
+        // Force LVGL to process and flush the entire screen
+        // Call timer handler multiple times to ensure all refresh tasks complete
+        // Each call processes pending refresh tasks
+        for (int i = 0; i < 15; i++) {
+            uint32_t tasks = lv_timer_handler();
+            if (tasks == 0 && i > 5) break;  // No more tasks, but ensure at least 5 iterations
+            vTaskDelay(pdMS_TO_TICKS(5));  // Small delay to allow DMA transfers
+        }
+        
+        LOG_I("Initial screen (HOME) loaded, updated, and refreshed");
+    }
     
     LOG_I("UI initialized with %d screens", SCREEN_COUNT);
     return true;
@@ -88,6 +112,13 @@ void UI::update(const ui_state_t& state) {
     // Store previous state for change detection
     bool state_changed = (state.machine_state != _state.machine_state);
     bool brewing_changed = (state.is_brewing != _state.is_brewing);
+    
+    // Initialize alarm state tracking on first update
+    static bool alarm_state_initialized = false;
+    if (!alarm_state_initialized) {
+        last_alarm_state = state.alarm_active;
+        alarm_state_initialized = true;
+    }
     
     // Store new state
     _state = state;
@@ -126,6 +157,10 @@ void UI::update(const ui_state_t& state) {
             break;
         case SCREEN_HOME:
             updateHomeScreen();
+            // Invalidate screen after update to ensure changes are flushed
+            if (_screens[SCREEN_HOME]) {
+                lv_obj_invalidate(_screens[SCREEN_HOME]);
+            }
             break;
         case SCREEN_BREWING:
             updateBrewingScreen();
@@ -160,6 +195,20 @@ void UI::update(const ui_state_t& state) {
 void UI::showScreen(screen_id_t screen) {
     if (screen >= SCREEN_COUNT || !_screens[screen]) {
         LOG_W("Invalid screen: %d", screen);
+        return;
+    }
+    
+    // Rate limit screen switches to prevent rapid toggling (min 500ms between switches)
+    static uint32_t last_switch_time = 0;
+    uint32_t now = lv_tick_get();
+    if (now - last_switch_time < 500 && _currentScreen != screen) {
+        // Too fast - skip this switch (unless it's the same screen)
+        return;
+    }
+    last_switch_time = now;
+    
+    // Don't switch if already on this screen
+    if (_currentScreen == screen) {
         return;
     }
     
@@ -577,14 +626,44 @@ void UI::updateAlarmScreen() {
 // =============================================================================
 
 void UI::checkAutoScreenSwitch() {
-    // Don't auto-switch if on alarm or setup screens
-    if (_currentScreen == SCREEN_ALARM || _currentScreen == SCREEN_SETUP) {
+    // Handle alarm screen transitions with debouncing
+    // Debounce alarm state changes to prevent rapid toggling (min 500ms between changes)
+    uint32_t now = millis();
+    bool alarm_state_changed = (_state.alarm_active != last_alarm_state);
+    
+    if (alarm_state_changed && (now - last_alarm_change_time) > 500) {
+        last_alarm_state = _state.alarm_active;
+        last_alarm_change_time = now;
+        
+        if (_state.alarm_active) {
+            // Alarm just activated - show alarm screen
+            if (_currentScreen != SCREEN_ALARM) {
+                showAlarm(_state.alarm_code, nullptr);
+            }
+        } else {
+            // Alarm just cleared - switch away from alarm screen
+            if (_currentScreen == SCREEN_ALARM) {
+                screen_alarm_clear();
+                // Return to previous screen or default to home
+                if (_previousScreen != SCREEN_ALARM && _previousScreen != SCREEN_SETUP) {
+                    showScreen(_previousScreen);
+                } else {
+                    showScreen(SCREEN_HOME);
+                }
+            }
+        }
         return;
     }
     
-    // Show alarm screen if alarm is active
-    if (_state.alarm_active && _currentScreen != SCREEN_ALARM) {
+    // Don't auto-switch if on setup screen (but allow alarm screen transitions above)
+    if (_currentScreen == SCREEN_SETUP) {
+        return;
+    }
+    
+    // Show alarm screen if alarm is active (fallback for initial state)
+    if (_state.alarm_active && _currentScreen != SCREEN_ALARM && !alarm_state_changed) {
         showAlarm(_state.alarm_code, nullptr);
+        last_alarm_state = true;
         return;
     }
     
@@ -594,8 +673,9 @@ void UI::checkAutoScreenSwitch() {
         return;
     }
     
-    // Show setup screen if in AP mode
-    if (_state.wifi_ap_mode && _currentScreen != SCREEN_SETUP) {
+    // Show setup screen if in AP mode AND not connected to WiFi
+    // If WiFi is connected (AP+STA mode), don't auto-switch - user can manually access setup
+    if (_state.wifi_ap_mode && !_state.wifi_connected && _currentScreen != SCREEN_SETUP) {
         showScreen(SCREEN_SETUP);
         return;
     }

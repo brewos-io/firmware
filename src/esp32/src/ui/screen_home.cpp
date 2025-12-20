@@ -38,6 +38,9 @@ lv_obj_t* screen_home_create(void) {
     
     // Create screen with dark background
     screen = lv_obj_create(NULL);
+    // Ensure screen fills entire display
+    lv_obj_set_size(screen, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    lv_obj_set_pos(screen, 0, 0);
     lv_obj_set_style_bg_color(screen, COLOR_BG_DARK, 0);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     
@@ -74,18 +77,18 @@ lv_obj_t* screen_home_create(void) {
     status_dot = lv_obj_create(status_row);
     lv_obj_set_size(status_dot, 8, 8);
     lv_obj_set_style_radius(status_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(status_dot, COLOR_SUCCESS, 0);
+    lv_obj_set_style_bg_color(status_dot, COLOR_TEXT_MUTED, 0);
     lv_obj_set_style_border_width(status_dot, 0, 0);
     
     status_label = lv_label_create(status_row);
-    lv_label_set_text(status_label, "READY");
+    lv_label_set_text(status_label, "--");
     lv_obj_set_style_text_font(status_label, FONT_SMALL, 0);
     lv_obj_set_style_text_color(status_label, COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_style_pad_left(status_label, 6, 0);
     
     // === Brew Temperature (large, centered) ===
     brew_temp_label = lv_label_create(screen);
-    lv_label_set_text(brew_temp_label, "93.5°");
+    lv_label_set_text(brew_temp_label, "--°");
     lv_obj_set_style_text_font(brew_temp_label, FONT_TEMP, 0);
     lv_obj_set_style_text_color(brew_temp_label, COLOR_TEXT_PRIMARY, 0);
     lv_obj_align(brew_temp_label, LV_ALIGN_CENTER, 0, -35);
@@ -100,9 +103,9 @@ lv_obj_t* screen_home_create(void) {
     
     // Setpoint
     brew_setpoint_label = lv_label_create(screen);
-    lv_label_set_text(brew_setpoint_label, "→ 94.0°C");
+    lv_label_set_text(brew_setpoint_label, "--");
     lv_obj_set_style_text_font(brew_setpoint_label, FONT_SMALL, 0);
-    lv_obj_set_style_text_color(brew_setpoint_label, COLOR_ACCENT_PRIMARY, 0);
+    lv_obj_set_style_text_color(brew_setpoint_label, COLOR_TEXT_MUTED, 0);
     lv_obj_align(brew_setpoint_label, LV_ALIGN_CENTER, 0, 25);
     
     // === Bottom cards container ===
@@ -129,9 +132,9 @@ lv_obj_t* screen_home_create(void) {
     lv_obj_align(steam_title, LV_ALIGN_TOP_LEFT, 0, -2);
     
     steam_temp_label = lv_label_create(steam_card);
-    lv_label_set_text(steam_temp_label, "145°");
+    lv_label_set_text(steam_temp_label, "--°");
     lv_obj_set_style_text_font(steam_temp_label, FONT_MEDIUM, 0);
-    lv_obj_set_style_text_color(steam_temp_label, COLOR_ACCENT_ORANGE, 0);
+    lv_obj_set_style_text_color(steam_temp_label, COLOR_TEXT_MUTED, 0);
     lv_obj_align(steam_temp_label, LV_ALIGN_BOTTOM_LEFT, 0, 2);
     
     // === Pressure card ===
@@ -150,9 +153,9 @@ lv_obj_t* screen_home_create(void) {
     lv_obj_align(pressure_title, LV_ALIGN_TOP_LEFT, 0, -2);
     
     pressure_label = lv_label_create(pressure_card);
-    lv_label_set_text(pressure_label, "9.0");
+    lv_label_set_text(pressure_label, "--");
     lv_obj_set_style_text_font(pressure_label, FONT_MEDIUM, 0);
-    lv_obj_set_style_text_color(pressure_label, COLOR_SUCCESS, 0);
+    lv_obj_set_style_text_color(pressure_label, COLOR_TEXT_MUTED, 0);
     lv_obj_align(pressure_label, LV_ALIGN_BOTTOM_LEFT, 0, 2);
     
     lv_obj_t* bar_label = lv_label_create(pressure_card);
@@ -234,7 +237,7 @@ void screen_home_update(lv_obj_t* scr, const ui_state_t* state) {
     lv_label_set_text(brew_temp_label, temp_str);
     
     // Update setpoint
-    snprintf(temp_str, sizeof(temp_str), "→ %.1f°C", main_setpoint);
+    snprintf(temp_str, sizeof(temp_str), "> %.1f°C", main_setpoint);
     lv_label_set_text(brew_setpoint_label, temp_str);
     
     // Update brew arc (percentage of setpoint)

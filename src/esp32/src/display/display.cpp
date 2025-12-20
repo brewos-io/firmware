@@ -1,98 +1,200 @@
 /**
  * BrewOS Display Driver Implementation
  * 
- * Uses LovyanGFX for hardware abstraction
+ * Uses ESP-IDF LCD Panel API directly (same as working VIEWESMART BSP)
+ * Based on: UEDX48480021-MD80ESP32_2.1inch-Knob/examples/ESP-IDF/UEDX48480021-MD80E-SDK/components/bsp/sub_board/bsp_lcd.c
+ * 
+ * KEY: Uses on_frame_trans_done callback to synchronize LVGL flushes with DMA transfers.
  */
 
 #include "display/display.h"
+#include "display/display_config.h"
 #include "config.h"
 
-// LovyanGFX for display driver
-#define LGFX_USE_V1
-#include <LovyanGFX.hpp>
-
-// =============================================================================
-// LovyanGFX Panel Configuration for Round Display
-// =============================================================================
-
-class LGFX : public lgfx::LGFX_Device {
-    // SPI bus instance
-    lgfx::Bus_SPI _bus_instance;
-    
-    // Panel instance (GC9A01 is common for round displays)
-    lgfx::Panel_GC9A01 _panel_instance;
-    
-    // Backlight control
-    lgfx::Light_PWM _light_instance;
-    
-public:
-    LGFX(void) {
-        // SPI Bus configuration
-        {
-            auto cfg = _bus_instance.config();
-            
-            cfg.spi_host = DISPLAY_SPI_HOST;
-            cfg.spi_mode = 0;
-            cfg.freq_write = DISPLAY_SPI_FREQ;
-            cfg.freq_read = 16000000;
-            cfg.spi_3wire = false;
-            cfg.use_lock = true;
-            cfg.dma_channel = SPI_DMA_CH_AUTO;
-            cfg.pin_sclk = DISPLAY_SCLK_PIN;
-            cfg.pin_mosi = DISPLAY_MOSI_PIN;
-            cfg.pin_miso = -1;  // Not used
-            cfg.pin_dc = DISPLAY_DC_PIN;
-            
-            _bus_instance.config(cfg);
-            _panel_instance.setBus(&_bus_instance);
-        }
-        
-        // Panel configuration
-        {
-            auto cfg = _panel_instance.config();
-            
-            cfg.pin_cs = DISPLAY_CS_PIN;
-            cfg.pin_rst = DISPLAY_RST_PIN;
-            cfg.pin_busy = -1;
-            
-            cfg.panel_width = DISPLAY_WIDTH;
-            cfg.panel_height = DISPLAY_HEIGHT;
-            cfg.offset_x = 0;
-            cfg.offset_y = 0;
-            cfg.offset_rotation = 0;
-            cfg.dummy_read_pixel = 8;
-            cfg.dummy_read_bits = 1;
-            cfg.readable = false;
-            cfg.invert = true;      // GC9A01 typically needs invert
-            cfg.rgb_order = false;
-            cfg.dlen_16bit = false;
-            cfg.bus_shared = false;
-            
-            _panel_instance.config(cfg);
-        }
-        
-        // Backlight configuration
-        {
-            auto cfg = _light_instance.config();
-            
-            cfg.pin_bl = DISPLAY_BL_PIN;
-            cfg.invert = false;
-            cfg.freq = BACKLIGHT_PWM_FREQ;
-            cfg.pwm_channel = BACKLIGHT_PWM_CHANNEL;
-            
-            _light_instance.config(cfg);
-            _panel_instance.setLight(&_light_instance);
-        }
-        
-        setPanel(&_panel_instance);
-    }
-};
-
-// Global LovyanGFX instance
-static LGFX lcd;
+#include <esp_lcd_panel_ops.h>
+#include <esp_lcd_panel_rgb.h>
+#include <driver/gpio.h>
+#include <esp_heap_caps.h>
+#include <esp_rom_sys.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 // Global display instance
 Display display;
+
+// LCD panel handle
+static esp_lcd_panel_handle_t panel_handle = NULL;
+
+// Semaphore for synchronizing LVGL flushes with DMA transfers
+static SemaphoreHandle_t s_flush_sem = NULL;
+
+// LVGL display driver for callback
+static lv_disp_drv_t* s_disp_drv = NULL;
+
+// Frame transfer done callback - called by DMA when a frame is complete
+static IRAM_ATTR bool on_frame_trans_done(esp_lcd_panel_handle_t panel, 
+                                           esp_lcd_rgb_panel_event_data_t *edata, 
+                                           void *user_ctx) {
+    BaseType_t need_yield = pdFALSE;
+    if (s_flush_sem) {
+        xSemaphoreGiveFromISR(s_flush_sem, &need_yield);
+    }
+    return (need_yield == pdTRUE);
+}
+
+// =============================================================================
+// 3-Wire SPI Bit-Bang (exact copy from working BSP)
+// =============================================================================
+
+#define LCD_SPI_CS   18
+#define LCD_SPI_SCK  13
+#define LCD_SPI_SDO  12
+#define LCD_RST      8
+
+#define udelay(t) esp_rom_delay_us(t)
+
+static void spi_write_9bit(uint16_t data) {
+    for (uint8_t n = 0; n < 9; n++) {
+        gpio_set_level((gpio_num_t)LCD_SPI_SDO, (data & 0x0100) ? 1 : 0);
+        data = data << 1;
+        
+        gpio_set_level((gpio_num_t)LCD_SPI_SCK, 0);
+        udelay(10);
+        gpio_set_level((gpio_num_t)LCD_SPI_SCK, 1);
+        udelay(10);
+    }
+}
+
+static void spi_write_cmd(uint8_t cmd) {
+    gpio_set_level((gpio_num_t)LCD_SPI_CS, 0);
+    udelay(10);
+    spi_write_9bit(cmd & 0x00FF);  // D/C bit = 0 for command
+    udelay(10);
+    gpio_set_level((gpio_num_t)LCD_SPI_CS, 1);
+    gpio_set_level((gpio_num_t)LCD_SPI_SCK, 1);
+    gpio_set_level((gpio_num_t)LCD_SPI_SDO, 1);
+    udelay(10);
+}
+
+static void spi_write_data(uint8_t data) {
+    gpio_set_level((gpio_num_t)LCD_SPI_CS, 0);
+    udelay(10);
+    spi_write_9bit(0x0100 | data);  // D/C bit = 1 for data
+    udelay(10);
+    gpio_set_level((gpio_num_t)LCD_SPI_CS, 1);
+    gpio_set_level((gpio_num_t)LCD_SPI_SCK, 1);
+    gpio_set_level((gpio_num_t)LCD_SPI_SDO, 1);
+    udelay(10);
+}
+
+// =============================================================================
+// ST7701S Init Commands (EXACT copy from working washer.bin bsp_lcd.c)
+// ALL commands in ONE table, including Sleep Out (0x11)
+// =============================================================================
+
+typedef struct {
+    uint8_t cmd;
+    uint8_t data[52];
+    uint8_t data_bytes;  // 0xFF = end of commands
+} lcd_init_cmd_t;
+
+// EXACT command sequence from reference_local/UEDX48480021-MD80ESP32_2.1inch-Knob/examples/ESP-IDF/UEDX48480021-MD80E-SDK/components/bsp/sub_board/bsp_lcd.c
+static const lcd_init_cmd_t LCD_INIT_CMDS[] = {
+    {0xFF, {0x77,0x01,0x00,0x00,0x13}, 5},
+    {0xEF, {0x08}, 1},
+    {0xFF, {0x77,0x01,0x00,0x00,0x10}, 5},
+    {0xC0, {0x3B,0x00}, 2},
+    {0xC1, {0x0B,0x02}, 2},
+    {0xC2, {0x07,0x02}, 2},
+    {0xC7, {0x00}, 1},
+    {0xCC, {0x10}, 1},
+    {0xCD, {0x08}, 1},
+    {0xB0, {0x00,0x11,0x16,0x0E,0x11,0x06,0x05,0x09,0x08,0x21,0x06,0x13,0x10,0x29,0x31,0x18}, 16},
+    {0xB1, {0x00,0x11,0x16,0x0E,0x11,0x07,0x05,0x09,0x09,0x21,0x05,0x13,0x11,0x2A,0x31,0x18}, 16},
+    {0xFF, {0x77,0x01,0x00,0x00,0x11}, 5},
+    {0xB0, {0x6D}, 1},
+    {0xB1, {0x37}, 1},
+    {0xB2, {0x8B}, 1},
+    {0xB3, {0x80}, 1},
+    {0xB5, {0x43}, 1},
+    {0xB7, {0x85}, 1},
+    {0xB8, {0x20}, 1},
+    {0xC0, {0x09}, 1},
+    {0xC1, {0x78}, 1},
+    {0xC2, {0x78}, 1},
+    {0xD0, {0x88}, 1},
+    {0xE0, {0x00,0x00,0x02}, 3},
+    {0xE1, {0x03,0xA0,0x00,0x00,0x04,0xA0,0x00,0x00,0x00,0x20,0x20}, 11},
+    {0xE2, {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, 13},
+    {0xE3, {0x00,0x00,0x11,0x00}, 4},
+    {0xE4, {0x22,0x00}, 2},
+    {0xE5, {0x05,0xEC,0xF6,0xCA,0x07,0xEE,0xF6,0xCA,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, 16},
+    {0xE6, {0x00,0x00,0x11,0x00}, 4},
+    {0xE7, {0x22,0x00}, 2},
+    {0xE8, {0x06,0xED,0xF6,0xCA,0x08,0xEF,0xF6,0xCA,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, 16},
+    {0xE9, {0x36,0x00}, 2},
+    {0xEB, {0x00,0x00,0x40,0x40,0x00,0x00,0x00}, 7},
+    {0xED, {0xFF,0xFF,0xFF,0xBA,0x0A,0xFF,0x45,0xFF,0xFF,0x54,0xFF,0xA0,0xAB,0xFF,0xFF,0xFF}, 16},
+    {0xEF, {0x08,0x08,0x08,0x45,0x3F,0x54}, 6},
+    {0xFF, {0x77,0x01,0x00,0x00,0x13}, 5},
+    {0xE8, {0x00,0x0E}, 2},
+    {0xFF, {0x77,0x01,0x00,0x00,0x00}, 5},
+    {0x11, {0x00}, 1},   // Sleep Out with data byte (CRITICAL: must have data byte!)
+    {0xFF, {0x77,0x01,0x00,0x00,0x13}, 5},
+    {0xE8, {0x00,0x0C}, 2},
+    {0xE8, {0x00,0x00}, 2},
+    {0xFF, {0x77,0x01,0x00,0x00,0x00}, 5},
+    {0x36, {0x00}, 1},
+    {0x3A, {0x66}, 1},   // RGB666 color format (0x66)
+    {0x00, {0x00}, 0xFF}, // End marker
+};
+
+static void send_lcd_init_commands(void) {
+    // Configure SPI pins (EXACT copy from working bsp_lcd.c)
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << LCD_SPI_CS) | (1ULL << LCD_SPI_SCK) | (1ULL << LCD_SPI_SDO) | (1ULL << LCD_RST) | (1ULL << 7), // Include BL pin
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+    
+    // Initial pin states (same as reference - NO hardware reset toggle!)
+    gpio_set_level((gpio_num_t)LCD_RST, 1);
+    gpio_set_level((gpio_num_t)LCD_SPI_CS, 1);
+    gpio_set_level((gpio_num_t)LCD_SPI_SCK, 1);
+    gpio_set_level((gpio_num_t)LCD_SPI_SDO, 1);
+    
+    LOG_I("Sending ST7701S init commands (washer.bin sequence)...");
+    
+    // Send ALL init commands in one loop (EXACT match to reference)
+    uint8_t i = 0;
+    while (LCD_INIT_CMDS[i].data_bytes != 0xFF) {
+        spi_write_cmd(LCD_INIT_CMDS[i].cmd);
+        for (uint8_t j = 0; j < LCD_INIT_CMDS[i].data_bytes; j++) {
+            spi_write_data(LCD_INIT_CMDS[i].data[j]);
+        }
+        i++;
+    }
+    
+    // Wait 120ms after all commands (including Sleep Out which is now in the table)
+    vTaskDelay(pdMS_TO_TICKS(120));
+    
+    // Display ON command (0x29)
+    spi_write_cmd(0x29);
+    
+    // Wait 20ms (reference uses 20ms, not 120ms!)
+    vTaskDelay(pdMS_TO_TICKS(20));
+    
+    // Reset SPI pins so they can be used as RGB data pins
+    // Reference: gpio_reset_pin(BSP_LCD_SPI_SCK); gpio_reset_pin(BSP_LCD_SPI_SDO);
+    // Note: Reference does NOT reset CS pin
+    gpio_reset_pin((gpio_num_t)LCD_SPI_SCK);  // GPIO13 -> DATA3
+    gpio_reset_pin((gpio_num_t)LCD_SPI_SDO);  // GPIO12 -> DATA2
+    
+    LOG_I("ST7701S init commands sent, SPI pins released for RGB mode");
+}
 
 // =============================================================================
 // Display Class Implementation
@@ -111,14 +213,12 @@ Display::Display()
 bool Display::begin() {
     LOG_I("Initializing display...");
     
-    // Initialize hardware
     initHardware();
-    
-    // Initialize LVGL
     initLVGL();
     
-    // Set initial backlight
-    setBacklight(BACKLIGHT_DEFAULT);
+    // Keep backlight at full brightness (already set LOW = ON in initHardware)
+    // Don't call setBacklight() here as it may conflict with the GPIO
+    _backlightLevel = BACKLIGHT_DEFAULT;
     resetIdleTimer();
     
     LOG_I("Display initialized: %dx%d", DISPLAY_WIDTH, DISPLAY_HEIGHT);
@@ -126,103 +226,194 @@ bool Display::begin() {
 }
 
 void Display::initHardware() {
-    // Initialize LovyanGFX
-    lcd.init();
-    lcd.setRotation(DISPLAY_ROTATION / 90);
-    lcd.setBrightness(BACKLIGHT_DEFAULT);
+    LOG_I("Initializing display using ESP-IDF LCD Panel API...");
     
-    // Clear screen to black
-    lcd.fillScreen(TFT_BLACK);
+    // Turn on backlight (active LOW)
+    gpio_config_t bl_conf = {
+        .pin_bit_mask = (1ULL << DISPLAY_BL_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&bl_conf);
+    gpio_set_level((gpio_num_t)DISPLAY_BL_PIN, 0);  // Active LOW = ON
+    LOG_I("Backlight ON");
     
-    LOG_I("Display hardware initialized");
-}
-
-void Display::initLVGL() {
-    // Initialize LVGL
-    lv_init();
+    // Send LCD init commands via 3-wire SPI
+    send_lcd_init_commands();
     
-    // Allocate display buffers in PSRAM for best performance
-    size_t bufferSize = LVGL_BUFFER_SIZE * sizeof(lv_color_t);
+    // Create RGB panel
+    LOG_I("Creating RGB panel...");
+    esp_lcd_rgb_panel_config_t panel_config = {};
+    panel_config.clk_src = LCD_CLK_SRC_PLL160M;
+    // Pixel clock set to 16MHz to minimize EMI and ensure stable operation
+    // This provides smooth 60Hz refresh for 480x480 display
+    panel_config.timings.pclk_hz = 16 * 1000 * 1000;  // 16 MHz
+    panel_config.timings.h_res = 480;
+    panel_config.timings.v_res = 480;
+    panel_config.timings.hsync_pulse_width = 8;
+    panel_config.timings.hsync_back_porch = 20;
+    panel_config.timings.hsync_front_porch = 40;
+    panel_config.timings.vsync_pulse_width = 8;
+    panel_config.timings.vsync_back_porch = 20;
+    panel_config.timings.vsync_front_porch = 50;
+    panel_config.timings.flags.pclk_active_neg = 0;
+    panel_config.data_width = 16;
+    panel_config.psram_trans_align = 64;
+    panel_config.de_gpio_num = 17;
+    panel_config.pclk_gpio_num = 9;
+    panel_config.vsync_gpio_num = 3;
+    panel_config.hsync_gpio_num = 46;
+    panel_config.disp_gpio_num = -1;
+    panel_config.data_gpio_nums[0] = 10;   // DATA0 - B3
+    panel_config.data_gpio_nums[1] = 11;   // DATA1 - B4
+    panel_config.data_gpio_nums[2] = 12;   // DATA2 - B5 (was SPI SDO)
+    panel_config.data_gpio_nums[3] = 13;   // DATA3 - B6 (was SPI SCK)
+    panel_config.data_gpio_nums[4] = 14;   // DATA4 - B7
+    panel_config.data_gpio_nums[5] = 21;   // DATA5 - G2
+    panel_config.data_gpio_nums[6] = 47;   // DATA6 - G3
+    panel_config.data_gpio_nums[7] = 48;   // DATA7 - G4
+    panel_config.data_gpio_nums[8] = 45;   // DATA8 - G5
+    panel_config.data_gpio_nums[9] = 38;   // DATA9 - G6
+    panel_config.data_gpio_nums[10] = 39;  // DATA10 - G7
+    panel_config.data_gpio_nums[11] = 40;  // DATA11 - R3
+    panel_config.data_gpio_nums[12] = 41;  // DATA12 - R4
+    panel_config.data_gpio_nums[13] = 42;  // DATA13 - R5
+    panel_config.data_gpio_nums[14] = 2;   // DATA14 - R6
+    panel_config.data_gpio_nums[15] = 1;   // DATA15 - R7
+    panel_config.flags.fb_in_psram = 1;
+    // Note: double_fb flag may not be available in all ESP-IDF versions
+    // Double buffering is handled by the RGB panel driver automatically when using PSRAM
+    // If needed, can use: panel_config.num_fbs = 2; (but check ESP-IDF version support)
     
-    _buf1 = (lv_color_t*)heap_caps_malloc(bufferSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!_buf1) {
-        LOG_E("Failed to allocate LVGL buffer 1 in PSRAM, trying regular RAM");
-        _buf1 = (lv_color_t*)malloc(bufferSize);
-    }
+    // Register callback to synchronize with DMA transfers
+    panel_config.on_frame_trans_done = on_frame_trans_done;
+    panel_config.user_ctx = NULL;
     
-#if LVGL_DOUBLE_BUFFER
-    _buf2 = (lv_color_t*)heap_caps_malloc(bufferSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!_buf2) {
-        LOG_W("Failed to allocate LVGL buffer 2, using single buffer");
-        _buf2 = nullptr;
-    }
-#endif
+    // Create semaphore for flush synchronization
+    s_flush_sem = xSemaphoreCreateBinary();
+    xSemaphoreGive(s_flush_sem);  // Start with semaphore available
     
-    if (!_buf1) {
-        LOG_E("Failed to allocate any LVGL buffer!");
+    esp_err_t ret = esp_lcd_new_rgb_panel(&panel_config, &panel_handle);
+    if (ret != ESP_OK) {
+        LOG_E("Failed to create RGB panel: %s", esp_err_to_name(ret));
         return;
     }
     
-    // Initialize draw buffer
-    lv_disp_draw_buf_init(&_drawBuf, _buf1, _buf2, LVGL_BUFFER_SIZE);
+    esp_lcd_panel_reset(panel_handle);
+    esp_lcd_panel_init(panel_handle);
     
-    // Initialize display driver
+    LOG_I("RGB panel created successfully!");
+    LOG_I("Display hardware initialized successfully");
+}
+
+void Display::initLVGL() {
+    LOG_I("Initializing LVGL...");
+    
+    lv_init();
+    
+    // Allocate LVGL draw buffer
+    // Try Internal RAM first to avoid PSRAM bandwidth contention with RGB panel
+    // Use smaller buffer if needed to fit in SRAM
+    size_t buf_size = DISPLAY_WIDTH * 20; // Reduced to 20 lines to fit in SRAM
+    
+    _buf1 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!_buf1) {
+        LOG_W("Internal RAM allocation failed, trying PSRAM");
+        _buf1 = (lv_color_t *)heap_caps_malloc(buf_size * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
+    }
+    _buf2 = nullptr;
+    
+    if (!_buf1) {
+        LOG_E("Failed to allocate LVGL buffer!");
+        return;
+    }
+    LOG_I("LVGL buffer at %p (%d bytes)", _buf1, buf_size * sizeof(lv_color_t));
+    
+    lv_disp_draw_buf_init(&_drawBuf, _buf1, _buf2, buf_size);
+    
     lv_disp_drv_init(&_dispDrv);
     _dispDrv.hor_res = DISPLAY_WIDTH;
     _dispDrv.ver_res = DISPLAY_HEIGHT;
+    _dispDrv.physical_hor_res = DISPLAY_WIDTH;  // Physical resolution (same as logical)
+    _dispDrv.physical_ver_res = DISPLAY_HEIGHT;  // Physical resolution (same as logical)
+    _dispDrv.offset_x = 0;  // No horizontal offset
+    _dispDrv.offset_y = 0;  // No vertical offset
     _dispDrv.flush_cb = flushCallback;
     _dispDrv.draw_buf = &_drawBuf;
     _dispDrv.user_data = this;
     
-    // Register display
+    // Store driver pointer for callback access
+    s_disp_drv = &_dispDrv;
+    
     _display = lv_disp_drv_register(&_dispDrv);
     
-    LOG_I("LVGL initialized with %s buffer (%d bytes)", 
-          _buf2 ? "double" : "single",
-          bufferSize);
+    LOG_I("LVGL initialized with %d pixel buffer", buf_size);
 }
 
 void Display::flushCallback(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* color_p) {
-    uint32_t w = (area->x2 - area->x1 + 1);
-    uint32_t h = (area->y2 - area->y1 + 1);
+    if (!panel_handle) {
+        LOG_E("Flush called but panel is NULL!");
+        lv_disp_flush_ready(drv);
+        return;
+    }
     
-    // Use LovyanGFX to push pixels
-    lcd.startWrite();
-    lcd.setAddrWindow(area->x1, area->y1, w, h);
-    lcd.writePixels((lgfx::rgb565_t*)color_p, w * h);
-    lcd.endWrite();
+    // Wait for any previous DMA transfer to complete
+    // The semaphore is given by on_frame_trans_done when previous DMA completes
+    if (s_flush_sem) {
+        xSemaphoreTake(s_flush_sem, portMAX_DELAY);
+    }
     
-    // Notify LVGL that flushing is done
+    // Draw the buffer to the RGB panel
+    // This starts an asynchronous DMA transfer
+    esp_lcd_panel_draw_bitmap(panel_handle, 
+                              area->x1, area->y1, 
+                              area->x2 + 1, area->y2 + 1, 
+                              color_p);
+    
+    // Wait for THIS transfer to complete before returning
+    // This ensures the buffer remains valid until DMA is done
+    // The on_frame_trans_done callback will give the semaphore when transfer completes
+    if (s_flush_sem) {
+        xSemaphoreTake(s_flush_sem, portMAX_DELAY);
+        // Give semaphore back for next flush
+        xSemaphoreGive(s_flush_sem);
+    }
+    
     lv_disp_flush_ready(drv);
 }
 
 uint32_t Display::update() {
-    // Update backlight based on idle time
     updateBacklightIdle();
-    
-    // Run LVGL timer handler
     return lv_timer_handler();
 }
 
 void Display::setBacklight(uint8_t brightness) {
     _backlightLevel = brightness;
-    lcd.setBrightness(brightness);
+    // Active LOW: 0 = ON, 1 = OFF
+    // For simplicity, use digital on/off to avoid PWM conflicts
+    if (brightness > 0) {
+        gpio_set_level((gpio_num_t)DISPLAY_BL_PIN, 0);  // ON
+    } else {
+        gpio_set_level((gpio_num_t)DISPLAY_BL_PIN, 1);  // OFF
+    }
 }
 
 void Display::backlightOn() {
     _isDimmed = false;
+    gpio_set_level((gpio_num_t)DISPLAY_BL_PIN, 0);  // Active LOW = ON
     setBacklight(_backlightSaved);
 }
 
 void Display::backlightOff() {
     _backlightSaved = _backlightLevel;
     setBacklight(0);
+    gpio_set_level((gpio_num_t)DISPLAY_BL_PIN, 1);  // Active LOW = OFF
 }
 
 void Display::resetIdleTimer() {
     _lastActivityTime = millis();
-    
-    // If dimmed, restore brightness
     if (_isDimmed) {
         _isDimmed = false;
         setBacklight(_backlightSaved);
@@ -234,22 +425,17 @@ void Display::updateBacklightIdle() {
     unsigned long idleTime = now - _lastActivityTime;
     
 #if BACKLIGHT_OFF_TIMEOUT > 0
-    // Check for off timeout
     if (idleTime >= BACKLIGHT_OFF_TIMEOUT && _backlightLevel > 0) {
-        if (!_isDimmed) {
-            _backlightSaved = _backlightLevel;
-        }
+        if (!_isDimmed) _backlightSaved = _backlightLevel;
         setBacklight(0);
         _isDimmed = true;
         return;
     }
 #endif
     
-    // Check for dim timeout
     if (idleTime >= BACKLIGHT_DIM_TIMEOUT && !_isDimmed) {
         _backlightSaved = _backlightLevel;
         setBacklight(BACKLIGHT_DIM_LEVEL);
         _isDimmed = true;
     }
 }
-
