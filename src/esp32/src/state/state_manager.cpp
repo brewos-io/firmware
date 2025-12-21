@@ -206,7 +206,7 @@ void StateManager::loadSettings() {
     _settings.preferences.initialized = prefs.getBool("prefInit", false);
     
     Serial.println("[State] Finished reading settings, closing NVS...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     prefs.end();
     
@@ -355,13 +355,13 @@ void StateManager::saveNotificationSettings() {
 void StateManager::saveSystemSettings() {
     if (!_prefs.begin(NVS_SETTINGS, false)) {
         Serial.println("[State] ERROR: Failed to open NVS for system settings save");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
         return;
     }
     _prefs.putBool("setupDone", _settings.system.setupComplete);
     _prefs.end();  // This commits the changes to flash
     Serial.println("[State] System settings saved (setupComplete=" + String(_settings.system.setupComplete ? "true" : "false") + ")");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     notifySettingsChanged();
 }
 

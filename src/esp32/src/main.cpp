@@ -591,20 +591,22 @@ static void onPicoPacket(const PicoPacket& packet) {
 }
 
 void setup() {
-    // CRITICAL: Initialize serial FIRST
-    // With ARDUINO_USB_CDC_ON_BOOT=1, Serial goes to USB CDC (appears as /dev/cu.usbmodem* or /dev/cu.usbserial*)
-    // Serial0 is hardware UART (GPIO43/44 by default, or can be configured to GPIO36/37)
-    // Serial1 is used for Pico communication (GPIO43/44)
+    // Turn on backlight immediately so user knows device is running
+    // Backlight is GPIO7, active LOW (LOW = ON)
+    pinMode(7, OUTPUT);
+    digitalWrite(7, LOW);
+    
+    // Initialize USB CDC Serial in non-blocking mode
+    // On ESP32-S3, USB CDC can block if no host is connected
     Serial.begin(115200);
-    delay(500);  // Give USB CDC time to enumerate
+    Serial.setTxTimeoutMs(10);  // Short timeout - won't block long if no USB host
     
     // Note: Watchdog is kept enabled - it helps catch hangs and crashes
     // Attempting to disable it causes errors on ESP32-S3
     
-    // Print immediately - minimal code
+    // Print startup info (will be lost if no USB host connected)
     Serial.println();
     Serial.println("SETUP START");
-    delay(100);
     
     Serial.print("Internal heap: ");
     Serial.println(ESP.getFreeHeap());
@@ -635,7 +637,6 @@ void setup() {
         Serial.println("WARNING: PSRAM allocation failed - PSRAM may not be available");
     }
     free(smallAlloc);
-    Serial.flush();
     
     // Initialize NVS (Non-Volatile Storage) FIRST
     // This ensures Preferences library works correctly after fresh flash
@@ -683,80 +684,80 @@ void setup() {
     // CRITICAL: Allocate in internal RAM (not PSRAM) to avoid InstructionFetchError
     // when callbacks are called. PSRAM pointers cause CPU crashes.
     Serial.println("[3.5/8] Creating global objects in internal RAM...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // All objects use regular new - PSRAM is disabled so malloc uses internal RAM
     // Placement new with heap_caps_malloc was causing memory corruption
     wifiManager = new WiFiManager();
     Serial.println("WiFiManager created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     picoUart = new PicoUART(Serial1);
     Serial.println("PicoUART created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     mqttClient = new MQTTClient();
     Serial.println("MQTTClient created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     pairingManager = new PairingManager();
     Serial.println("PairingManager created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     cloudConnection = new CloudConnection();
     Serial.println("CloudConnection created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     webServer = new WebServer(*wifiManager, *picoUart, *mqttClient, pairingManager);
     Serial.println("WebServer created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     scaleManager = new ScaleManager();
     Serial.println("ScaleManager created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     brewByWeight = new BrewByWeight();
     Serial.println("BrewByWeight created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     powerMeterManager = new PowerMeterManager();
     Serial.println("PowerMeterManager created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     notificationManager = new NotificationManager();
     Serial.println("NotificationManager created");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     Serial.println("All global objects created OK");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Initialize display (PSRAM enabled for RGB frame buffer)
     Serial.println("[4/8] Initializing display...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     if (!display.begin()) {
         Serial.println("ERROR: Display initialization failed!");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
     } else {
         Serial.println("Display initialized OK");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
     }
     
     // Initialize encoder
     Serial.println("[4.5/8] Initializing encoder...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     if (!encoder.begin()) {
         Serial.println("ERROR: Encoder initialization failed!");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
     } else {
         Serial.println("Encoder initialized OK");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
     }
     encoder.setCallback(handleEncoderEvent);
     
     // Check if WiFi setup is needed BEFORE initializing UI
     // This ensures the setup screen shows immediately if no credentials exist
     Serial.println("[4.7/8] Checking WiFi credentials...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     bool needsWifiSetup = !wifiManager->checkCredentials();
     if (needsWifiSetup) {
         Serial.println("No WiFi credentials found - setup screen will be shown");
@@ -767,17 +768,17 @@ void setup() {
         machineState.wifi_ap_mode = false;
         machineState.wifi_connected = false;  // Will be updated when WiFi connects
     }
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Initialize UI
     Serial.println("[4.8/8] Initializing UI...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     if (!ui.begin()) {
         Serial.println("ERROR: UI initialization failed!");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
     } else {
         Serial.println("UI initialized OK");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
         
         // Update UI with initial state (including WiFi setup status)
         ui.update(machineState);
@@ -785,7 +786,7 @@ void setup() {
         // If WiFi setup is needed, show setup screen immediately
         if (needsWifiSetup) {
             Serial.println("Showing WiFi setup screen...");
-            Serial.flush();
+            // Serial.flush(); // Removed - can block on USB CDC
         }
         
         // Force display update to show initial screen immediately
@@ -834,15 +835,15 @@ void setup() {
     
     // Initialize Pico UART
     Serial.println("[4/8] Initializing Pico UART...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     picoUart->begin();
     Serial.println("Pico UART initialized OK");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Set up packet handler BEFORE waiting for Pico
     // This ensures we capture the MSG_BOOT packet with machine type
     Serial.println("[4.4/8] Setting up Pico packet handler...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     picoUart->onPacket(onPicoPacket);
     
     // NOTE: Skipping Pico reset during initialization because:
@@ -852,7 +853,7 @@ void setup() {
     // If Pico reset is needed later, it should be done before display initialization
     // or use a different GPIO pin for Pico reset
     // Serial.println("[4.5/8] Resetting Pico...");
-    // Serial.flush();
+    // // Serial.flush(); // Removed - can block on USB CDC
     // picoUart->resetPico();
     // delay(1000);  // Give Pico time to reset and start booting (Core 1 needs time to init)
     
@@ -860,7 +861,7 @@ void setup() {
     // Pico Core 1 needs time to initialize and send boot message
     // Increased to 10 seconds to allow for simultaneous power-on initialization
     Serial.println("[4.6/8] Waiting for Pico connection (10 seconds)...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     unsigned long picoWaitStart = millis();
     bool picoConnected = false;
     uint32_t initialPackets = picoUart->getPacketsReceived();
@@ -882,13 +883,13 @@ void setup() {
         if (picoUart->getPacketsReceived() > initialPackets) {
             Serial.printf("Received %d packet(s) from Pico\n", 
                          picoUart->getPacketsReceived() - initialPackets);
-            Serial.flush();
+            // Serial.flush(); // Removed - can block on USB CDC
         }
         
         if (picoUart->isConnected()) {
             picoConnected = true;
             Serial.println("Pico connected!");
-            Serial.flush();
+            // Serial.flush(); // Removed - can block on USB CDC
             break;
         }
         
@@ -911,28 +912,28 @@ void setup() {
         
         // Try sending a ping to see if Pico responds
         Serial.println("Attempting to ping Pico...");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
         if (picoUart->sendPing()) {
             Serial.println("Ping sent, waiting 500ms for response...");
-            Serial.flush();
+            // Serial.flush(); // Removed - can block on USB CDC
             delay(500);
             picoUart->loop();
             if (picoUart->isConnected()) {
                 picoConnected = true;
                 Serial.println("Pico responded to ping - connected!");
-                Serial.flush();
+                // Serial.flush(); // Removed - can block on USB CDC
             } else {
                 Serial.println("Ping sent but no response received");
-                Serial.flush();
+                // Serial.flush(); // Removed - can block on USB CDC
             }
         } else {
             Serial.println("Failed to send ping");
-            Serial.flush();
+            // Serial.flush(); // Removed - can block on USB CDC
         }
         
         if (!picoConnected) {
             Serial.println("Continuing without Pico");
-            Serial.flush();
+            // Serial.flush(); // Removed - can block on USB CDC
         }
     }
     
@@ -940,7 +941,7 @@ void setup() {
     // This handles the case where MSG_BOOT was missed (Pico was already running before ESP32)
     if (picoConnected && State.getMachineType() == 0) {
         Serial.println("Machine type unknown - requesting boot info from Pico...");
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
         
         // Try multiple times since Pico might be busy
         for (int attempt = 0; attempt < 5 && State.getMachineType() == 0; attempt++) {
@@ -953,7 +954,7 @@ void setup() {
             }
             if (State.getMachineType() == 0) {
                 Serial.printf("Attempt %d: No boot info received\n", attempt + 1);
-                Serial.flush();
+                // Serial.flush(); // Removed - can block on USB CDC
             }
         }
         
@@ -963,7 +964,7 @@ void setup() {
             Serial.println("WARNING: Could not get machine type from Pico");
             Serial.println("OTA updates will wait for Pico to report its type");
         }
-        Serial.flush();
+        // Serial.flush(); // Removed - can block on USB CDC
     }
     
     // Initialize WiFi callbacks using static function pointers
@@ -973,20 +974,20 @@ void setup() {
     wifiManager->onAPStarted(onWiFiAPStarted);
     
     Serial.println("[5/8] Initializing WiFi Manager...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     wifiManager->begin();
     Serial.println("WiFi Manager initialized OK");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Stagger initialization to reduce power supply load and EMI spikes
     delay(500);
     
     // Start web server
     Serial.println("[6/8] Starting web server...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     webServer->begin();
     Serial.println("Web server started OK");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Stagger initialization
     delay(200);
@@ -996,17 +997,17 @@ void setup() {
     
     // Initialize MQTT
     Serial.println("[7/8] Initializing MQTT...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     mqttClient->begin();
     Serial.println("MQTT initialized OK");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Initialize Power Meter Manager
     Serial.println("[7.5/8] Initializing Power Meter...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     powerMeterManager->begin();
     Serial.println("Power Meter initialized OK");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Set up MQTT command handler
     mqttClient->onCommand([](const char* cmd, const JsonDocument& doc) {
@@ -1119,7 +1120,7 @@ void setup() {
     
     // Set default state values from BBW settings
     LOG_I("Setting default machine state values...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     machineState.brew_setpoint = 93.0f;
     machineState.steam_setpoint = 145.0f;
     machineState.target_weight = brewByWeight->getTargetWeight();
@@ -1128,18 +1129,18 @@ void setup() {
     machineState.steam_max_temp = 160.0f;
     machineState.dose_weight = 18.0f;
     LOG_I("Default values set");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Initialize State Manager (schedules, settings persistence)
     Serial.println("[8/8] Initializing State Manager...");
     Serial.print("Free heap before State: ");
     Serial.println(ESP.getFreeHeap());
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     State.begin();
     Serial.print("Free heap after State: ");
     Serial.println(ESP.getFreeHeap());
     Serial.println("State Manager initialized OK");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Initialize Pairing Manager and Cloud Connection if cloud is enabled
     auto& cloudSettings = State.settings().cloud;
@@ -1181,10 +1182,10 @@ void setup() {
     
     // Initialize Notification Manager
     Serial.println("[8.5/8] Initializing Notification Manager...");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     notificationManager->begin();
     Serial.println("Notification Manager initialized OK");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Set up cloud notification callback using static function to avoid PSRAM issues
     notificationManager->onCloud(onCloudNotification);
@@ -1199,7 +1200,7 @@ void setup() {
     Serial.println(" bytes");
     Serial.println("Entering main loop...");
     Serial.println("========================================");
-    Serial.flush();
+    // Serial.flush(); // Removed - can block on USB CDC
     
     // Final display update before entering main loop to ensure screen is visible
     display.update();
