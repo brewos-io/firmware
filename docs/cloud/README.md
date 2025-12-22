@@ -37,8 +37,12 @@ The BrewOS cloud service is a WebSocket relay that enables remote access to your
 
 - **SQLite Database** - Embedded, file-based, no external DB needed
 - **Session-Based Auth** - OAuth for identity, own tokens for sessions
-- **Multi-Provider Ready** - Easy to add Apple, GitHub, etc.
+- **Multi-Provider OAuth** - Google and Facebook supported, easy to add more
 - **QR Code Pairing** - Scan to link devices to your account
+- **Device Sharing** - Share access with other users via link
+- **Push Notifications** - Web push via VAPID/Web Push API
+- **Admin Panel** - User, device, and session management
+- **SSL/TLS Support** - Let's Encrypt auto-detection or manual certs
 - **Pure WebSocket** - No MQTT dependency, deploy anywhere
 - **Low Latency** - Direct message relay between clients and devices
 
@@ -84,23 +88,29 @@ The BrewOS cloud service is a WebSocket relay that enables remote access to your
 ```
 src/cloud/
 ├── src/
-│   ├── server.ts          # Express + WebSocket server
+│   ├── server.ts          # Express + WebSocket server (with SSL support)
 │   ├── device-relay.ts    # ESP32 device connection handler
 │   ├── client-proxy.ts    # Client app connection handler
 │   ├── lib/
 │   │   ├── database.ts    # SQLite database (sql.js)
 │   │   └── date.ts        # UTC date utilities
 │   ├── middleware/
-│   │   └── auth.ts        # Session-based auth middleware
+│   │   ├── auth.ts        # Session-based auth middleware
+│   │   └── admin.ts       # Admin authentication middleware
 │   ├── routes/
-│   │   ├── auth.ts        # Auth endpoints (login, refresh, logout)
+│   │   ├── auth.ts        # Auth endpoints (Google, Facebook, refresh, logout)
+│   │   ├── admin.ts       # Admin API endpoints
 │   │   ├── devices.ts     # Device management API
 │   │   └── push.ts        # Push notification API
 │   ├── services/
 │   │   ├── session.ts     # Session management (create, verify, revoke)
 │   │   ├── device.ts      # Device CRUD operations
+│   │   ├── admin.ts       # Admin operations (users, devices, sessions)
 │   │   └── push.ts        # Push notification service
+│   ├── types/
+│   │   └── sql.js.d.ts    # TypeScript type definitions
 │   └── types.ts           # TypeScript types
+├── admin/                 # Admin UI React app
 ├── package.json
 └── tsconfig.json
 ```
@@ -151,17 +161,38 @@ Create a `.env` file (see `env.example`):
 PORT=3001
 NODE_ENV=development
 
+# SSL/TLS Configuration (required in production)
+# Option 1: Use Let's Encrypt (recommended - auto-detects certificates)
+LETSENCRYPT_DOMAIN=your-domain.com
+
+# Option 2: Manual certificate paths
+SSL_CERT_PATH=/path/to/cert.pem
+SSL_KEY_PATH=/path/to/key.pem
+
+# Option 3: Reverse proxy mode (if behind nginx/Caddy/traefik with SSL termination)
+TRUST_PROXY=false
+
 # Data directory for SQLite database
 DATA_DIR=./data
 
 # Google OAuth Client ID
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 
+# Facebook OAuth (optional)
+FACEBOOK_APP_ID=your-facebook-app-id
+FACEBOOK_APP_SECRET=your-facebook-app-secret
+
 # CORS
 CORS_ORIGIN=http://localhost:5173
 
 # Web UI path
 WEB_DIST_PATH=../web/dist
+
+# Push Notifications (VAPID keys)
+# Auto-generated on first run if not set
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:admin@brewos.io
 ```
 
 ### Run Development Server
@@ -204,12 +235,13 @@ For persistence on cloud platforms, mount a volume to `DATA_DIR`.
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/api/auth/google` | POST | No | Exchange Google credential for session tokens |
+| `/api/auth/facebook` | POST | No | Exchange Facebook access token for session tokens |
 | `/api/auth/refresh` | POST | No | Refresh session using refresh token |
 | `/api/auth/logout` | POST | Yes | Revoke current session |
 | `/api/auth/logout-all` | POST | Yes | Revoke all user sessions |
 | `/api/auth/sessions` | GET | Yes | List active sessions |
 | `/api/auth/sessions/:id` | DELETE | Yes | Revoke specific session |
-| `/api/auth/me` | GET | Yes | Get current user info |
+| `/api/auth/me` | GET | Yes | Get current user info (includes admin status) |
 
 ### Devices
 
@@ -227,6 +259,37 @@ For persistence on cloud platforms, mount a volume to `DATA_DIR`.
 | `/api/devices/:id/users/:userId` | DELETE | Yes | Revoke user's access to device |
 
 > 📖 **See [Pairing_and_Sharing.md](./Pairing_and_Sharing.md)** for detailed documentation on device pairing and sharing flows.
+
+### Push Notifications
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/push/vapid-key` | GET | No | Get VAPID public key for subscriptions |
+| `/api/push/subscribe` | POST | Yes | Subscribe to push notifications |
+| `/api/push/unsubscribe` | POST | Yes | Unsubscribe from push notifications |
+| `/api/push/subscriptions` | GET | Yes | List user's push subscriptions |
+| `/api/push/notify` | POST | No* | Send notification from ESP32 device |
+
+> \* Device ID acts as authentication for the notify endpoint
+
+### Admin (Requires Admin Role)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/admin/stats` | GET | Admin | System-wide statistics |
+| `/api/admin/users` | GET | Admin | List all users (paginated) |
+| `/api/admin/users/:id` | GET | Admin | Get user details |
+| `/api/admin/users/:id` | DELETE | Admin | Delete user |
+| `/api/admin/users/:id/promote` | POST | Admin | Promote user to admin |
+| `/api/admin/users/:id/demote` | POST | Admin | Demote user from admin |
+| `/api/admin/users/:id/impersonate` | POST | Admin | Create impersonation token |
+| `/api/admin/devices` | GET | Admin | List all devices (paginated) |
+| `/api/admin/devices/:id` | GET | Admin | Get device details |
+| `/api/admin/devices/:id` | DELETE | Admin | Force delete device |
+| `/api/admin/devices/:id/disconnect` | POST | Admin | Force disconnect device WebSocket |
+| `/api/admin/sessions` | GET | Admin | List all sessions (paginated) |
+| `/api/admin/sessions/:id` | DELETE | Admin | Revoke any session |
+| `/api/admin/connections` | GET | Admin | Get real-time WebSocket stats |
 
 ### Other
 
@@ -327,10 +390,21 @@ fly deploy
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `PORT` | No | 3001 | HTTP/WS port |
+| `NODE_ENV` | No | development | Environment mode |
 | `DATA_DIR` | No | `.` | Directory for SQLite database |
 | `GOOGLE_CLIENT_ID` | Yes | - | Google OAuth Client ID |
+| `FACEBOOK_APP_ID` | No | - | Facebook OAuth App ID |
+| `FACEBOOK_APP_SECRET` | No | - | Facebook OAuth App Secret |
 | `CORS_ORIGIN` | No | `*` | Allowed CORS origins |
 | `WEB_DIST_PATH` | No | `../web/dist` | Path to web UI build |
+| `LETSENCRYPT_DOMAIN` | No | - | Domain for auto Let's Encrypt certs |
+| `SSL_CERT_PATH` | No | - | Manual SSL certificate path |
+| `SSL_KEY_PATH` | No | - | Manual SSL key path |
+| `SSL_CA_PATH` | No | - | Optional CA certificate path |
+| `TRUST_PROXY` | No | false | Set to `true` if behind a reverse proxy |
+| `VAPID_PUBLIC_KEY` | No | auto | VAPID public key for push notifications |
+| `VAPID_PRIVATE_KEY` | No | auto | VAPID private key for push notifications |
+| `VAPID_SUBJECT` | No | - | VAPID subject (email or URL) |
 
 ## Security Considerations
 
@@ -342,7 +416,16 @@ fly deploy
 6. **Rate limiting** - Add rate limiting for API endpoints (recommended)
 7. **Backup SQLite** - Regular backups of `brewos.db` file
 
-## Adding New OAuth Providers
+## OAuth Providers
+
+### Implemented Providers
+
+| Provider | Endpoint | Notes |
+|----------|----------|-------|
+| Google | `/api/auth/google` | Recommended, most common |
+| Facebook | `/api/auth/facebook` | Requires app ID and secret |
+
+### Adding New OAuth Providers
 
 To add Apple Sign-In, GitHub, etc.:
 
@@ -352,14 +435,14 @@ To add Apple Sign-In, GitHub, etc.:
      const { credential } = req.body;
      // Verify with Apple
      const appleUser = await verifyAppleToken(credential);
-     // Create/update profile
-     ensureProfile(appleUser.sub, appleUser.email, ...);
-     // Create session (same as Google flow)
-     const tokens = createSession(appleUser.sub, metadata);
+     // Create/update profile (may link to existing user by email)
+     const userId = ensureProfile(appleUser.sub, appleUser.email, ...);
+     // Create session (same as Google/Facebook flow)
+     const tokens = createSession(userId, metadata);
      res.json({ ...tokens, user: appleUser });
    });
    ```
 
 2. **Add frontend button** - All providers end up with same session format
 
-The session system is provider-agnostic - once identity is verified, our sessions work the same way regardless of which OAuth provider was used.
+The session system is provider-agnostic - once identity is verified, our sessions work the same way regardless of which OAuth provider was used. Users signing in with different providers but the same email are automatically linked.

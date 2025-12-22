@@ -40,183 +40,178 @@ The ESP32 maintains a persistent WebSocket connection to the cloud service, enab
 
 ## ESP32 Implementation
 
-### Connection Manager
+The ESP32 firmware includes a `CloudConnection` class that handles the cloud WebSocket connection.
 
-Add to your ESP32 firmware:
+### CloudConnection Class
 
 ```cpp
-// cloud_client.h
+// cloud_connection.h
 #pragma once
 
+#include <Arduino.h>
 #include <WebSocketsClient.h>
+#include <ArduinoJson.h>
 
-class CloudClient {
+class CloudConnection {
 public:
-    void init(const char* cloudUrl, const char* deviceId, const char* deviceKey);
+    // Command handler callback
+    typedef void (*CommandCallback)(const String& type, JsonDocument& doc);
+    
+    // Registration callback - called before first connect
+    typedef bool (*RegisterCallback)();
+    
+    CloudConnection();
+    
+    /**
+     * Initialize cloud connection
+     * @param serverUrl Cloud server URL (e.g., "https://cloud.brewos.io")
+     * @param deviceId Device identifier (e.g., "BRW-XXXXXXXX")
+     * @param deviceKey Secret key for authentication
+     */
+    void begin(const String& serverUrl, const String& deviceId, const String& deviceKey);
+    
+    /**
+     * Disconnect and disable cloud connection
+     */
+    void end();
+    
+    /**
+     * Call in loop() - handles reconnection and message processing
+     */
     void loop();
-    void sendStatus(const char* statusJson);
-
-    void onCommand(std::function<void(const char* cmd, JsonObject& data)> callback);
-
-    bool isConnected() const { return _connected; }
-
-private:
-    WebSocketsClient _ws;
-    String _deviceId;
-    String _deviceKey;
-    bool _connected = false;
-    unsigned long _lastReconnect = 0;
-    std::function<void(const char*, JsonObject&)> _commandCallback;
-
-    void connect();
-    void handleMessage(uint8_t* payload, size_t length);
+    
+    /**
+     * Send JSON message to cloud
+     */
+    void send(const String& json);
+    void send(const char* json);
+    void send(const JsonDocument& doc);
+    
+    /**
+     * Set callback for receiving commands from cloud users
+     */
+    void onCommand(CommandCallback callback);
+    
+    /**
+     * Set callback for registering device with cloud before connecting
+     */
+    void onRegister(RegisterCallback callback);
+    
+    /**
+     * Check if connected to cloud
+     */
+    bool isConnected() const;
+    
+    /**
+     * Get connection status string
+     */
+    String getStatus() const;
+    
+    /**
+     * Enable/disable connection
+     */
+    void setEnabled(bool enabled);
+    bool isEnabled() const;
+    
+    /**
+     * Pause connection to free up resources
+     */
+    void pause();
 };
 ```
 
-```cpp
-// cloud_client.cpp
-#include "cloud_client.h"
-#include <ArduinoJson.h>
+### Usage Example
 
-void CloudClient::init(const char* cloudUrl, const char* deviceId, const char* deviceKey) {
-    _deviceId = deviceId;
-    _deviceKey = deviceKey;
-
-    // Parse URL and extract host/port
-    // Example: wss://cloud.brewos.dev/ws/device
-
-    _ws.beginSSL("cloud.brewos.dev", 443,
-        String("/ws/device?id=" + _deviceId + "&key=" + _deviceKey).c_str());
-
-    _ws.onEvent([this](WStype_t type, uint8_t* payload, size_t length) {
-        switch (type) {
-            case WStype_CONNECTED:
-                _connected = true;
-                Serial.println("[Cloud] Connected");
-                break;
-
-            case WStype_DISCONNECTED:
-                _connected = false;
-                Serial.println("[Cloud] Disconnected");
-                break;
-
-            case WStype_TEXT:
-                handleMessage(payload, length);
-                break;
-        }
-    });
-
-    _ws.setReconnectInterval(5000);
-}
-
-void CloudClient::loop() {
-    _ws.loop();
-}
-
-void CloudClient::sendStatus(const char* statusJson) {
-    if (_connected) {
-        _ws.sendTXT(statusJson);
-    }
-}
-
-void CloudClient::handleMessage(uint8_t* payload, size_t length) {
-    StaticJsonDocument<512> doc;
-    DeserializationError error = deserializeJson(doc, payload, length);
-
-    if (error) {
-        Serial.println("[Cloud] JSON parse error");
-        return;
-    }
-
-    const char* type = doc["type"];
-
-    if (strcmp(type, "command") == 0) {
-        const char* cmd = doc["cmd"];
-        JsonObject data = doc.as<JsonObject>();
-
-        if (_commandCallback) {
-            _commandCallback(cmd, data);
-        }
-    }
-}
-
-void CloudClient::onCommand(std::function<void(const char*, JsonObject&)> callback) {
-    _commandCallback = callback;
-}
-```
-
-### Usage
+The CloudConnection is initialized in `main.cpp`:
 
 ```cpp
-#include "cloud_client.h"
+#include "cloud_connection.h"
+#include "pairing_manager.h"
 
-CloudClient cloudClient;
+CloudConnection cloudConnection;
+PairingManager pairingManager;
 
 void setup() {
     // ... WiFi setup ...
-
-    cloudClient.init(
-        "wss://cloud.brewos.dev/ws/device",
-        "my-device-id",
-        "my-device-key"
+    
+    // Initialize pairing manager (generates device key on first boot)
+    pairingManager.begin("https://cloud.brewos.io");
+    
+    // Set up cloud connection with device credentials
+    cloudConnection.begin(
+        "https://cloud.brewos.io",
+        pairingManager.getDeviceId(),  // e.g., "BRW-12345678"
+        pairingManager.getDeviceKey()  // Auto-generated secret key
     );
-
-    cloudClient.onCommand([](const char* cmd, JsonObject& data) {
-        if (strcmp(cmd, "set_temp") == 0) {
-            float temp = data["temp"];
-            const char* boiler = data["boiler"];
-            // Handle command
-        }
+    
+    // Set up command handler
+    cloudConnection.onCommand([](const String& type, JsonDocument& doc) {
+        // Commands from cloud users are forwarded to the same
+        // handler as local WebSocket commands
+        handleCommand(type, doc);
+    });
+    
+    // Set up registration callback (called before first connection)
+    cloudConnection.onRegister([]() {
+        return pairingManager.registerTokenWithCloud();
     });
 }
 
 void loop() {
-    cloudClient.loop();
-
-    // Send status every 2 seconds
-    static unsigned long lastStatus = 0;
-    if (millis() - lastStatus > 2000) {
-        lastStatus = millis();
-
-        StaticJsonDocument<256> doc;
-        doc["type"] = "status";
-        doc["temps"]["brew"]["current"] = brewTemp;
-        doc["temps"]["steam"]["current"] = steamTemp;
-        doc["pressure"] = pressure;
-
-        String json;
-        serializeJson(doc, json);
-        cloudClient.sendStatus(json.c_str());
-    }
+    cloudConnection.loop();
+    
+    // State updates are automatically broadcast to both
+    // local WebSocket clients and cloud connection
 }
 ```
+
+### Key Differences from Example Code
+
+The actual implementation:
+
+1. **Uses simple function pointers** instead of `std::function` to avoid PSRAM allocation issues
+2. **Includes registration callback** for QR code pairing flow
+3. **Has pause/resume capability** for resource management during OTA updates
+4. **Integrates with PairingManager** which handles device key generation and QR code pairing
 
 ## Configuration
 
 ### Device Registration
 
-Each device needs:
+Each device is identified by:
 
-1. **Device ID** - Unique identifier (e.g., MAC address or UUID)
-2. **Device Key** - Secret key for authentication
+1. **Device ID** - Format: `BRW-XXXXXXXX` (derived from ESP32 chip ID)
+2. **Device Key** - Cryptographically random 32-byte key, base64url encoded
 
-Store in NVS:
+The `PairingManager` class handles all of this automatically:
 
 ```cpp
-void saveCloudConfig(const char* deviceId, const char* deviceKey) {
-    preferences.begin("cloud", false);
-    preferences.putString("device_id", deviceId);
-    preferences.putString("device_key", deviceKey);
-    preferences.end();
-}
+// pairing_manager.h (excerpt)
+class PairingManager {
+public:
+    void begin(const String& cloudUrl = "");
+    
+    String getDeviceId() const;     // e.g., "BRW-12345678"
+    String getDeviceKey() const;    // Auto-generated secret
+    String getPairingUrl() const;   // URL for QR code
+    String generateToken();         // Generate new pairing token
+    bool registerTokenWithCloud();  // Register with cloud service
+};
 ```
+
+The device key is:
+- Generated on first boot using `esp_fill_random()`
+- Stored in NVS under `brewos_sec/devKey`
+- Sent to cloud during QR code pairing registration
+- Used for every WebSocket connection authentication
 
 ### Cloud URL Configuration
 
-Allow users to configure the cloud URL (for self-hosted instances):
+The cloud URL is stored in NVS and can be configured via the web UI:
 
 ```cpp
-String cloudUrl = preferences.getString("cloud_url", "wss://cloud.brewos.dev/ws/device");
+// Default: "https://cloud.brewos.io"
+String cloudUrl = preferences.getString("cloud_url", "https://cloud.brewos.io");
 ```
 
 ## Security

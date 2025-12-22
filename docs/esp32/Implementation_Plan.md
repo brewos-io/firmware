@@ -1,7 +1,7 @@
 # ESP32 Implementation Plan
 
-> **Status:** In Development  
-> **Last Updated:** 2025-11-28
+> **Status:** Active Development  
+> **Last Updated:** 2025-12-22
 
 ## Overview
 
@@ -213,45 +213,98 @@ See [Cloud Service Documentation](../cloud/README.md) for full details.
 ```
 src/esp32/
 ├── include/
-│   ├── config.h
-│   ├── mqtt_client.h
-│   ├── pico_uart.h
-│   ├── web_server.h
-│   ├── wifi_manager.h
+│   ├── config.h                    # Configuration constants
+│   ├── mqtt_client.h               # MQTT client
+│   ├── pico_uart.h                 # UART bridge to Pico
+│   ├── web_server.h                # Web server
+│   ├── wifi_manager.h              # WiFi management
+│   ├── cloud_connection.h          # Cloud WebSocket client
+│   ├── pairing_manager.h           # QR code device pairing
+│   ├── brew_by_weight.h            # Brew-by-weight logic
 │   ├── display/
 │   │   ├── display.h
 │   │   ├── display_config.h
 │   │   ├── encoder.h
-│   │   └── theme.h
+│   │   ├── theme.h
+│   │   └── lv_fs_littlefs.h
+│   ├── notifications/
+│   │   ├── notification_manager.h
+│   │   ├── notification_types.h
+│   │   └── cloud_notifier.h
+│   ├── power_meter/
+│   │   ├── power_meter.h
+│   │   ├── power_meter_manager.h
+│   │   └── mqtt_power_meter.h
+│   ├── scale/
+│   │   ├── scale_interface.h
+│   │   └── scale_manager.h
+│   ├── state/
+│   │   ├── state_manager.h
+│   │   └── state_types.h
+│   ├── statistics/
+│   │   └── statistics_manager.h
 │   └── ui/
 │       ├── ui.h
 │       ├── screen_alarm.h
+│       ├── screen_bbw.h
 │       ├── screen_brewing.h
+│       ├── screen_cloud.h
 │       ├── screen_complete.h
 │       ├── screen_home.h
 │       ├── screen_idle.h
+│       ├── screen_ota.h
+│       ├── screen_scale.h
 │       ├── screen_settings.h
-│       └── screen_setup.h
+│       ├── screen_setup.h
+│       ├── screen_splash.h
+│       └── screen_temp.h
 ├── src/
 │   ├── main.cpp
 │   ├── mqtt_client.cpp
 │   ├── pico_uart.cpp
 │   ├── web_server.cpp
+│   ├── web_server_broadcast.cpp
+│   ├── web_server_ota.cpp
+│   ├── web_server_websocket.cpp
 │   ├── wifi_manager.cpp
+│   ├── cloud_connection.cpp
+│   ├── pairing_manager.cpp
+│   ├── brew_by_weight.cpp
 │   ├── display/
 │   │   ├── display.cpp
 │   │   ├── encoder.cpp
+│   │   ├── lv_fs_littlefs.cpp
 │   │   └── theme.cpp
+│   ├── notifications/
+│   │   ├── notification_manager.cpp
+│   │   └── cloud_notifier.cpp
+│   ├── power_meter/
+│   │   ├── power_meter_manager.cpp
+│   │   └── mqtt_power_meter.cpp
+│   ├── scale/
+│   │   ├── scale_factory.cpp
+│   │   └── scale_manager.cpp
+│   ├── state/
+│   │   ├── state_manager.cpp
+│   │   └── state_types.cpp
+│   ├── statistics/
+│   │   └── statistics_manager.cpp
 │   └── ui/
 │       ├── ui.cpp
 │       ├── screen_alarm.cpp
+│       ├── screen_bbw.cpp
 │       ├── screen_brewing.cpp
+│       ├── screen_cloud.cpp
 │       ├── screen_complete.cpp
 │       ├── screen_home.cpp
 │       ├── screen_idle.cpp
+│       ├── screen_ota.cpp
+│       ├── screen_scale.cpp
 │       ├── screen_settings.cpp
-│       └── screen_setup.cpp
-├── data/                  # Web UI (LittleFS)
+│       ├── screen_setup.cpp
+│       ├── screen_splash.cpp
+│       └── screen_temp.cpp
+├── data/                           # Web UI (LittleFS)
 └── platformio.ini
 ```
 

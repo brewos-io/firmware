@@ -63,10 +63,11 @@ The ESP32-S3 handles connectivity, user interface, and advanced features for the
 - **Time/NTP Settings** - Timezone and NTP server configuration
 - **Statistics** - Comprehensive brew tracking with power graphs and history
 
-### In Progress 🔲
+### Implemented ✅ (continued)
 
-- Notifications framework
-- Cloud remote access
+- **Notifications** - Push reminders and alerts via WebSocket, MQTT, and Cloud
+- **Cloud Integration** - Remote access via cloud.brewos.io WebSocket relay
+- **QR Code Device Pairing** - Scan to link devices to user accounts
 
 ## Building
 
@@ -99,15 +100,55 @@ See [Simulator.md](Simulator.md) for details.
 4. Configure WiFi and MQTT
 5. Device restarts and connects to network
 
-## Folder Structure
+## Source Code Structure
 
 ```
+src/esp32/
+├── include/
+│   ├── config.h                    # Configuration constants
+│   ├── mqtt_client.h               # MQTT client interface
+│   ├── pico_uart.h                 # UART bridge to Pico
+│   ├── web_server.h                # Web server interface
+│   ├── wifi_manager.h              # WiFi management
+│   ├── cloud_connection.h          # Cloud WebSocket client
+│   ├── pairing_manager.h           # QR code device pairing
+│   ├── brew_by_weight.h            # Brew-by-weight logic
+│   ├── display/                    # Display drivers
+│   ├── notifications/              # Notification system
+│   │   ├── notification_manager.h
+│   │   ├── notification_types.h
+│   │   └── cloud_notifier.h
+│   ├── power_meter/                # Power monitoring
+│   ├── scale/                      # BLE scale integration
+│   ├── state/                      # State management
+│   ├── statistics/                 # Usage statistics
+│   └── ui/                         # LVGL screen definitions
+├── src/
+│   ├── main.cpp                    # Entry point
+│   ├── mqtt_client.cpp
+│   ├── pico_uart.cpp
+│   ├── web_server.cpp              # HTTP/WebSocket server
+│   ├── wifi_manager.cpp
+│   ├── cloud_connection.cpp        # Cloud WebSocket client
+│   ├── pairing_manager.cpp         # QR code pairing
+│   ├── brew_by_weight.cpp
+│   ├── display/                    # Display implementation
+│   ├── notifications/              # Notification system
+│   ├── power_meter/                # Power meter manager
+│   ├── scale/                      # Scale manager
+│   ├── state/                      # State manager
+│   ├── statistics/                 # Statistics manager
+│   └── ui/                         # UI screens
+├── data/                           # Web UI (LittleFS)
+└── platformio.ini
+
 docs/esp32/
 ├── README.md              # This file
 ├── Implementation_Plan.md # Development status
 ├── UI_Design.md           # Display UI specification
 ├── Simulator.md           # Desktop UI simulator
 ├── OTA_Updates.md         # Firmware update mechanism
+├── State_Management.md    # State architecture
 ├── features/
 │   ├── Schedules.md       # Schedules & auto power-off
 │   ├── Eco_Mode.md        # Eco mode (power saving)
