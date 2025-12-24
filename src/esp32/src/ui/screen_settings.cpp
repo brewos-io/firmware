@@ -16,7 +16,9 @@ static const char* item_icons[] = {
     LV_SYMBOL_SETTINGS,  // Brew Boiler Temp
     LV_SYMBOL_SETTINGS,  // Steam Boiler Temp
     LV_SYMBOL_DOWNLOAD,  // Brew by Weight
-    LV_SYMBOL_CLOUD,     // Cloud
+    LV_SYMBOL_BRIGHTNESS, // Brightness (sun/tint icon)
+    LV_SYMBOL_POWER,     // Screen Timeout
+    LV_SYMBOL_CLOUD,     // Cloud (upload icon)
     LV_SYMBOL_WIFI,      // WiFi
     LV_SYMBOL_LEFT       // Exit
 };
@@ -25,6 +27,8 @@ static const char* item_names[] = {
     "Brew Boiler",
     "Steam Boiler",
     "Brew by Weight",
+    "Brightness",
+    "Screen Timeout",
     "Cloud",
     "WiFi Setup",
     "Exit"
@@ -34,6 +38,8 @@ static const char* item_descriptions[] = {
     "Set brew temperature",
     "Set steam temperature",
     "Enable weight-based brewing",
+    "Adjust screen brightness",
+    "Set screen idle time",
     "Pair with cloud",
     "Enter setup mode",
     "Return to home"
@@ -45,6 +51,14 @@ static const float BREW_MAX = 105.0f;
 static const float STEAM_MIN = 120.0f;
 static const float STEAM_MAX = 160.0f;
 static const float TEMP_STEP = 0.5f;
+
+// Display settings limits
+static const uint8_t BRIGHTNESS_MIN = 10;
+static const uint8_t BRIGHTNESS_MAX = 255;
+static const uint8_t BRIGHTNESS_STEP = 5;
+static const uint8_t TIMEOUT_MIN = 0;      // 0 = never
+static const uint8_t TIMEOUT_MAX = 255;     // Max 255 seconds
+static const uint8_t TIMEOUT_STEP = 5;
 
 // Static elements
 static lv_obj_t* screen = nullptr;
@@ -59,14 +73,22 @@ static lv_obj_t* selector_arc = nullptr;
 // State
 static int selected_index = 0;
 static bool editing_temp = false;  // True when editing a temperature value
+static bool editing_display = false;  // True when editing brightness or timeout
 static settings_select_callback_t select_callback = nullptr;
 static float cached_brew_setpoint = 93.0f;
 static float cached_steam_setpoint = 145.0f;
 static float edit_temp_value = 0.0f;  // Value being edited
+static uint8_t cached_brightness = 200;
+static uint8_t cached_screen_timeout = 30;
+static uint8_t edit_brightness_value = 200;  // Value being edited
+static uint8_t edit_timeout_value = 30;  // Value being edited
 static bool bbw_enabled = false;
 
 // Callback for temperature changes
 static void (*temp_change_callback)(bool is_steam, float temp) = nullptr;
+
+// Callback for display settings changes
+static settings_display_callback_t display_change_callback = nullptr;
 
 // =============================================================================
 // Helper Functions
@@ -109,6 +131,38 @@ static void update_value_display() {
             lv_obj_clear_flag(value_label, LV_OBJ_FLAG_HIDDEN);
             break;
             
+        case SETTINGS_BRIGHTNESS:
+            if (editing_display) {
+                snprintf(buf, sizeof(buf), "%d", edit_brightness_value);
+                lv_obj_set_style_text_color(value_label, COLOR_SUCCESS, 0);
+            } else {
+                snprintf(buf, sizeof(buf), "%d", cached_brightness);
+                lv_obj_set_style_text_color(value_label, COLOR_ACCENT_AMBER, 0);
+            }
+            lv_label_set_text(value_label, buf);
+            lv_obj_clear_flag(value_label, LV_OBJ_FLAG_HIDDEN);
+            break;
+            
+        case SETTINGS_SCREEN_TIMEOUT:
+            if (editing_display) {
+                if (edit_timeout_value == 0) {
+                    snprintf(buf, sizeof(buf), "Never");
+                } else {
+                    snprintf(buf, sizeof(buf), "%ds", edit_timeout_value);
+                }
+                lv_obj_set_style_text_color(value_label, COLOR_SUCCESS, 0);
+            } else {
+                if (cached_screen_timeout == 0) {
+                    snprintf(buf, sizeof(buf), "Never");
+                } else {
+                    snprintf(buf, sizeof(buf), "%ds", cached_screen_timeout);
+                }
+                lv_obj_set_style_text_color(value_label, COLOR_ACCENT_AMBER, 0);
+            }
+            lv_label_set_text(value_label, buf);
+            lv_obj_clear_flag(value_label, LV_OBJ_FLAG_HIDDEN);
+            break;
+            
         default:
             lv_obj_add_flag(value_label, LV_OBJ_FLAG_HIDDEN);
             break;
@@ -116,7 +170,7 @@ static void update_value_display() {
     
     // Update description based on edit state
     if (desc_label) {
-        if (editing_temp) {
+        if (editing_temp || editing_display) {
             lv_label_set_text(desc_label, "Rotate to adjust • Press to confirm");
             lv_obj_set_style_text_color(desc_label, COLOR_ACCENT_AMBER, 0);
         } else {
@@ -127,7 +181,7 @@ static void update_value_display() {
     
     // Update arc color based on edit state
     if (selector_arc) {
-        if (editing_temp) {
+        if (editing_temp || editing_display) {
             lv_obj_set_style_arc_color(selector_arc, COLOR_SUCCESS, LV_PART_INDICATOR);
         } else {
             lv_obj_set_style_arc_color(selector_arc, COLOR_ACCENT_AMBER, LV_PART_INDICATOR);
@@ -277,7 +331,7 @@ void screen_settings_update(const ui_state_t* state) {
     if (!screen || !state) return;
     
     // Only update cached values if not currently editing
-    if (!editing_temp) {
+    if (!editing_temp && !editing_display) {
         if (state->brew_setpoint > 0) {
             cached_brew_setpoint = state->brew_setpoint;
         }
@@ -313,6 +367,24 @@ void screen_settings_navigate(int direction) {
         update_value_display();
         
         LOG_I("Editing temp: %.1f°C", edit_temp_value);
+    } else if (editing_display) {
+        // In edit mode: adjust brightness or timeout
+        if (selected_index == SETTINGS_BRIGHTNESS) {
+            int new_value = (int)edit_brightness_value + (direction * BRIGHTNESS_STEP);
+            if (new_value < BRIGHTNESS_MIN) new_value = BRIGHTNESS_MIN;
+            if (new_value > BRIGHTNESS_MAX) new_value = BRIGHTNESS_MAX;
+            edit_brightness_value = (uint8_t)new_value;
+            LOG_I("Editing brightness: %d", edit_brightness_value);
+        } else if (selected_index == SETTINGS_SCREEN_TIMEOUT) {
+            int new_value = (int)edit_timeout_value + (direction * TIMEOUT_STEP);
+            if (new_value < TIMEOUT_MIN) new_value = TIMEOUT_MIN;
+            if (new_value > TIMEOUT_MAX) new_value = TIMEOUT_MAX;
+            edit_timeout_value = (uint8_t)new_value;
+            LOG_I("Editing timeout: %ds", edit_timeout_value);
+        }
+        
+        // Update display
+        update_value_display();
     } else {
         // Normal menu navigation
         LOG_I("Settings navigate: direction=%d, current=%d", direction, selected_index);
@@ -358,6 +430,28 @@ void screen_settings_select(void) {
         return;
     }
     
+    if (editing_display) {
+        // Confirm display settings edit
+        if (selected_index == SETTINGS_BRIGHTNESS) {
+            cached_brightness = edit_brightness_value;
+            LOG_I("Brightness confirmed: %d", cached_brightness);
+        } else if (selected_index == SETTINGS_SCREEN_TIMEOUT) {
+            cached_screen_timeout = edit_timeout_value;
+            LOG_I("Screen timeout confirmed: %ds", cached_screen_timeout);
+        }
+        
+        // Call display change callback
+        if (display_change_callback) {
+            display_change_callback(cached_brightness, cached_screen_timeout);
+        }
+        
+        // Exit edit mode
+        editing_display = false;
+        update_value_display();
+        
+        return;
+    }
+    
     // Handle selection based on item type
     switch (selected_index) {
         case SETTINGS_BREW_TEMP:
@@ -383,6 +477,22 @@ void screen_settings_select(void) {
             LOG_I("Brew by Weight: %s", bbw_enabled ? "ON" : "OFF");
             break;
             
+        case SETTINGS_BRIGHTNESS:
+            // Enter edit mode for brightness
+            editing_display = true;
+            edit_brightness_value = cached_brightness;
+            update_value_display();
+            LOG_I("Editing brightness, starting at %d", edit_brightness_value);
+            return;  // Don't call select callback
+            
+        case SETTINGS_SCREEN_TIMEOUT:
+            // Enter edit mode for screen timeout
+            editing_display = true;
+            edit_timeout_value = cached_screen_timeout;
+            update_value_display();
+            LOG_I("Editing screen timeout, starting at %ds", edit_timeout_value);
+            return;  // Don't call select callback
+            
         default:
             break;
     }
@@ -401,6 +511,10 @@ void screen_settings_set_temp_callback(void (*callback)(bool is_steam, float tem
     temp_change_callback = callback;
 }
 
+void screen_settings_set_display_callback(settings_display_callback_t callback) {
+    display_change_callback = callback;
+}
+
 void screen_settings_set_bbw_enabled(bool enabled) {
     bbw_enabled = enabled;
     update_value_display();
@@ -410,8 +524,16 @@ bool screen_settings_get_bbw_enabled(void) {
     return bbw_enabled;
 }
 
+void screen_settings_set_display_values(uint8_t brightness, uint8_t screenTimeout) {
+    cached_brightness = brightness;
+    cached_screen_timeout = screenTimeout;
+    if (!editing_display) {
+        update_value_display();
+    }
+}
+
 bool screen_settings_is_editing(void) {
-    return editing_temp;
+    return editing_temp || editing_display;
 }
 
 void screen_settings_cancel_edit(void) {
@@ -420,5 +542,24 @@ void screen_settings_cancel_edit(void) {
         update_value_display();
         LOG_I("Edit cancelled");
     }
+    if (editing_display) {
+        editing_display = false;
+        update_value_display();
+        LOG_I("Display edit cancelled");
+    }
+}
+
+void screen_settings_reset(void) {
+    // Reset all editing states
+    editing_temp = false;
+    editing_display = false;
+    selected_index = 0;
+    
+    // Update display to reflect reset state (only if screen is created)
+    if (screen && icon_label && name_label) {
+        update_menu_display();
+    }
+    
+    LOG_I("Settings screen reset");
 }
 

@@ -23,6 +23,8 @@ typedef enum {
     SETTINGS_BREW_TEMP,
     SETTINGS_STEAM_TEMP,
     SETTINGS_BREW_BY_WEIGHT,
+    SETTINGS_BRIGHTNESS,
+    SETTINGS_SCREEN_TIMEOUT,
     SETTINGS_CLOUD,
     SETTINGS_WIFI,
     SETTINGS_EXIT,
@@ -72,6 +74,13 @@ void screen_settings_set_select_callback(settings_select_callback_t callback);
 void screen_settings_set_temp_callback(void (*callback)(bool is_steam, float temp));
 
 /**
+ * Callback for display settings changes
+ * Called when user confirms brightness or screen timeout edit
+ */
+typedef void (*settings_display_callback_t)(uint8_t brightness, uint8_t screenTimeout);
+void screen_settings_set_display_callback(settings_display_callback_t callback);
+
+/**
  * Set Brew by Weight enabled state
  */
 void screen_settings_set_bbw_enabled(bool enabled);
@@ -80,6 +89,11 @@ void screen_settings_set_bbw_enabled(bool enabled);
  * Get Brew by Weight enabled state
  */
 bool screen_settings_get_bbw_enabled(void);
+
+/**
+ * Set initial display settings values
+ */
+void screen_settings_set_display_values(uint8_t brightness, uint8_t screenTimeout);
 
 /**
  * Check if currently editing a temperature value
@@ -91,6 +105,12 @@ bool screen_settings_is_editing(void);
  * Used for long-press to cancel
  */
 void screen_settings_cancel_edit(void);
+
+/**
+ * Reset settings screen state (call when entering the screen)
+ * Clears any editing state from previous visits
+ */
+void screen_settings_reset(void);
 
 #endif // SCREEN_SETTINGS_H
 

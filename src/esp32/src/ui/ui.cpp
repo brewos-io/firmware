@@ -24,6 +24,8 @@
 #endif
 #include "display/theme.h"
 #include "display/display_config.h"
+#include "display/display.h"
+#include "state/state_manager.h"
 
 // Global UI instance
 UI ui;
@@ -213,6 +215,12 @@ void UI::showScreen(screen_id_t screen) {
     
     _previousScreen = _currentScreen;
     _currentScreen = screen;
+    
+    // Reset settings screen state when entering it
+    // This ensures editing modes are cleared from previous visits
+    if (screen == SCREEN_SETTINGS) {
+        screen_settings_reset();
+    }
     
     // Use instant screen load for snappy transitions (no animation)
     // Animation was causing slow top-to-bottom drawing with the small LVGL buffer
@@ -526,12 +534,27 @@ void UI::createSettingsScreen() {
         }
     });
     
+    // Set callback for display settings changes (brightness, timeout)
+    screen_settings_set_display_callback([](uint8_t brightness, uint8_t screenTimeout) {
+        // Save to StateManager
+        State.settings().display.brightness = brightness;
+        State.settings().display.screenTimeout = screenTimeout;
+        State.saveDisplaySettings();
+        
+        // Apply brightness to display immediately
+        display.setBacklight(brightness);
+        
+        LOG_I("Display settings saved: brightness=%d, timeout=%ds", brightness, screenTimeout);
+    });
+    
     // Set callback for menu item selection (navigation items only)
     screen_settings_set_select_callback([](settings_item_t item) {
         switch (item) {
             case SETTINGS_BREW_TEMP:
             case SETTINGS_STEAM_TEMP:
             case SETTINGS_BREW_BY_WEIGHT:
+            case SETTINGS_BRIGHTNESS:
+            case SETTINGS_SCREEN_TIMEOUT:
                 // These are handled inline in screen_settings_select()
                 break;
             case SETTINGS_CLOUD:
@@ -654,6 +677,10 @@ void UI::updateCompleteScreen() {
 
 void UI::updateSettingsScreen() {
     screen_settings_update(&_state);
+    
+    // Update display settings values from State
+    const auto& displaySettings = State.settings().display;
+    screen_settings_set_display_values(displaySettings.brightness, displaySettings.screenTimeout);
 }
 
 void UI::updateAlarmScreen() {
@@ -764,7 +791,16 @@ void UI::checkAutoScreenSwitch() {
         if (_currentScreen == SCREEN_SPLASH) {
             static unsigned long splashStart = 0;
             if (splashStart == 0) splashStart = platform_millis();
-            if (platform_millis() - splashStart < 3000) return; // 3 seconds splash
+            
+            // Minimum show time (3 seconds)
+            if (platform_millis() - splashStart < 3000) return;
+            
+            // Also wait for WiFi connection if credentials exist (timeout 10s)
+            // This ensures NTP sync and mDNS are ready before showing UI
+            bool isWifiReady = _state.wifi_connected || _state.wifi_ap_mode; 
+            bool isTimeout = (platform_millis() - splashStart > 10000);
+            
+            if (!isWifiReady && !isTimeout) return;
         }
         
         // Only auto-switch to idle if not in settings

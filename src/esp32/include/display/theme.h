@@ -13,11 +13,20 @@
 #include <lvgl.h>
 
 // =============================================================================
-// Custom Symbols (FontAwesome 4 glyphs not defined in LVGL)
+// Custom Symbols
 // =============================================================================
 
-// Cloud icon (FontAwesome fa-cloud, U+F0C2)
-#define LV_SYMBOL_CLOUD "\xEF\x83\x82"
+// Cloud icon - use UPLOAD symbol (cloud with up arrow, 0xF093) which is included in LVGL font
+// Note: The original fa-cloud (U+F0C2) is not in the default symbol set
+#define LV_SYMBOL_CLOUD "\xEF\x82\x93"
+
+// Brightness icon - use the sun/lightbulb-like TINT symbol (0xF043)
+#define LV_SYMBOL_BRIGHTNESS "\xEF\x81\x83"
+
+// Additional useful symbols from built-in font:
+// LV_SYMBOL_WIFI     "\xEF\x87\xAB"  (0xF1EB) - WiFi bars
+// LV_SYMBOL_SETTINGS "\xEF\x80\x93"  (0xF013) - Gear
+// LV_SYMBOL_POWER    "\xEF\x80\x91"  (0xF011) - Power button
 
 // =============================================================================
 // Color Definitions - DARK THEME
