@@ -250,7 +250,21 @@ fi
 # Configure Caddy
 cat > /etc/caddy/Caddyfile << EOF
 $DOMAIN {
-    reverse_proxy localhost:3001
+    # Use RSA certificates for ESP32 compatibility
+    # ESP32 has hardware acceleration for RSA but not ECDSA
+    # RSA certificates enable fast SSL handshakes (~500ms vs 5-15s)
+    tls {
+        key_type rsa2048
+    }
+
+    reverse_proxy localhost:3001 {
+        # Longer timeouts for WebSocket connections
+        transport http {
+            read_timeout 0
+            write_timeout 0
+            response_header_timeout 0
+        }
+    }
 
     # WebSocket support
     @websocket {

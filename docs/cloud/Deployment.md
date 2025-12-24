@@ -171,10 +171,30 @@ server {
 
 ### Using Caddy (Automatic HTTPS)
 
+**Important for ESP32 compatibility:** Use RSA certificates instead of ECDSA. ESP32 devices have hardware acceleration for RSA but not ECDSA, enabling fast SSL handshakes (~500ms vs 5-15s).
+
 ```
 cloud.example.com {
-    reverse_proxy localhost:3001
+    # Use RSA certificates for ESP32 compatibility
+    tls {
+        key_type rsa2048
+    }
+    
+    reverse_proxy localhost:3001 {
+        # Longer timeouts for WebSocket connections
+        transport http {
+            read_timeout 0
+            write_timeout 0
+            response_header_timeout 0
+        }
+    }
 }
+```
+
+**Note:** After changing the certificate type, you may need to delete the old certificate cache and restart Caddy:
+```bash
+rm -rf /var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/cloud.example.com
+systemctl restart caddy
 ```
 
 ## Health Checks
