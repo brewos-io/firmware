@@ -1,7 +1,9 @@
 #pragma once
 
 #include "state_types.h"
+#ifndef SIMULATOR
 #include <Preferences.h>
+#endif
 
 namespace BrewOS {
 
@@ -180,7 +182,9 @@ private:
     StateManager& operator=(const StateManager&) = delete;
     
     // Storage
+#ifndef SIMULATOR
     Preferences _prefs;
+#endif
     
     // State
     Settings _settings;

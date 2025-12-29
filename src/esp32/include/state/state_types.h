@@ -8,10 +8,23 @@ using uint16_t = std::uint16_t;
 using uint32_t = std::uint32_t;
 using int16_t = std::int16_t;
 using size_t = std::size_t;
+// Forward declarations for ArduinoJson (not available in simulator)
+namespace ArduinoJson {
+    class JsonObject;
+    class JsonArray;
+    class JsonDocument;
+    using JsonObjectConst = const JsonObject&;
+    using JsonArrayConst = const JsonArray&;
+}
+using ArduinoJson::JsonObject;
+using ArduinoJson::JsonArray;
+using ArduinoJson::JsonDocument;
+using ArduinoJson::JsonObjectConst;
+using ArduinoJson::JsonArrayConst;
 #else
 #include <Arduino.h>
-#endif
 #include <ArduinoJson.h>
+#endif
 
 namespace BrewOS {
 
