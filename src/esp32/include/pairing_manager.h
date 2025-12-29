@@ -78,6 +78,13 @@ public:
      * Called by cloud connection when device is claimed
      */
     void notifyPairingSuccess(const String& userId);
+    
+    /**
+     * Regenerate device key (for recovery from auth failures)
+     * Clears existing key and generates a new one
+     * @return true if successful
+     */
+    bool regenerateDeviceKey();
 
 private:
     String _cloudUrl;

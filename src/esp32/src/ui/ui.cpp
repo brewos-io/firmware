@@ -67,19 +67,22 @@ bool UI::begin() {
     // Initialize theme
     theme_init();
     
-    // Create all screens
-    createSetupScreen();
+    // Create only essential screens at startup (lazy load others on demand)
+    // Essential: HOME, IDLE, BREWING (main workflow screens)
     createIdleScreen();
     createHomeScreen();
     createBrewingScreen();
-    createCompleteScreen();
-    createSettingsScreen();
-    createTempSettingsScreen();
-    createScaleScreen();
-    createCloudScreen();
-    createAlarmScreen();
-    createOtaScreen();
-    createSplashScreen();
+    createSettingsScreen();  // Frequently accessed
+    createSplashScreen();     // Needed immediately for boot
+    
+    // Lazy-loaded screens (created on first use):
+    // - SCREEN_SETUP (WiFi setup - rare)
+    // - SCREEN_COMPLETE (after brewing - can destroy after use)
+    // - SCREEN_TEMP_SETTINGS (temp editing - can destroy after)
+    // - SCREEN_SCALE (scale pairing - can destroy after)
+    // - SCREEN_CLOUD (cloud pairing - can destroy after)
+    // - SCREEN_ALARM (only when alarm active)
+    // - SCREEN_OTA (only during OTA)
     
     // Show splash screen immediately (no animation for first load)
     if (_screens[SCREEN_SPLASH]) {
@@ -137,9 +140,11 @@ void UI::update(const ui_state_t& state) {
             
             // Show complete screen (if we have valid data)
             if (last_brew_time > 5000 || last_brew_weight > 5.0f) {
-                screen_complete_update(last_brew_time, last_brew_weight, 
-                                       _state.dose_weight, _state.flow_rate);
-                showScreen(SCREEN_COMPLETE);
+                showScreen(SCREEN_COMPLETE);  // Lazy load if needed
+                if (_screens[SCREEN_COMPLETE]) {
+                    screen_complete_update(last_brew_time, last_brew_weight, 
+                                           _state.dose_weight, _state.flow_rate);
+                }
             }
         }
     }
@@ -170,12 +175,16 @@ void UI::update(const ui_state_t& state) {
             break;
         case SCREEN_TEMP_SETTINGS:
 #ifndef SIMULATOR
-            screen_temp_update(&_state);
+            if (_screens[SCREEN_TEMP_SETTINGS]) {
+                screen_temp_update(&_state);
+            }
 #endif
             break;
         case SCREEN_SCALE:
 #ifndef SIMULATOR
-            screen_scale_update(&_state);
+            if (_screens[SCREEN_SCALE]) {
+                screen_scale_update(&_state);
+            }
 #endif
             break;
         case SCREEN_CLOUD:
@@ -193,8 +202,44 @@ void UI::update(const ui_state_t& state) {
 }
 
 void UI::showScreen(screen_id_t screen) {
-    if (screen >= SCREEN_COUNT || !_screens[screen]) {
+    if (screen >= SCREEN_COUNT) {
         LOG_W("Invalid screen: %d", screen);
+        return;
+    }
+    
+    // Lazy load screen if it doesn't exist
+    if (!_screens[screen]) {
+        LOG_I("Lazy loading screen: %d", screen);
+        switch (screen) {
+            case SCREEN_SETUP:
+                createSetupScreen();
+                break;
+            case SCREEN_COMPLETE:
+                createCompleteScreen();
+                break;
+            case SCREEN_TEMP_SETTINGS:
+                createTempSettingsScreen();
+                break;
+            case SCREEN_SCALE:
+                createScaleScreen();
+                break;
+            case SCREEN_CLOUD:
+                createCloudScreen();
+                break;
+            case SCREEN_ALARM:
+                createAlarmScreen();
+                break;
+            case SCREEN_OTA:
+                createOtaScreen();
+                break;
+            default:
+                LOG_E("Cannot lazy load screen: %d", screen);
+                return;
+        }
+    }
+    
+    if (!_screens[screen]) {
+        LOG_W("Screen creation failed: %d", screen);
         return;
     }
     
@@ -211,6 +256,19 @@ void UI::showScreen(screen_id_t screen) {
     // Don't switch if already on this screen
     if (_currentScreen == screen) {
         return;
+    }
+    
+    // Destroy previous screen if it's a rarely-used one (free memory)
+    // Keep essential screens: HOME, IDLE, BREWING, SETTINGS, SPLASH
+    if (_currentScreen != SCREEN_HOME && 
+        _currentScreen != SCREEN_IDLE && 
+        _currentScreen != SCREEN_BREWING && 
+        _currentScreen != SCREEN_SETTINGS &&
+        _currentScreen != SCREEN_SPLASH &&
+        _screens[_currentScreen]) {
+        LOG_I("Destroying screen to free memory: %d", _currentScreen);
+        lv_obj_del(_screens[_currentScreen]);
+        _screens[_currentScreen] = nullptr;
     }
     
     _previousScreen = _currentScreen;
@@ -656,7 +714,9 @@ void UI::createSplashScreen() {
 // =============================================================================
 
 void UI::updateSetupScreen() {
-    screen_setup_update(&_state);
+    if (_screens[SCREEN_SETUP]) {
+        screen_setup_update(&_state);
+    }
 }
 
 void UI::updateIdleScreen() {

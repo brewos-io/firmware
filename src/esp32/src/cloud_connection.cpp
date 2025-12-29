@@ -28,6 +28,7 @@ void CloudConnection::begin(const String& serverUrl, const String& deviceId, con
     _serverUrl = serverUrl;
     _deviceId = deviceId;
     _deviceKey = deviceKey;
+    _authFailureCount = 0;  // Reset auth failures on begin()
     _enabled = true;
     _reconnectDelay = RECONNECT_DELAY_MS;
     
@@ -320,11 +321,27 @@ void CloudConnection::connect() {
     
     // Skip registration if we already have a device key (device already paired)
     // Registration is only needed for initial pairing - it adds 5-15s SSL overhead
+    // If we had auth failures, the key was regenerated and begin() was called again
+    // so _deviceKey should already be updated
     if (!_registered) {
         if (!_deviceKey.isEmpty()) {
-            // Device key exists - already paired, skip registration
-            LOG_I("Device key present - skipping registration (already paired)");
-            _registered = true;
+            // Device key exists - try registration if not already registered
+            if (_onRegister) {
+                LOG_I("Device key present but not registered - attempting registration...");
+                _registered = _onRegister();
+                if (!_registered) {
+                    LOG_W("Registration failed - will retry in 30s");
+                    _failureCount++;
+                    _lastConnectAttempt = millis();
+                    _reconnectDelay = 30000;
+                    return;
+                }
+                LOG_I("Registration successful");
+            } else {
+                // No registration callback - assume already paired
+                LOG_I("Device key present - assuming already paired (no registration callback)");
+                _registered = true;
+            }
         } else if (_onRegister) {
             // No device key - need to register for pairing
             LOG_I("No device key - registering with cloud...");
@@ -358,6 +375,10 @@ void CloudConnection::connect() {
     String wsPath = "/ws/device?id=" + _deviceId;
     if (!_deviceKey.isEmpty()) {
         wsPath += "&key=" + _deviceKey;
+        LOG_I("Connecting with device key (length: %d)", _deviceKey.length());
+    } else {
+        LOG_W("WARNING: Connecting WITHOUT device key - server will reject!");
+        LOG_W("Device ID: %s", _deviceId.c_str());
     }
     
     // Resolve DNS first - WebSocketsClient doesn't handle DNS failures well
@@ -479,28 +500,68 @@ void CloudConnection::handleEvent(WStype_t type, uint8_t* payload, size_t length
     
     switch (type) {
         case WStype_DISCONNECTED:
-            if (_connected) {
-                LOG_W("Disconnected from cloud");
-            }
-            _connected = false;
-            _connecting = false;
-            _connectedAt = 0;  // Reset connection timestamp
-            _pendingInitialStateBroadcast = false;  // Cancel pending broadcast
-            
-            // Only set quick retry if not already set to longer delay (e.g., from heap issue)
-            if (_reconnectDelay < 30000) {
-                _lastConnectAttempt = millis();
-                _failureCount++;
-                _reconnectDelay = 30000; // Retry in 30s for stability
-                LOG_W("Cloud disconnected, reconnecting in 30s");
+            {
+                // Try to get disconnect reason if available
+                String reason = (length > 0 && payload) ? String((char*)payload, length) : "unknown";
+                unsigned long now = millis();
+                
+                // Detect authentication failure: connected then immediately disconnected (< 5 seconds)
+                // This indicates server rejected the connection due to invalid credentials
+                bool isAuthFailure = false;
+                if (_connected && _connectedAt > 0 && (now - _connectedAt) < 5000) {
+                    isAuthFailure = true;
+                    _authFailureCount++;
+                    LOG_W("Authentication failure detected (disconnected after %lu ms)", now - _connectedAt);
+                    LOG_W("Disconnect reason: %s", reason.c_str());
+                } else if (_connected) {
+                    LOG_W("Disconnected from cloud (reason: %s, length: %zu)", reason.c_str(), length);
+                } else {
+                    LOG_W("Connection failed (reason: %s, length: %zu)", reason.c_str(), length);
+                }
+                
+                _connected = false;
+                _connecting = false;
+                _lastDisconnectTime = now;
+                _connectedAt = 0;  // Reset connection timestamp
+                _pendingInitialStateBroadcast = false;  // Cancel pending broadcast
+                
+                // If auth failure detected, regenerate key and retry registration
+                if (isAuthFailure && _onRegenerateKey && _authFailureCount <= 3) {
+                    LOG_W("Attempting recovery: regenerating device key (attempt %d/3)", _authFailureCount);
+                    if (_onRegenerateKey()) {
+                        // Key regenerated - need to reload it from PairingManager
+                        // The callback should return true if successful, but we need to get the new key
+                        // For now, mark as unregistered and the connect() will reload key via begin()
+                        _registered = false;
+                        _failureCount = 0;  // Reset failure count
+                        _reconnectDelay = 10000;  // Retry in 10s with new key
+                        LOG_I("Device key regenerated - will reload and retry registration");
+                    } else {
+                        LOG_E("Failed to regenerate device key - will retry later");
+                        _reconnectDelay = 30000;
+                    }
+                } else if (isAuthFailure && _authFailureCount > 3) {
+                    LOG_E("Too many auth failures (%d) - giving up. Manual pairing required.", _authFailureCount);
+                    _reconnectDelay = 300000;  // 5 min before retry
+                } else {
+                    // Normal disconnect - only set quick retry if not already set to longer delay
+                    if (_reconnectDelay < 30000) {
+                        _lastConnectAttempt = now;
+                        _failureCount++;
+                        _reconnectDelay = 30000; // Retry in 30s for stability
+                        LOG_W("Cloud disconnected, reconnecting in 30s");
+                    }
+                }
             }
             break;
             
         case WStype_CONNECTED:
             LOG_I("Connected to cloud!");
+            LOG_I("Device ID: %s, Key length: %d", _deviceId.c_str(), _deviceKey.length());
             _connected = true;
             _connecting = false;
             _failureCount = 0; // Reset failures
+            _authFailureCount = 0; // Reset auth failures on successful connection
             _reconnectDelay = RECONNECT_DELAY_MS; // Reset to default (2 min)
             _connectedAt = millis();  // Track connection time for grace period
             _pendingInitialStateBroadcast = true;  // Schedule state broadcast after stabilization
@@ -645,6 +706,10 @@ void CloudConnection::onCommand(CommandCallback callback) {
 
 void CloudConnection::onRegister(RegisterCallback callback) {
     _onRegister = callback;
+}
+
+void CloudConnection::onRegenerateKey(RegenerateKeyCallback callback) {
+    _onRegenerateKey = callback;
 }
 
 bool CloudConnection::isConnected() const {

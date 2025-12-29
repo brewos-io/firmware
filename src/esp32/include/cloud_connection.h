@@ -30,6 +30,9 @@ public:
     // Registration callback - called before first connect to register device with cloud
     typedef bool (*RegisterCallback)();
     
+    // Regenerate key callback - called when authentication fails to recover
+    typedef bool (*RegenerateKeyCallback)();
+    
     CloudConnection();
     
     /**
@@ -71,6 +74,12 @@ public:
      * Called once before first connection attempt (when WiFi is available)
      */
     void onRegister(RegisterCallback callback);
+    
+    /**
+     * Set callback for regenerating device key when authentication fails
+     * Called when connection is rejected due to invalid credentials
+     */
+    void onRegenerateKey(RegenerateKeyCallback callback);
     
     /**
      * Check if connected to cloud
@@ -120,9 +129,12 @@ private:
     unsigned long _lastConnectAttempt = 0;
     unsigned long _reconnectDelay = 5000;  // 5 seconds between retries
     unsigned long _connectedAt = 0;        // Track when connection established for grace period
+    unsigned long _lastDisconnectTime = 0; // Track disconnect time to detect auth failures
+    int _authFailureCount = 0;             // Track consecutive auth failures
     
     CommandCallback _onCommand = nullptr;
     RegisterCallback _onRegister = nullptr;
+    RegenerateKeyCallback _onRegenerateKey = nullptr;
     bool _registered = false;
     unsigned long _lastUserActivity = 0;  // For deferring connection during user interaction
     unsigned long _pausedUntil = 0;       // For pausing connection during web server activity

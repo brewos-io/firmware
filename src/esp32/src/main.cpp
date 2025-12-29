@@ -1307,6 +1307,59 @@ void setup() {
             return pairingManager->registerTokenWithCloud();
         });
         
+        // Set up regenerate key callback - called when authentication fails
+        // Regenerates device key and reinitializes connection
+        cloudConnection->onRegenerateKey([]() -> bool {
+            Serial.println("[Cloud] Regenerating device key due to auth failure...");
+            if (pairingManager->regenerateDeviceKey()) {
+                // Reload the new key into cloud connection
+                String newKey = pairingManager->getDeviceKey();
+                String newDeviceId = pairingManager->getDeviceId();
+                auto& cs = State.settings().cloud;
+                
+                // Disconnect and reinitialize with new key
+                cloudConnection->end();
+                cloudConnection->begin(
+                    String(cs.serverUrl),
+                    newDeviceId,
+                    newKey
+                );
+                
+                // Re-setup all callbacks (begin() clears them)
+                cloudConnection->onRegister([]() -> bool {
+                    return pairingManager->registerTokenWithCloud();
+                });
+                cloudConnection->onRegenerateKey([]() -> bool {
+                    // Retry regeneration (up to 3 times total)
+                    Serial.println("[Cloud] Regenerating device key (retry 2/3)...");
+                    if (pairingManager->regenerateDeviceKey()) {
+                        String newKey = pairingManager->getDeviceKey();
+                        String newDeviceId = pairingManager->getDeviceId();
+                        auto& cs = State.settings().cloud;
+                        cloudConnection->end();
+                        cloudConnection->begin(String(cs.serverUrl), newDeviceId, newKey);
+                        cloudConnection->onRegister([]() -> bool {
+                            return pairingManager->registerTokenWithCloud();
+                        });
+                        cloudConnection->onRegenerateKey([]() -> bool {
+                            // Final attempt - just regenerate (prevents infinite recursion)
+                            Serial.println("[Cloud] Regenerating device key (final attempt)...");
+                            return pairingManager->regenerateDeviceKey();
+                        });
+                        cloudConnection->onCommand(onCloudCommand);
+                        return true;
+                    }
+                    return false;
+                });
+                cloudConnection->onCommand(onCloudCommand);
+                
+                Serial.println("[Cloud] Device key regenerated and connection reinitialized");
+                return true;
+            }
+            Serial.println("[Cloud] Failed to regenerate device key");
+            return false;
+        });
+        
         // Set up command handler using static function to avoid PSRAM issues
         cloudConnection->onCommand(onCloudCommand);
         

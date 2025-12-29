@@ -37,11 +37,19 @@
    MEMORY SETTINGS
  *====================*/
 
-/* Size of the memory available for `lv_mem_alloc()` in bytes (>= 2kB) */
-#define LV_MEM_SIZE (128 * 1024U)  /* 128KB */
-
-/* Use custom malloc/free (we'll use PSRAM) */
-#define LV_MEM_CUSTOM 0
+#ifdef SIMULATOR
+    /* Simulator: use standard malloc (no PSRAM) */
+    #define LV_MEM_SIZE (128 * 1024U)  /* 128KB */
+    #define LV_MEM_CUSTOM 0
+#else
+    /* ESP32: Use custom malloc/free to route LVGL allocations to PSRAM
+     * This frees ~128KB of internal RAM for WiFi/SSL operations */
+    #define LV_MEM_CUSTOM 1
+    #define LV_MEM_CUSTOM_INCLUDE <esp_heap_caps.h>
+    #define LV_MEM_CUSTOM_ALLOC(size) heap_caps_malloc(size, MALLOC_CAP_SPIRAM)
+    #define LV_MEM_CUSTOM_FREE(p) heap_caps_free(p)
+    #define LV_MEM_CUSTOM_REALLOC(p, size) heap_caps_realloc(p, size, MALLOC_CAP_SPIRAM)
+#endif
 
 /* Use the standard `memcpy` and `memset` instead of LVGL's own functions */
 #define LV_MEMCPY_MEMSET_STD 1

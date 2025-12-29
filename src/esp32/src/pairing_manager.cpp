@@ -83,8 +83,29 @@ void PairingManager::initDeviceKey() {
     }
 }
 
+bool PairingManager::regenerateDeviceKey() {
+    Serial.println("[Pairing] Regenerating device key (recovery from auth failure)...");
+    
+    // Generate new key
+    _deviceKey = generateRandomToken(43); // base64url of 32 bytes ≈ 43 chars
+    
+    // Store in NVS (overwrite existing)
+    Preferences prefs;
+    if (prefs.begin(NVS_NAMESPACE, false)) { // Read-write
+        prefs.putString(NVS_KEY_DEVICE_KEY, _deviceKey);
+        prefs.end();
+        Serial.printf("[Pairing] New device key generated and stored (length=%d)\n", _deviceKey.length());
+        return true;
+    } else {
+        Serial.println("[Pairing] ERROR: Failed to save regenerated device key (NVS error)");
+        return false;
+    }
+}
+
 String PairingManager::generateRandomToken(size_t length) {
-    static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    // Use base64url-safe charset for device keys (RFC 4648)
+    // This matches what the cloud server expects
+    static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
     String token;
     token.reserve(length);
     

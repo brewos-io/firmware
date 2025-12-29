@@ -1,0 +1,19 @@
+# BrewOS Custom Partition Table for 16MB Flash
+# 
+# Layout:
+#   - NVS: 20KB for WiFi credentials and persistent settings
+#   - OTA Data: 8KB for bootloader selection
+#   - App0/App1: 3MB each for OTA updates (LVGL+WiFi+SSL requires ~2MB)
+#   - SPIFFS: 8MB for web assets, logs, and user data
+#   - Coredump: 64KB for crash stack traces
+#
+# Total: 14.1MB used of 16MB available
+
+# Name,    Type, SubType, Offset,   Size
+nvs,       data, nvs,     0x9000,   0x5000
+otadata,   data, ota,     0xe000,   0x2000
+app0,      app,  ota_0,   0x10000,  0x300000
+app1,      app,  ota_1,   0x310000, 0x300000
+spiffs,    data, spiffs,  0x610000, 0x800000
+coredump,  data, coredump,0xE10000, 0x10000
+
