@@ -9,6 +9,7 @@
 #include "power_meter/power_meter.h"
 #include <ArduinoJson.h>
 #include <initializer_list>
+#include <esp_mac.h>  // ESP-IDF 5.x: esp_read_mac moved here
 
 // Static instance for callback
 MQTTClient* MQTTClient::_instance = nullptr;

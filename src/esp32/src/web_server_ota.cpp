@@ -236,14 +236,19 @@ static inline void feedWatchdog() {
 
 /**
  * @brief Configures the watchdog timer for OTA operations
+ * ESP-IDF 5.x: esp_task_wdt_init now takes a config struct
  */
 static void configureWatchdog(bool enable, uint32_t timeoutSec) {
     if (enable) {
-        esp_task_wdt_init(timeoutSec, true);
+        esp_task_wdt_config_t wdt_config = {
+            .timeout_ms = timeoutSec * 1000,
+            .idle_core_mask = 0,  // No idle task monitoring
+            .trigger_panic = true
+        };
+        esp_task_wdt_reconfigure(&wdt_config);
         esp_task_wdt_add(NULL); // Add current task to WDT watch
     } else {
         esp_task_wdt_delete(NULL);
-        esp_task_wdt_deinit();
     }
 }
 
@@ -324,18 +329,21 @@ static void disableWatchdogForOTA() {
     // Note: This requires deinit to succeed first, so we'll try a workaround
     LOG_W("WDT deinit failed (err=%d) - tasks still subscribed", err);
     
-    // Last resort: try to reinit with longer timeout (this usually fails if already init)
-    // But we try anyway in case the state is inconsistent
-    err = esp_task_wdt_init(OTA_WDT_TIMEOUT_SECONDS, false);  // Long timeout, no panic
+    // Last resort: try to reconfigure with longer timeout
+    // ESP-IDF 5.x: use esp_task_wdt_reconfigure instead of init
+    esp_task_wdt_config_t wdt_config = {
+        .timeout_ms = OTA_WDT_TIMEOUT_SECONDS * 1000,
+        .idle_core_mask = 0,
+        .trigger_panic = false  // Long timeout, no panic
+    };
+    err = esp_task_wdt_reconfigure(&wdt_config);
     if (err == ESP_OK) {
-        LOG_I("WDT reinitialized with 60 second timeout");
-    } else if (err == ESP_ERR_INVALID_STATE) {
-        // Already initialized - this is expected. The WDT is still active with
-        // its original timeout. We've removed loopTask, so it won't trigger for us.
-        // The async_tcp might still trigger, but we've done what we can.
-        LOG_W("WDT already initialized - async_tcp may still trigger WDT during long downloads");
+        LOG_I("WDT reconfigured with 60 second timeout");
     } else {
-        LOG_W("WDT init returned: %d", err);
+        // Reconfiguration failed - the WDT is still active with its original timeout.
+        // We've removed loopTask, so it won't trigger for us. The async_tcp might
+        // still trigger, but we've done what we can.
+        LOG_W("WDT reconfigure returned: %d - async_tcp may still trigger WDT", err);
     }
     
     _watchdogDisabled = true;
@@ -354,10 +362,16 @@ static void enableWatchdogAfterOTA() {
     if (err == ESP_OK) {
         LOG_I("Task watchdog re-enabled for current task");
     } else if (err == ESP_ERR_INVALID_STATE) {
-        // WDT not initialized - try to init with default settings
-        err = esp_task_wdt_init(DEFAULT_WDT_TIMEOUT_SECONDS, true);  // Default timeout, panic on trigger
+        // WDT not initialized or task not added - try to reconfigure
+        // ESP-IDF 5.x: use config struct
+        esp_task_wdt_config_t wdt_config = {
+            .timeout_ms = DEFAULT_WDT_TIMEOUT_SECONDS * 1000,
+            .idle_core_mask = 0,
+            .trigger_panic = true  // Default timeout, panic on trigger
+        };
+        err = esp_task_wdt_reconfigure(&wdt_config);
         if (err == ESP_OK) {
-            LOG_I("WDT reinitialized with default config");
+            LOG_I("WDT reconfigured with default config");
             esp_task_wdt_add(NULL);
         }
     } else {
@@ -611,7 +625,7 @@ static bool downloadToFile(const char* url, const char* filePath,
 // Pico OTA - Download and flash Pico firmware
 // =============================================================================
 
-bool WebServer::startPicoGitHubOTA(const String& version) {
+bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     LOG_I("Starting Pico GitHub OTA for version: %s", version.c_str());
     
     // Get machine type from StateManager
@@ -815,7 +829,7 @@ bool WebServer::startPicoGitHubOTA(const String& version) {
 // ESP32 OTA - Download and flash ESP32 firmware + LittleFS
 // =============================================================================
 
-void WebServer::startGitHubOTA(const String& version) {
+void BrewWebServer::startGitHubOTA(const String& version) {
     LOG_I("Starting ESP32 GitHub OTA for version: %s", version.c_str());
     
     // Build URL
@@ -1033,7 +1047,7 @@ void WebServer::startGitHubOTA(const String& version) {
  * Update LittleFS filesystem (called after ESP32 firmware update)
  * Non-critical - continues even if fails
  */
-void WebServer::updateLittleFS(const char* tag) {
+void BrewWebServer::updateLittleFS(const char* tag) {
     LOG_I("Updating LittleFS...");
     broadcastOtaProgress(&_ws, "flash", 96, "Updating web UI...");
     
@@ -1155,7 +1169,7 @@ void WebServer::updateLittleFS(const char* tag) {
 // Combined OTA - Update Pico first, then ESP32
 // =============================================================================
 
-void WebServer::startCombinedOTA(const String& version) {
+void BrewWebServer::startCombinedOTA(const String& version) {
     LOG_I("Starting combined OTA for version: %s", version.c_str());
     
     // IMMEDIATELY tell UI that OTA is starting - this triggers the overlay
@@ -1340,7 +1354,7 @@ static int compareVersions(const String& v1, const String& v2) {
     return 0;
 }
 
-void WebServer::checkForUpdates() {
+void BrewWebServer::checkForUpdates() {
     LOG_I("Checking for updates...");
     broadcastLogLevel("info", "Checking for updates...");
     
@@ -1462,7 +1476,7 @@ void WebServer::checkForUpdates() {
 // Helper Functions
 // =============================================================================
 
-const char* WebServer::getPicoAssetName(uint8_t machineType) {
+const char* BrewWebServer::getPicoAssetName(uint8_t machineType) {
     switch (machineType) {
         case 1: return GITHUB_PICO_DUAL_BOILER_ASSET;
         case 2: return GITHUB_PICO_SINGLE_BOILER_ASSET;
@@ -1471,7 +1485,7 @@ const char* WebServer::getPicoAssetName(uint8_t machineType) {
     }
 }
 
-bool WebServer::checkVersionMismatch() {
+bool BrewWebServer::checkVersionMismatch() {
     const char* picoVersion = State.getPicoVersion();
     const char* esp32Version = ESP32_VERSION;
     

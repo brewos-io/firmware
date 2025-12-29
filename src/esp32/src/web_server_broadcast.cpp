@@ -84,7 +84,7 @@ static void broadcastLogInternal(AsyncWebSocket* ws, CloudConnection* cloudConne
 
 // Variadic version - format string with arguments (like printf)
 // Variadic version - format string with arguments (like printf), defaults to "info"
-void WebServer::broadcastLog(const char* format, ...) {
+void BrewWebServer::broadcastLog(const char* format, ...) {
     if (!format) return;
     
     // Format message into stack-allocated buffer (internal RAM, not PSRAM)
@@ -98,7 +98,7 @@ void WebServer::broadcastLog(const char* format, ...) {
 }
 
 // Variadic version with explicit level (level, format, ...args)
-void WebServer::broadcastLogLevel(const char* level, const char* format, ...) {
+void BrewWebServer::broadcastLogLevel(const char* level, const char* format, ...) {
     if (!format || !level) return;
     
     // Format message into stack-allocated buffer (internal RAM, not PSRAM)
@@ -112,7 +112,7 @@ void WebServer::broadcastLogLevel(const char* level, const char* format, ...) {
 }
 
 
-void WebServer::broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_t len) {
+void BrewWebServer::broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_t len) {
     // Use stack allocation to avoid PSRAM crashes
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -151,7 +151,7 @@ void WebServer::broadcastPicoMessage(uint8_t type, const uint8_t* payload, size_
     }
 }
 
-void WebServer::broadcastRaw(const String& json) {
+void BrewWebServer::broadcastRaw(const String& json) {
     _ws.textAll(json.c_str(), json.length());
     
     // Also send to cloud
@@ -160,7 +160,7 @@ void WebServer::broadcastRaw(const String& json) {
     }
 }
 
-void WebServer::broadcastRaw(const char* json) {
+void BrewWebServer::broadcastRaw(const char* json) {
     if (!json) return;
     _ws.textAll(json);
     
@@ -174,7 +174,7 @@ void WebServer::broadcastRaw(const char* json) {
 // Unified Status Broadcast - Single comprehensive message
 // Uses pre-allocated PSRAM buffers to avoid repeated allocation every 500ms
 // =============================================================================
-void WebServer::broadcastFullStatus(const ui_state_t& state) {
+void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     // Skip status broadcasts during OTA to prevent WebSocket queue overflow
     if (_otaInProgress) {
         return;
@@ -486,7 +486,7 @@ void WebServer::broadcastFullStatus(const ui_state_t& state) {
     // Note: No cleanup needed - we're using pre-allocated reusable buffers
 }
 
-void WebServer::broadcastDeviceInfo() {
+void BrewWebServer::broadcastDeviceInfo() {
     // Use stack allocation to avoid PSRAM crashes
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -566,7 +566,7 @@ void WebServer::broadcastDeviceInfo() {
     }
 }
 
-void WebServer::broadcastBBWSettings() {
+void BrewWebServer::broadcastBBWSettings() {
     // Skip during OTA to prevent WebSocket queue overflow
     if (_otaInProgress) {
         return;
@@ -609,7 +609,7 @@ void WebServer::broadcastBBWSettings() {
     }
 }
 
-void WebServer::broadcastPowerMeterStatus() {
+void BrewWebServer::broadcastPowerMeterStatus() {
     // Skip during OTA to prevent WebSocket queue overflow
     if (_otaInProgress) {
         return;
@@ -645,7 +645,7 @@ void WebServer::broadcastPowerMeterStatus() {
     }
 }
 
-void WebServer::broadcastEvent(const String& event, const JsonDocument* data) {
+void BrewWebServer::broadcastEvent(const String& event, const JsonDocument* data) {
     // Use stack allocation to avoid PSRAM crashes
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"

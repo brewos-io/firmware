@@ -72,7 +72,7 @@ PicoUART* picoUart = nullptr;
 MQTTClient* mqttClient = nullptr;
 PairingManager* pairingManager = nullptr;
 CloudConnection* cloudConnection = nullptr;
-WebServer* webServer = nullptr;
+BrewWebServer* webServer = nullptr;
 
 // Captive portal DNS server for AP mode
 DNSServer dnsServer;
@@ -726,7 +726,7 @@ void setup() {
     Serial.println("CloudConnection created");
     // Serial.flush(); // Removed - can block on USB CDC
     
-    webServer = new WebServer(*wifiManager, *picoUart, *mqttClient, pairingManager);
+    webServer = new BrewWebServer(*wifiManager, *picoUart, *mqttClient, pairingManager);
     Serial.println("WebServer created");
     // Serial.flush(); // Removed - can block on USB CDC
     

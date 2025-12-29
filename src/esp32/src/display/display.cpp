@@ -33,8 +33,9 @@ static SemaphoreHandle_t s_flush_sem = NULL;
 static lv_disp_drv_t* s_disp_drv = NULL;
 
 // Frame transfer done callback - called by DMA when a frame is complete
+// ESP-IDF 5.x: event_data is now const
 static IRAM_ATTR bool on_frame_trans_done(esp_lcd_panel_handle_t panel, 
-                                           esp_lcd_rgb_panel_event_data_t *edata, 
+                                           const esp_lcd_rgb_panel_event_data_t *edata, 
                                            void *user_ctx) {
     BaseType_t need_yield = pdFALSE;
     if (s_flush_sem) {
@@ -263,7 +264,7 @@ void Display::initHardware() {
     panel_config.timings.vsync_front_porch = 50;
     panel_config.timings.flags.pclk_active_neg = 0;
     panel_config.data_width = 16;
-    panel_config.psram_trans_align = 64;
+    // Note: psram_trans_align deprecated in ESP-IDF 5.x, bounce buffer handles alignment
     panel_config.de_gpio_num = 17;
     panel_config.pclk_gpio_num = 9;
     panel_config.vsync_gpio_num = 3;
@@ -288,26 +289,21 @@ void Display::initHardware() {
     panel_config.flags.fb_in_psram = 1;
     
     // =========================================================================
-    // NOTE: BOUNCE BUFFER AND DOUBLE BUFFERING
+    // ESP-IDF 5.x: BOUNCE BUFFER AND DOUBLE BUFFERING
     // =========================================================================
-    // The following features would improve display stability during WiFi operations
-    // but are NOT available in the current Arduino-ESP32 SDK (v2.x with ESP-IDF 4.4):
+    // These features improve display stability during WiFi operations:
     //
-    // 1. bounce_buffer_size_px - Decouples LCD DMA from PSRAM bus contention
-    //    Would prevent visual glitches when WiFi accesses flash
+    // 1. bounce_buffer_size_px - Internal SRAM buffer for DMA
+    //    Decouples LCD DMA from PSRAM bus contention during WiFi/Flash operations
+    //    480 * 10 = 10 scanlines × 2 bytes/pixel = ~9.6KB of internal SRAM
     //
     // 2. num_fbs = 2 - Double buffering for tear-free display
     //    DMA reads from one buffer while CPU draws to another
-    //
-    // These fields are available in ESP-IDF 5.x+ and Arduino-ESP32 3.x+
-    // For now, display stability is achieved through:
-    // - GPIO drive strength reduction (GPIO_DRIVE_CAP_0) to reduce EMI
-    // - Lower PCLK frequency (10MHz) for more timing margin
-    // - WiFi/MQTT tasks on Core 0, display on Core 1 (task isolation)
+    //    Requires ~900KB additional PSRAM (we have 8MB available)
     
-    // Register callback to synchronize with DMA transfers
-    panel_config.on_frame_trans_done = on_frame_trans_done;
-    panel_config.user_ctx = NULL;
+    panel_config.bounce_buffer_size_px = 480 * 10;  // 10 scanlines bounce buffer
+    panel_config.num_fbs = 2;  // Double buffering
+    LOG_I("Enabled bounce buffer (10 scanlines) and double buffering");
     
     // Create semaphore for flush synchronization
     s_flush_sem = xSemaphoreCreateBinary();
@@ -317,6 +313,16 @@ void Display::initHardware() {
     if (ret != ESP_OK) {
         LOG_E("Failed to create RGB panel: %s", esp_err_to_name(ret));
         return;
+    }
+    
+    // ESP-IDF 5.x: Register callbacks after panel creation
+    esp_lcd_rgb_panel_event_callbacks_t callbacks = {};
+    callbacks.on_color_trans_done = on_frame_trans_done;  // Called when color buffer copied to FB
+    ret = esp_lcd_rgb_panel_register_event_callbacks(panel_handle, &callbacks, NULL);
+    if (ret != ESP_OK) {
+        LOG_W("Failed to register panel callbacks: %s (display will work but may tear)", esp_err_to_name(ret));
+    } else {
+        LOG_I("Registered panel event callbacks for vsync synchronization");
     }
     
     // =========================================================================
@@ -466,9 +472,9 @@ void Display::setBacklight(uint8_t brightness) {
 
 void Display::backlightOn() {
     // Re-enable RGB signals BEFORE turning on backlight
-    // esp_lcd_panel_disp_off(handle, false) = turn display ON
+    // esp_lcd_panel_disp_on_off(handle, true) = turn display ON
     if (panel_handle) {
-        esp_lcd_panel_disp_off(panel_handle, false);  // false = display ON
+        esp_lcd_panel_disp_on_off(panel_handle, true);  // true = display ON
     }
     
     _isDimmed = false;
@@ -484,7 +490,7 @@ void Display::backlightOff() {
     // Stop RGB signals to eliminate WiFi interference when screen is off
     // This silences the 20+ data pins that generate EMI
     if (panel_handle) {
-        esp_lcd_panel_disp_off(panel_handle, true);  // true = display OFF
+        esp_lcd_panel_disp_on_off(panel_handle, false);  // false = display OFF
     }
 }
 
@@ -493,7 +499,7 @@ void Display::resetIdleTimer() {
     if (_isDimmed) {
         // If screen was fully OFF (0 brightness), re-enable RGB signals first
         if (_backlightLevel == 0 && panel_handle) {
-            esp_lcd_panel_disp_off(panel_handle, false);  // false = display ON
+            esp_lcd_panel_disp_on_off(panel_handle, true);  // true = display ON
         }
         
         _isDimmed = false;
@@ -512,7 +518,7 @@ void Display::updateBacklightIdle() {
         
         // Stop RGB signals to eliminate WiFi interference
         if (panel_handle) {
-            esp_lcd_panel_disp_off(panel_handle, true);  // true = display OFF
+            esp_lcd_panel_disp_on_off(panel_handle, false);  // false = display OFF
         }
         
         _isDimmed = true;

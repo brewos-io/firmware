@@ -33,12 +33,12 @@ static const unsigned long WIFI_READY_DELAY_MS = 1000;  // Reduced from 5s to 1s
 extern ui_state_t machineState;
 
 // Static WebServer pointer for WebSocket callback
-static WebServer* _wsInstance = nullptr;
+static BrewWebServer* _wsInstance = nullptr;
 
 // Note: All JsonDocument instances should use StaticJsonDocument with stack allocation
 // to avoid PSRAM crashes. Use the pragma pattern from handleGetWiFiNetworks.
 
-WebServer::WebServer(WiFiManager& wifiManager, PicoUART& picoUart, MQTTClient& mqttClient, PairingManager* pairingManager)
+BrewWebServer::BrewWebServer(WiFiManager& wifiManager, PicoUART& picoUart, MQTTClient& mqttClient, PairingManager* pairingManager)
     : _server(WEB_SERVER_PORT)
     , _ws("/ws")  // WebSocket on same port 80, endpoint /ws
     , _wifiManager(wifiManager)
@@ -47,7 +47,7 @@ WebServer::WebServer(WiFiManager& wifiManager, PicoUART& picoUart, MQTTClient& m
     , _pairingManager(pairingManager) {
 }
 
-void WebServer::begin() {
+void BrewWebServer::begin() {
     LOG_I("Starting web server...");
     
     // Initialize LittleFS with more open files to handle parallel asset requests
@@ -76,7 +76,7 @@ void WebServer::begin() {
     LOG_I("WebSocket available at ws://brewos.local/ws");
 }
 
-void WebServer::setCloudConnection(CloudConnection* cloudConnection) {
+void BrewWebServer::setCloudConnection(CloudConnection* cloudConnection) {
     _cloudConnection = cloudConnection;
 }
 
@@ -97,7 +97,7 @@ static bool cloudRegisterCallback() {
     return false;
 }
 
-void WebServer::startCloudConnection(const String& serverUrl, const String& deviceId, const String& deviceKey) {
+void BrewWebServer::startCloudConnection(const String& serverUrl, const String& deviceId, const String& deviceKey) {
     if (!_cloudConnection) {
         LOG_W("Cannot start cloud connection: not initialized");
         return;
@@ -120,12 +120,12 @@ void WebServer::startCloudConnection(const String& serverUrl, const String& devi
     LOG_I("Cloud connection started");
 }
 
-void WebServer::setWiFiConnected() {
+void BrewWebServer::setWiFiConnected() {
     _wifiReadyTime = millis();
     LOG_I("WiFi connected - requests will be served after %lu ms delay", WIFI_READY_DELAY_MS);
 }
 
-bool WebServer::isWiFiReady() {
+bool BrewWebServer::isWiFiReady() {
     if (_wifiReadyTime == 0) {
         return false;  // WiFi not connected yet
     }
@@ -135,7 +135,7 @@ bool WebServer::isWiFiReady() {
 // The React app is served from LittleFS via serveStatic()
 // Users can access it at http://brewos.local after WiFi connects
 
-void WebServer::loop() {
+void BrewWebServer::loop() {
     // AsyncWebSocket is event-driven, no loop() needed
     // Periodically clean up disconnected clients
     static unsigned long lastCleanup = 0;
@@ -177,7 +177,7 @@ void WebServer::loop() {
     }
 }
 
-void WebServer::setupRoutes() {
+void BrewWebServer::setupRoutes() {
     // Simple test endpoint - no LittleFS needed - for diagnosing web server performance
     _server.on("/test", HTTP_GET, [this](AsyncWebServerRequest* request) {
         unsigned long startTime = millis();
@@ -1916,7 +1916,7 @@ void WebServer::setupRoutes() {
     LOG_I("Routes setup complete");
 }
 
-void WebServer::handleGetStatus(AsyncWebServerRequest* request) {
+void BrewWebServer::handleGetStatus(AsyncWebServerRequest* request) {
     // Delay serving if WiFi just connected (prevents PSRAM crashes)
     // Use const char* to avoid String allocation in PSRAM
     if (!_wifiManager.isAPMode() && !isWiFiReady()) {
@@ -2033,7 +2033,7 @@ static int _cachedNetworkCount = 0;
 static unsigned long _lastScanTime = 0;
 static const unsigned long SCAN_CACHE_TIMEOUT_MS = 30000;  // Cache results for 30 seconds
 
-void WebServer::handleGetWiFiNetworks(AsyncWebServerRequest* request) {
+void BrewWebServer::handleGetWiFiNetworks(AsyncWebServerRequest* request) {
     // Use cached results if available and fresh
     unsigned long now = millis();
     
@@ -2142,7 +2142,7 @@ void WebServer::handleGetWiFiNetworks(AsyncWebServerRequest* request) {
     request->send(202, "application/json", "{\"status\":\"scanning\",\"networks\":[]}");
 }
 
-void WebServer::handleSetWiFi(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+void BrewWebServer::handleSetWiFi(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
     // Use stack allocation to avoid PSRAM crashes
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -2170,7 +2170,7 @@ void WebServer::handleSetWiFi(AsyncWebServerRequest* request, uint8_t* data, siz
     }
 }
 
-void WebServer::handleGetConfig(AsyncWebServerRequest* request) {
+void BrewWebServer::handleGetConfig(AsyncWebServerRequest* request) {
     // Request config from Pico
     _picoUart.requestConfig();
     
@@ -2178,7 +2178,7 @@ void WebServer::handleGetConfig(AsyncWebServerRequest* request) {
     request->send(200, "application/json", "{\"status\":\"requested\"}");
 }
 
-void WebServer::handleCommand(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+void BrewWebServer::handleCommand(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, data, len);
     
@@ -2202,7 +2202,7 @@ void WebServer::handleCommand(AsyncWebServerRequest* request, uint8_t* data, siz
     }
 }
 
-void WebServer::handleOTAUpload(AsyncWebServerRequest* request, const String& filename,
+void BrewWebServer::handleOTAUpload(AsyncWebServerRequest* request, const String& filename,
                                 size_t index, uint8_t* data, size_t len, bool final) {
     static File otaFile;
     static size_t totalSize = 0;
@@ -2335,7 +2335,7 @@ void WebServer::handleOTAUpload(AsyncWebServerRequest* request, const String& fi
     }
 }
 
-void WebServer::handleStartOTA(AsyncWebServerRequest* request) {
+void BrewWebServer::handleStartOTA(AsyncWebServerRequest* request) {
     // Check if firmware file exists
     if (!LittleFS.exists(OTA_FILE_PATH)) {
         request->send(400, "application/json", "{\"error\":\"No firmware uploaded\"}");
@@ -2423,11 +2423,11 @@ void WebServer::handleStartOTA(AsyncWebServerRequest* request) {
     broadcastLogLevel("info", "Firmware update complete. Pico should boot with new firmware.");
 }
 
-size_t WebServer::getClientCount() {
+size_t BrewWebServer::getClientCount() {
     return _ws.count();
 }
 
-String WebServer::getContentType(const String& filename) {
+String BrewWebServer::getContentType(const String& filename) {
     if (filename.endsWith(".html")) return "text/html";
     if (filename.endsWith(".css")) return "text/css";
     if (filename.endsWith(".js")) return "application/javascript";
@@ -2444,7 +2444,7 @@ String WebServer::getContentType(const String& filename) {
     return "application/octet-stream";
 }
 
-bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
+bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
     const size_t CHUNK_SIZE = 200;  // Bootloader protocol supports up to 256 bytes per chunk
     uint8_t buffer[CHUNK_SIZE];
     size_t bytesSent = 0;
@@ -2559,7 +2559,7 @@ bool WebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
     return true;
 }
 
-void WebServer::handleGetMQTTConfig(AsyncWebServerRequest* request) {
+void BrewWebServer::handleGetMQTTConfig(AsyncWebServerRequest* request) {
     MQTTConfig config = _mqttClient.getConfig();
     
     #pragma GCC diagnostic push
@@ -2601,7 +2601,7 @@ void WebServer::handleGetMQTTConfig(AsyncWebServerRequest* request) {
         }
 }
 
-void WebServer::handleSetMQTTConfig(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
+void BrewWebServer::handleSetMQTTConfig(AsyncWebServerRequest* request, uint8_t* data, size_t len) {
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, data, len);
     
@@ -2645,7 +2645,7 @@ void WebServer::handleSetMQTTConfig(AsyncWebServerRequest* request, uint8_t* dat
     }
 }
 
-void WebServer::handleTestMQTT(AsyncWebServerRequest* request) {
+void BrewWebServer::handleTestMQTT(AsyncWebServerRequest* request) {
     if (_mqttClient.testConnection()) {
         request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Connection successful\"}");
         broadcastLogLevel("info", "MQTT connection test successful");

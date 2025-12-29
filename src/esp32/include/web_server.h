@@ -18,9 +18,9 @@ class CloudConnection;
 // Call this once during setup() to avoid repeated allocations
 void initBroadcastBuffers();
 
-class WebServer {
+class BrewWebServer {
 public:
-    WebServer(WiFiManager& wifiManager, PicoUART& picoUart, MQTTClient& mqttClient, PairingManager* pairingManager = nullptr);
+    BrewWebServer(WiFiManager& wifiManager, PicoUART& picoUart, MQTTClient& mqttClient, PairingManager* pairingManager = nullptr);
     
     // Initialize
     void begin();

@@ -30,7 +30,7 @@ static char* allocateJsonBuffer(size_t size) {
 }
 
 // WebSocket event handler for AsyncWebSocket (ESP32Async library)
-void WebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len) {
+void BrewWebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len) {
     switch (type) {
         case WS_EVT_DISCONNECT:
             LOG_I("WebSocket client %u disconnected", client->id());
@@ -92,7 +92,7 @@ void WebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* clie
     }
 }
 
-void WebServer::handleWsMessage(uint32_t clientNum, uint8_t* payload, size_t length) {
+void BrewWebServer::handleWsMessage(uint32_t clientNum, uint8_t* payload, size_t length) {
     // Parse JSON command from client - use stack allocation
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -116,7 +116,7 @@ void WebServer::handleWsMessage(uint32_t clientNum, uint8_t* payload, size_t len
  * and from the cloud connection command callback (for cloud-originated commands).
  * It handles commands from either source in a unified way.
  */
-void WebServer::processCommand(JsonDocument& doc) {
+void BrewWebServer::processCommand(JsonDocument& doc) {
     String type = doc["type"] | "";
     
     if (type == "ping") {
