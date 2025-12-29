@@ -45,6 +45,7 @@ public:
     void broadcastDeviceInfo();   // Device info (on connect only)
     void broadcastPowerMeterStatus();  // Power meter status update
     void broadcastBBWSettings();  // BBW settings (after save)
+    void broadcastMqttStatus();   // MQTT status (after config change)
     // Log messages - variadic format string (like printf) to avoid PSRAM
     // Usage: broadcastLog("Message: %s", value) or broadcastLogLevel("warn", "Message: %s", value)
     void broadcastLog(const char* format, ...) __attribute__((format(printf, 2, 3)));  // Variadic: defaults to "info"

@@ -458,6 +458,25 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     wifi["dns2"] = dns2Buf;
     
     // =========================================================================
+    // MQTT Status Section
+    // =========================================================================
+    JsonObject mqtt = doc["mqtt"].to<JsonObject>();
+    MQTTConfig mqttConfig = _mqttClient.getConfig();
+    mqtt["enabled"] = mqttConfig.enabled;
+    mqtt["connected"] = _mqttClient.isConnected();
+    
+    // Copy MQTT strings to stack buffers to avoid PSRAM issues
+    char brokerBuf[64];
+    char topicBuf[32];
+    strncpy(brokerBuf, mqttConfig.broker, sizeof(brokerBuf) - 1);
+    brokerBuf[sizeof(brokerBuf) - 1] = '\0';
+    strncpy(topicBuf, mqttConfig.topic_prefix, sizeof(topicBuf) - 1);
+    topicBuf[sizeof(topicBuf) - 1] = '\0';
+    
+    mqtt["broker"] = brokerBuf;
+    mqtt["topic"] = topicBuf;
+    
+    // =========================================================================
     // ESP32 Info
     // =========================================================================
     JsonObject esp32 = doc["esp32"].to<JsonObject>();
@@ -601,6 +620,57 @@ void BrewWebServer::broadcastBBWSettings() {
         _ws.textAll(jsonBuffer);
         
         // Also send to cloud - use jsonBuffer directly to avoid String allocation
+        if (_cloudConnection) {
+            _cloudConnection->send(jsonBuffer);
+        }
+        
+        free(jsonBuffer);
+    }
+}
+
+void BrewWebServer::broadcastMqttStatus() {
+    // Skip during OTA to prevent WebSocket queue overflow
+    if (_otaInProgress) {
+        return;
+    }
+    
+    // Use stack allocation to avoid PSRAM crashes
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<256> doc;
+    #pragma GCC diagnostic pop
+    doc["type"] = "mqtt_status";
+    
+    // Get MQTT config and status
+    MQTTConfig config = _mqttClient.getConfig();
+    
+    JsonObject mqtt = doc["mqtt"].to<JsonObject>();
+    mqtt["enabled"] = config.enabled;
+    mqtt["connected"] = _mqttClient.isConnected();
+    
+    // Copy strings to stack buffers to avoid PSRAM issues
+    char brokerBuf[64];
+    char topicBuf[32];
+    strncpy(brokerBuf, config.broker, sizeof(brokerBuf) - 1);
+    brokerBuf[sizeof(brokerBuf) - 1] = '\0';
+    strncpy(topicBuf, config.topic_prefix, sizeof(topicBuf) - 1);
+    topicBuf[sizeof(topicBuf) - 1] = '\0';
+    
+    mqtt["broker"] = brokerBuf;
+    mqtt["topic"] = topicBuf;
+    
+    // Allocate JSON buffer
+    size_t jsonSize = measureJson(doc) + 1;
+    char* jsonBuffer = (char*)heap_caps_malloc(jsonSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!jsonBuffer) {
+        jsonBuffer = (char*)malloc(jsonSize);
+    }
+    
+    if (jsonBuffer) {
+        serializeJson(doc, jsonBuffer, jsonSize);
+        _ws.textAll(jsonBuffer);
+        
+        // Also send to cloud
         if (_cloudConnection) {
             _cloudConnection->send(jsonBuffer);
         }

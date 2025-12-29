@@ -896,6 +896,35 @@ export const useStore = create<BrewOSState>()(
           }));
           break;
 
+        case "mqtt_status": {
+          const mqttData = data.mqtt as Record<string, unknown> | undefined;
+          if (mqttData) {
+            set((state) => ({
+              mqtt: {
+                ...state.mqtt,
+                enabled: (mqttData.enabled as boolean) ?? state.mqtt.enabled,
+                connected: (mqttData.connected as boolean) ?? state.mqtt.connected,
+                broker: (mqttData.broker as string) ?? state.mqtt.broker,
+                topic: (mqttData.topic as string) ?? state.mqtt.topic,
+              },
+            }));
+          }
+          break;
+        }
+
+        case "mqtt_test_result": {
+          // Fire a custom event that UI components can listen for
+          const event = new CustomEvent("mqtt_test_result", {
+            detail: {
+              success: data.success as boolean,
+              message: data.message as string,
+              error: data.error as string | undefined,
+            },
+          });
+          window.dispatchEvent(event);
+          break;
+        }
+
         case "preinfusion_settings":
           set((state) => ({
             preinfusion: {

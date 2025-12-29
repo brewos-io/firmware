@@ -396,6 +396,9 @@ void BrewWebServer::processCommand(JsonDocument& doc) {
             
             if (_mqttClient.setConfig(config)) {
                 broadcastLogLevel("info", "MQTT configuration updated");
+                
+                // Broadcast updated MQTT status to all clients
+                broadcastMqttStatus();
             }
         }
         else if (cmd == "set_cloud_config") {

@@ -51,14 +51,48 @@ export function NetworkSettings() {
     discovery: true,
   });
   const [testingMqtt, setTestingMqtt] = useState(false);
+  const [mqttTestResult, setMqttTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [savingMqtt, setSavingMqtt] = useState(false);
   const [editingMqtt, setEditingMqtt] = useState(false);
+
+  // Sync local MQTT config with store when store changes (e.g., after save)
+  useEffect(() => {
+    // Only sync when not editing to avoid overwriting user's current edits
+    if (!editingMqtt) {
+      setMqttConfig(prev => ({
+        ...prev,
+        enabled: mqtt.enabled,
+        broker: mqtt.broker || prev.broker,
+        topic: mqtt.topic || prev.topic,
+      }));
+    }
+  }, [mqtt.enabled, mqtt.broker, mqtt.topic, editingMqtt]);
+
+  // Listen for MQTT test results
+  useEffect(() => {
+    const handleTestResult = (event: CustomEvent<{ success: boolean; message: string; error?: string }>) => {
+      setTestingMqtt(false);
+      setMqttTestResult({
+        success: event.detail.success,
+        message: event.detail.message,
+      });
+      // Clear result after 5 seconds
+      setTimeout(() => setMqttTestResult(null), 5000);
+    };
+
+    window.addEventListener('mqtt_test_result', handleTestResult as EventListener);
+    return () => window.removeEventListener('mqtt_test_result', handleTestResult as EventListener);
+  }, []);
 
   const testMqtt = () => {
     if (testingMqtt) return;
     setTestingMqtt(true);
+    setMqttTestResult(null);
     sendCommand('mqtt_test', mqttConfig);
-    setTimeout(() => setTestingMqtt(false), 3000);
+    // Timeout fallback in case no response received
+    setTimeout(() => {
+      setTestingMqtt(false);
+    }, 10000);
   };
 
   const saveMqtt = () => {
@@ -338,8 +372,22 @@ export function NetworkSettings() {
               </>
             )}
 
+            {/* Test Result Feedback */}
+            {mqttTestResult && (
+              <div className={`p-3 rounded-lg text-sm ${
+                mqttTestResult.success 
+                  ? 'bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400' 
+                  : 'bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400'
+              }`}>
+                {mqttTestResult.message}
+              </div>
+            )}
+
             <div className="flex justify-end gap-3">
-              <Button variant="ghost" onClick={() => setEditingMqtt(false)}>
+              <Button variant="ghost" onClick={() => {
+                setEditingMqtt(false);
+                setMqttTestResult(null);
+              }}>
                 Cancel
               </Button>
               {mqttConfig.enabled && (
@@ -351,6 +399,7 @@ export function NetworkSettings() {
                 onClick={() => {
                   saveMqtt();
                   setEditingMqtt(false);
+                  setMqttTestResult(null);
                 }} 
                 loading={savingMqtt} 
                 disabled={savingMqtt}
