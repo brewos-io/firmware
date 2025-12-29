@@ -1,6 +1,16 @@
 #pragma once
 
+#ifdef SIMULATOR
+#include <cstdint>
+#include <cstddef>
+using uint8_t = std::uint8_t;
+using uint16_t = std::uint16_t;
+using uint32_t = std::uint32_t;
+using int16_t = std::int16_t;
+using size_t = std::size_t;
+#else
 #include <Arduino.h>
+#endif
 #include <ArduinoJson.h>
 
 namespace BrewOS {

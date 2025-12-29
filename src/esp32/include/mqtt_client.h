@@ -19,7 +19,8 @@
 #include <freertos/queue.h>
 
 // MQTT task configuration
-#define MQTT_TASK_STACK_SIZE 4096
+// Increased stack size for HA discovery publishing (35 entities with JSON serialization)
+#define MQTT_TASK_STACK_SIZE 12288  // 12KB (was 4KB - too small for HA discovery)
 #define MQTT_TASK_PRIORITY 3  // Lower than WiFi task
 #define MQTT_TASK_CORE 0      // Run on Core 0 with other network tasks
 

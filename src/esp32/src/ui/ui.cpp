@@ -24,7 +24,9 @@
 #endif
 #include "display/theme.h"
 #include "display/display_config.h"
+#ifndef SIMULATOR
 #include "display/display.h"
+#endif
 #include "state/state_manager.h"
 
 // Global UI instance
@@ -258,18 +260,9 @@ void UI::showScreen(screen_id_t screen) {
         return;
     }
     
-    // Destroy previous screen if it's a rarely-used one (free memory)
-    // Keep essential screens: HOME, IDLE, BREWING, SETTINGS, SPLASH
-    if (_currentScreen != SCREEN_HOME && 
-        _currentScreen != SCREEN_IDLE && 
-        _currentScreen != SCREEN_BREWING && 
-        _currentScreen != SCREEN_SETTINGS &&
-        _currentScreen != SCREEN_SPLASH &&
-        _screens[_currentScreen]) {
-        LOG_I("Destroying screen to free memory: %d", _currentScreen);
-        lv_obj_del(_screens[_currentScreen]);
-        _screens[_currentScreen] = nullptr;
-    }
+    // Save old screen info before switching
+    screen_id_t oldScreen = _currentScreen;
+    lv_obj_t* oldScreenObj = _screens[oldScreen];
     
     _previousScreen = _currentScreen;
     _currentScreen = screen;
@@ -280,9 +273,22 @@ void UI::showScreen(screen_id_t screen) {
         screen_settings_reset();
     }
     
-    // Use instant screen load for snappy transitions (no animation)
-    // Animation was causing slow top-to-bottom drawing with the small LVGL buffer
+    // IMPORTANT: Load new screen FIRST before deleting old one
+    // LVGL crashes if you delete the active screen without loading another first
     lv_scr_load(_screens[screen]);
+    
+    // NOW destroy old screen if it's a rarely-used one (free memory)
+    // Keep essential screens: HOME, IDLE, BREWING, SETTINGS, SPLASH
+    if (oldScreen != SCREEN_HOME && 
+        oldScreen != SCREEN_IDLE && 
+        oldScreen != SCREEN_BREWING && 
+        oldScreen != SCREEN_SETTINGS &&
+        oldScreen != SCREEN_SPLASH &&
+        oldScreenObj) {
+        LOG_I("Destroying screen to free memory: %d", oldScreen);
+        lv_obj_del(oldScreenObj);
+        _screens[oldScreen] = nullptr;
+    }
     
     // Focus an object on the new screen (for encoder navigation)
     lv_group_t* group = lv_group_get_default();
@@ -600,7 +606,9 @@ void UI::createSettingsScreen() {
         State.saveDisplaySettings();
         
         // Apply brightness to display immediately
+#ifndef SIMULATOR
         display.setBacklight(brightness);
+#endif
         
         LOG_I("Display settings saved: brightness=%d, timeout=%ds", brightness, screenTimeout);
     });
