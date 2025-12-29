@@ -675,6 +675,126 @@ void setup() {
         Serial.println("NVS initialized OK");
     }
     
+    // =========================================================================
+    // EARLY PENDING OTA CHECK - Before heavy initialization
+    // If there's a pending OTA, do minimal boot to preserve memory
+    // =========================================================================
+    String pendingOtaVersion;
+    if (hasPendingOTA(pendingOtaVersion)) {
+        // Check retry counter to prevent crash loops
+        uint8_t retries = incrementPendingOTARetries();
+        const uint8_t MAX_OTA_RETRIES = 2;
+        
+        Serial.println("========================================");
+        Serial.println("PENDING OTA DETECTED - MINIMAL BOOT MODE");
+        Serial.printf("Version: %s (attempt %d/%d)\n", pendingOtaVersion.c_str(), retries, MAX_OTA_RETRIES);
+        Serial.println("========================================");
+        Serial.flush();
+        
+        // If we've exceeded max retries, give up and boot normally
+        if (retries > MAX_OTA_RETRIES) {
+            Serial.println("ERROR: OTA failed too many times - clearing pending OTA");
+            Serial.println("Booting normally...");
+            Serial.flush();
+            clearPendingOTA();
+            // Fall through to normal boot (don't return, let setup() continue)
+        } else {
+            // Proceed with OTA attempt
+            size_t heapBefore = ESP.getFreeHeap();
+            size_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            Serial.printf("Memory before init: heap=%zu, largest block=%zu\n", heapBefore, largestBlock);
+            Serial.flush();
+        
+            // Initialize LittleFS (needed for OTA to write files)
+            Serial.println("Initializing LittleFS for OTA...");
+            Serial.flush();
+            if (!LittleFS.begin(true, "/littlefs", 5)) {  // Reduced max files
+                LittleFS.format();
+                LittleFS.begin(true, "/littlefs", 5);
+            }
+            
+            // Create minimal objects needed for OTA
+            Serial.println("Creating minimal objects for OTA...");
+            Serial.flush();
+            wifiManager = new WiFiManager();
+            picoUart = new PicoUART(Serial1);
+            mqttClient = new MQTTClient();
+            pairingManager = new PairingManager();
+            webServer = new BrewWebServer(*wifiManager, *picoUart, *mqttClient, pairingManager);
+            
+            // Initialize Pico UART (needed for Pico OTA)
+            Serial.println("Initializing Pico UART...");
+            Serial.flush();
+            picoUart->begin();
+            picoUart->onPacket(onPicoPacket);  // Need callback to process Pico responses
+            
+            // Wait for Pico to send machine type (needed for OTA firmware selection)
+            Serial.println("Waiting for Pico machine type...");
+            Serial.flush();
+            unsigned long picoWaitStart = millis();
+            while (State.getMachineType() == 0 && millis() - picoWaitStart < 5000) {
+                picoUart->loop();
+                delay(50);
+            }
+            if (State.getMachineType() != 0) {
+                Serial.printf("Pico machine type: %d\n", State.getMachineType());
+            } else {
+                Serial.println("Warning: Pico not responding, OTA may fail");
+            }
+            Serial.flush();
+            
+            // Connect to WiFi
+            Serial.println("Connecting to WiFi...");
+            Serial.flush();
+            wifiManager->begin();
+            
+            // NOTE: Web server NOT started in minimal boot mode to save memory
+            // OTA progress will not be visible to users, but OTA will complete silently
+            
+            // Wait for WiFi to connect (up to 30 seconds)
+            Serial.println("Waiting for WiFi connection...");
+            Serial.flush();
+            unsigned long wifiWaitStart = millis();
+            while (!wifiManager->isConnected() && millis() - wifiWaitStart < 30000) {
+                wifiManager->loop();
+                picoUart->loop();  // Keep Pico UART responsive
+                delay(100);
+            }
+            
+            if (!wifiManager->isConnected()) {
+                Serial.println("ERROR: WiFi connection failed - will retry on next boot");
+                Serial.flush();
+                delay(1000);
+                ESP.restart();
+                return;
+            }
+            
+            Serial.printf("WiFi connected: %s\n", WiFi.localIP().toString().c_str());
+            Serial.flush();
+            
+            // Check memory after minimal init
+            size_t heapAfter = ESP.getFreeHeap();
+            largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            Serial.printf("Memory after minimal init: heap=%zu, largest block=%zu\n", heapAfter, largestBlock);
+            Serial.flush();
+            
+            // Start OTA with maximum available memory
+            Serial.println("Starting OTA update...");
+            Serial.flush();
+            webServer->startCombinedOTA(pendingOtaVersion, true);
+            
+            // If we get here, OTA failed - restart to retry (counter already incremented)
+            Serial.println("OTA returned unexpectedly - restarting to retry...");
+            Serial.flush();
+            delay(1000);
+            ESP.restart();
+            return;  // Won't reach
+        }
+    }
+    // =========================================================================
+    // END EARLY PENDING OTA CHECK - Continue normal boot
+    // =========================================================================
+    
     // Initialize LittleFS (needed by State, WebServer, etc.)
     Serial.println("[2/8] Initializing LittleFS...");
     // Use 10 max open files (reduced from 15 to save heap)

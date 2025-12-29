@@ -38,18 +38,21 @@ export function ConnectionOverlay() {
   const isConnected = connectionState === "connected";
   const isDeviceOffline = machineState === "offline";
 
-  // Check localStorage for OTA state to persist across disconnects
+  // Check localStorage for OTA state to persist across disconnects and page refreshes
+  // This is critical because:
+  // 1. Device may reboot for memory defragmentation before OTA download
+  // 2. User may refresh the page during OTA
+  // 3. WebSocket may disconnect during OTA causing ota.isUpdating to reset
   const storedOtaInProgress =
     localStorage.getItem(OTA_IN_PROGRESS_KEY) === "true";
 
-  const isUpdating =
-    ota.isUpdating ||
-    (storedOtaInProgress &&
-      (!isConnected || isDeviceOffline || machineState === "unknown"));
+  // Always consider localStorage for OTA - it's the persistent source of truth
+  // ota.isUpdating is from the store (real-time), storedOtaInProgress persists across disconnects
+  const isUpdating = ota.isUpdating || storedOtaInProgress;
 
   // Simple state tracking
   const [overlayState, setOverlayState] = useState<OverlayState>("connecting");
-  
+
   // Track when we first detected offline (for grace period)
   const offlineStartTime = useRef<number | null>(null);
   // Track if we've confirmed offline (sticky - don't go back to connecting)
@@ -66,9 +69,13 @@ export function ConnectionOverlay() {
     }
   }, [ota.isUpdating]);
 
-  // Clear OTA state on error or when device is confirmed back online
+  // Clear OTA state on error or when device is confirmed back online with stable state
   useEffect(() => {
     const isError = ota.stage === "error";
+
+    // Only consider "back online" if device has been connected for a while
+    // This prevents clearing OTA state during the reboot-first OTA approach
+    // where device reboots to defragment memory then continues OTA
     const isBackOnline =
       machineState !== "offline" &&
       machineState !== "unknown" &&
@@ -76,8 +83,26 @@ export function ConnectionOverlay() {
       !ota.isUpdating &&
       ota.stage === "idle";
 
-    if (isError || isBackOnline) {
+    if (isError) {
+      // Clear on error - OTA failed
       localStorage.removeItem(OTA_IN_PROGRESS_KEY);
+    } else if (isBackOnline) {
+      // Delay clearing to ensure device is truly done with OTA
+      // Device might reconnect briefly during OTA restart
+      const timer = setTimeout(() => {
+        // Re-check state before clearing
+        const state = useStore.getState();
+        if (
+          state.machine.state !== "offline" &&
+          state.machine.state !== "unknown" &&
+          state.connectionState === "connected" &&
+          !state.ota.isUpdating &&
+          state.ota.stage === "idle"
+        ) {
+          localStorage.removeItem(OTA_IN_PROGRESS_KEY);
+        }
+      }, 5000); // Wait 5 seconds to confirm stable state
+      return () => clearTimeout(timer);
     }
   }, [ota.stage, ota.isUpdating, machineState, isConnected]);
 
@@ -221,9 +246,18 @@ export function ConnectionOverlay() {
   const getStatus = () => {
     // OTA in progress
     if (overlayState === "updating" || isUpdating) {
-      const otaMessage =
-        ota.message ||
-        "Please wait while the update is being installed. The device will restart automatically.";
+      // Determine appropriate message based on connection state
+      let otaMessage = ota.message;
+      if (!otaMessage) {
+        if (!isConnected || isDeviceOffline) {
+          // Device disconnected during OTA - likely rebooting
+          otaMessage =
+            "Device is restarting. The update will continue automatically...";
+        } else {
+          otaMessage =
+            "Please wait while the update is being installed. The device will restart automatically.";
+        }
+      }
       return {
         icon: <Download className="w-16 h-16 text-accent" />,
         title: "Updating BrewOS...",

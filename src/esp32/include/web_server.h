@@ -18,6 +18,12 @@ class CloudConnection;
 // Call this once during setup() to avoid repeated allocations
 void initBroadcastBuffers();
 
+// Pending OTA management (for reboot-first approach when memory is fragmented)
+bool hasPendingOTA(String& version);
+uint8_t getPendingOTARetries();
+uint8_t incrementPendingOTARetries();
+void clearPendingOTA();
+
 class BrewWebServer {
 public:
     BrewWebServer(WiFiManager& wifiManager, PicoUART& picoUart, MQTTClient& mqttClient, PairingManager* pairingManager = nullptr);
@@ -65,6 +71,11 @@ public:
     // Check if OTA update is in progress
     bool isOtaInProgress() const { return _otaInProgress; }
     
+    // Start combined OTA update (Pico first, then ESP32)
+    // Public so it can be called from main.cpp for pending OTA after reboot
+    // isPendingOTA: if true, skip memory check (we already rebooted, don't loop)
+    void startCombinedOTA(const String& version, bool isPendingOTA = false);
+    
     // Process a command from any source (local WebSocket or cloud)
     // Used by CloudConnection to forward cloud commands to the same handler
     void processCommand(JsonDocument& doc);
@@ -106,7 +117,6 @@ private:
     // GitHub OTA - Download and install firmware from GitHub releases
     void startGitHubOTA(const String& version);        // ESP32 only
     bool startPicoGitHubOTA(const String& version);    // Pico only (based on machine type), returns true on success
-    void startCombinedOTA(const String& version);      // Pico first, then ESP32
     void updateLittleFS(const char* tag);              // Update web UI filesystem
     
     // Check for updates from GitHub releases

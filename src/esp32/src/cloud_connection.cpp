@@ -11,7 +11,7 @@
 // Reconnection settings - stay connected as much as possible
 #define RECONNECT_DELAY_MS 5000  // 5s between attempts
 #define STARTUP_GRACE_PERIOD_MS 15000  // 15s grace period after WiFi for local access
-#define MIN_HEAP_FOR_CONNECT 50000  // Need 50KB heap for SSL buffers + web server headroom
+#define MIN_HEAP_FOR_CONNECT 40000  // Need 40KB heap for SSL buffers + web server headroom
 #define MIN_HEAP_TO_STAY_CONNECTED 28000  // Disconnect if heap drops below this (state broadcast temporarily uses ~7KB)
 #define SSL_HANDSHAKE_TIMEOUT_MS 15000  // 15s timeout (RSA should take 5-10s)
 #define CLOUD_TASK_STACK_SIZE 6144  // 6KB stack for SSL operations (reduced from 8KB)

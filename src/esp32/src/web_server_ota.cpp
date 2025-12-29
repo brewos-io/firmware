@@ -12,6 +12,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <Update.h>
+#include <Preferences.h>
 #include <esp_heap_caps.h>
 #include <esp_partition.h>
 #include <esp_task_wdt.h>
@@ -50,6 +51,94 @@ static constexpr uint32_t OTA_CONSOLE_LOG_INTERVAL_MS = 5000;
 
 // Pico OTA specific settings
 static constexpr uint32_t PICO_RESET_DELAY_MS = 2000;
+
+// Minimum contiguous memory needed for SSL OTA (bytes)
+// SSL needs ~20KB for buffers (16KB in + 4KB out) plus ~10KB overhead
+// 30KB is sufficient when running in minimal boot mode
+static constexpr size_t OTA_MIN_CONTIGUOUS_HEAP = 30000;
+
+// NVS namespace and keys for pending OTA
+static const char* OTA_NVS_NAMESPACE = "ota";
+static const char* OTA_NVS_KEY_VERSION = "pending_ver";
+static const char* OTA_NVS_KEY_RETRIES = "retries";
+
+// Maximum OTA boot retries before giving up (prevents crash loops)
+static constexpr uint8_t OTA_MAX_BOOT_RETRIES = 2;
+
+// =============================================================================
+// Pending OTA Management (for reboot-first approach)
+// =============================================================================
+
+/**
+ * @brief Check if there's a pending OTA request saved in NVS
+ * @param version Output string for the version to update to
+ * @return true if pending OTA exists
+ */
+bool hasPendingOTA(String& version) {
+    Preferences prefs;
+    if (!prefs.begin(OTA_NVS_NAMESPACE, true)) {  // Read-only
+        return false;
+    }
+    version = prefs.getString(OTA_NVS_KEY_VERSION, "");
+    prefs.end();
+    return version.length() > 0;
+}
+
+/**
+ * @brief Get the current OTA boot retry count
+ * @return Number of times OTA boot has been attempted
+ */
+uint8_t getPendingOTARetries() {
+    Preferences prefs;
+    uint8_t retries = 0;
+    if (prefs.begin(OTA_NVS_NAMESPACE, true)) {  // Read-only
+        retries = prefs.getUChar(OTA_NVS_KEY_RETRIES, 0);
+        prefs.end();
+    }
+    return retries;
+}
+
+/**
+ * @brief Increment and save the OTA boot retry count
+ * @return New retry count after increment
+ */
+uint8_t incrementPendingOTARetries() {
+    Preferences prefs;
+    uint8_t retries = 0;
+    if (prefs.begin(OTA_NVS_NAMESPACE, false)) {  // Read-write
+        retries = prefs.getUChar(OTA_NVS_KEY_RETRIES, 0) + 1;
+        prefs.putUChar(OTA_NVS_KEY_RETRIES, retries);
+        prefs.end();
+    }
+    return retries;
+}
+
+/**
+ * @brief Save OTA version to NVS for execution after reboot
+ * @param version Version to update to
+ */
+void savePendingOTA(const String& version) {
+    Preferences prefs;
+    if (prefs.begin(OTA_NVS_NAMESPACE, false)) {  // Read-write
+        prefs.putString(OTA_NVS_KEY_VERSION, version);
+        prefs.putUChar(OTA_NVS_KEY_RETRIES, 0);  // Reset retry counter
+        prefs.end();
+        LOG_I("Saved pending OTA version: %s", version.c_str());
+    }
+}
+
+/**
+ * @brief Clear pending OTA from NVS (called after successful OTA or on cancel)
+ */
+void clearPendingOTA() {
+    Preferences prefs;
+    if (prefs.begin(OTA_NVS_NAMESPACE, false)) {
+        prefs.remove(OTA_NVS_KEY_VERSION);
+        prefs.remove(OTA_NVS_KEY_RETRIES);
+        prefs.end();
+        LOG_I("Cleared pending OTA");
+    }
+}
 
 // =============================================================================
 // Forward Declarations
@@ -132,10 +221,12 @@ static void handleOTAFailure(AsyncWebSocket* ws);
  * 
  * Services NOT paused (needed for OTA):
  * - WiFiManager: Network connectivity
- * - WebServer: Serves OTA UI and handles update
  * - PicoUART: Communication with Pico for Pico OTA
+ * 
+ * Note: WebSocket connections are closed to free memory and prevent
+ * clients from reconnecting during OTA (they will reconnect after reboot).
  */
-static void pauseServicesForOTA(CloudConnection* cloudConnection) {
+static void pauseServicesForOTA(CloudConnection* cloudConnection, AsyncWebSocket* ws) {
     LOG_I("Pausing services for OTA...");
     
     size_t heapBefore = ESP.getFreeHeap();
@@ -144,6 +235,14 @@ static void pauseServicesForOTA(CloudConnection* cloudConnection) {
     
     // 0. Disable watchdog - OTA has long-blocking operations
     disableWatchdogForOTA();
+    
+    // 0.5. Close all WebSocket connections - prevents reconnection attempts during OTA
+    // Clients will reconnect after device reboots with new firmware
+    if (ws) {
+        LOG_I("  - Closing all WebSocket connections...");
+        ws->closeAll(1001, "OTA in progress");  // 1001 = Going Away
+        ws->cleanupClients();  // Force cleanup
+    }
     
     // Ensure WiFi is in high performance mode (no sleep)
     // This significantly improves OTA download speed (prevents ~100ms latency per packet)
@@ -1194,14 +1293,39 @@ void BrewWebServer::updateLittleFS(const char* tag) {
 // Combined OTA - Update Pico first, then ESP32
 // =============================================================================
 
-void BrewWebServer::startCombinedOTA(const String& version) {
-    LOG_I("Starting combined OTA for version: %s", version.c_str());
+void BrewWebServer::startCombinedOTA(const String& version, bool isPendingOTA) {
+    LOG_I("Starting combined OTA for version: %s%s", version.c_str(), isPendingOTA ? " (resuming after reboot)" : "");
     
     // IMMEDIATELY tell UI that OTA is starting - this triggers the overlay
     broadcastOtaProgress(&_ws, "download", 0, "Starting update...");
     broadcastLog("Starting BrewOS update to v%s...", version.c_str());
     
     unsigned long otaStart = millis();
+    
+    // Check if we have enough contiguous memory for SSL
+    // Skip this check for pending OTA - we already rebooted once, rebooting again won't help
+    // and would cause an infinite loop
+    size_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    LOG_I("Largest contiguous heap block: %zu bytes (need %zu)", largestBlock, OTA_MIN_CONTIGUOUS_HEAP);
+    
+    if (!isPendingOTA && largestBlock < OTA_MIN_CONTIGUOUS_HEAP) {
+        LOG_W("Memory too fragmented for SSL OTA - rebooting to defragment");
+        broadcastOtaProgress(&_ws, "download", 0, "Preparing memory...");
+        broadcastLog("Memory fragmented - restarting for clean OTA...");
+        
+        // Save OTA version to NVS
+        savePendingOTA(version);
+        
+        // Give UI time to show the message
+        delay(2000);
+        
+        // Reboot - OTA will continue on fresh boot
+        ESP.restart();
+        return;  // Won't reach here, but for clarity
+    }
+    
+    // Clear any pending OTA since we're proceeding now
+    clearPendingOTA();
     
     // Validate prerequisites BEFORE pausing services
     uint8_t machineType = State.getMachineType();
@@ -1235,8 +1359,8 @@ void BrewWebServer::startCombinedOTA(const String& version) {
     }
     
     // Pause ALL background services to prevent interference during OTA
-    // This includes: cloud (SSL), MQTT, BLE scale, power meter HTTP polling
-    pauseServicesForOTA(_cloudConnection);
+    // This includes: cloud (SSL), MQTT, BLE scale, power meter HTTP polling, WebSocket clients
+    pauseServicesForOTA(_cloudConnection, &_ws);
     feedWatchdog();
     
     // Suppress non-essential broadcasts during OTA
