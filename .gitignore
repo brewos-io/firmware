@@ -78,8 +78,6 @@ Thumbs.db
 # Generated linker scripts
 pico_flash_region.ld
 
-# GitHub Pages assets (copied during build)
-pages/assets
 
 # ESP32 web UI (generated from src/web)
 src/esp32/data/
