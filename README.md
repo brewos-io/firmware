@@ -15,11 +15,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mizrachiran/brewos/blob/main/LICENSE">
+  <a href="https://github.com/brewos-io/firmware/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-Apache%202.0%20+%20Commons%20Clause-blue.svg" alt="License: Apache 2.0 + Commons Clause">
   </a>
-  <a href="https://github.com/mizrachiran/brewos/releases">
-    <img src="https://img.shields.io/github/v/release/mizrachiran/brewos?include_prereleases" alt="Release">
+  <a href="https://github.com/brewos-io/firmware/releases">
+    <img src="https://img.shields.io/github/v/release/brewos-io/firmware?include_prereleases" alt="Release">
   </a>
   <img src="https://img.shields.io/badge/platform-RP2350%20%7C%20ESP32-brightgreen" alt="Platform">
   <img src="https://img.shields.io/badge/status-development-orange" alt="Status">
@@ -140,7 +140,7 @@ The **ECM Synchronika** serves as the reference implementation with complete sch
 
 ```bash
 # Clone the repository
-git clone https://github.com/mizrachiran/brewos.git
+git clone https://github.com/brewos-io/firmware.git
 cd brewos
 
 # Build Pico firmware (all machine types)
@@ -203,7 +203,7 @@ See [SETUP.md](SETUP.md) for detailed instructions.
 | **ESP32 Firmware**                                              |                                            |
 | [State Management](docs/esp32/State_Management.md)              | Settings, stats, shot history              |
 | [MQTT Integration](docs/esp32/integrations/MQTT.md)             | MQTT protocol and auto-discovery           |
-| [Home Assistant](homeassistant/README.md)                       | Custom card, native integration, examples  |
+| [Home Assistant](https://github.com/brewos-io/homeassistant)   | Custom card, native integration, examples  |
 | [BLE Scales](docs/esp32/integrations/BLE_Scales.md)             | Bluetooth scale integration                |
 | **Web & Cloud**                                                 |                                            |
 | [Web Interface](docs/web/README.md)                             | React dashboard development                |
@@ -293,10 +293,17 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
+## Related Repositories
+
+This is the main firmware repository. For other components:
+
+- **[Web Site](https://github.com/brewos-io/web)** - Marketing and documentation website (GitHub Pages)
+- **[Home Assistant Integration](https://github.com/brewos-io/homeassistant)** - Custom component, Lovelace card, and MQTT auto-discovery
+
 ## Community
 
-- **Discussions:** [GitHub Discussions](https://github.com/mizrachiran/brewos/discussions)
-- **Issues:** [GitHub Issues](https://github.com/mizrachiran/brewos/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/brewos-io/firmware/discussions)
+- **Issues:** [GitHub Issues](https://github.com/brewos-io/firmware/issues)
 - **Discord:** Coming soon
 
 ---

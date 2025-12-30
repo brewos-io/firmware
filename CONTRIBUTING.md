@@ -25,7 +25,7 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
 
 1. **Read the documentation** - Familiarize yourself with the [Architecture](docs/pico/Architecture.md) and [Requirements](docs/pico/Requirements.md)
 2. **Set up your environment** - Follow the [Setup Guide](SETUP.md)
-3. **Find something to work on** - Check [open issues](https://github.com/mizrachiran/brewos/issues) or propose a new feature
+3. **Find something to work on** - Check [open issues](https://github.com/brewos-io/firmware/issues) or propose a new feature
 4. **Discuss first** - For major changes, open an issue to discuss before coding
 
 ---
@@ -255,8 +255,8 @@ Safety-related changes require:
 
 ## Questions?
 
-- Open a [Discussion](https://github.com/mizrachiran/brewos/discussions)
-- Check existing [Issues](https://github.com/mizrachiran/brewos/issues)
+- Open a [Discussion](https://github.com/brewos-io/firmware/discussions)
+- Check existing [Issues](https://github.com/brewos-io/firmware/issues)
 - Read the [Documentation](docs/README.md)
 
 ---

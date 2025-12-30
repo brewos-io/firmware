@@ -82,4 +82,8 @@ pico_flash_region.ld
 # ESP32 web UI (generated from src/web)
 src/esp32/data/
 
+# Temporary extraction directories
+.extract-temp/
+.split-temp/
+
 reference_local

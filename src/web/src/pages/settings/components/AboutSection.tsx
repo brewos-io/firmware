@@ -22,7 +22,7 @@ export function AboutSection() {
   const pico = useStore((s) => s.pico);
   const backendInfo = useBackendInfo((s) => s.info);
 
-  const GITHUB_REPO = "https://github.com/mizrachiran/brewos";
+  const GITHUB_REPO = "https://github.com/brewos-io/firmware";
 
   // Use webVersion from backend if available (ESP32 reports the version of bundled UI)
   // Fall back to build-time constant for cloud mode or when backend info isn't loaded yet

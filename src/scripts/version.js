@@ -409,7 +409,7 @@ function createRelease(version, dryRun = false) {
   console.log("  • Generate changelog from commits");
   console.log("  • Create GitHub release with artifacts");
   console.log();
-  console.log(`View progress: https://github.com/mizrachiran/brewos/actions`);
+  console.log(`View progress: https://github.com/brewos-io/firmware/actions`);
 }
 
 /**

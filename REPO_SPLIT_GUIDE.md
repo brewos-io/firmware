@@ -119,7 +119,7 @@ If you prefer more control, you can use git-filter-repo directly:
 
 ```bash
 # Clone the repo
-git clone https://github.com/brewos-io/all.git firmware-temp
+git clone https://github.com/brewos-io/firmware.git firmware-temp
 cd firmware-temp
 
 # Extract only the directories we want
@@ -149,7 +149,7 @@ git push -u origin main --force
 ### For Web/Pages:
 
 ```bash
-git clone https://github.com/brewos-io/all.git web-temp
+git clone https://github.com/brewos-io/firmware.git web-temp
 cd web-temp
 
 git filter-repo --path pages --path-rename pages:.
@@ -161,7 +161,7 @@ git push -u origin main --force
 ### For Home Assistant:
 
 ```bash
-git clone https://github.com/brewos-io/all.git homeassistant-temp
+git clone https://github.com/brewos-io/firmware.git homeassistant-temp
 cd homeassistant-temp
 
 git filter-repo --path homeassistant --path-rename homeassistant:.
