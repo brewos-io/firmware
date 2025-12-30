@@ -155,17 +155,17 @@ void core1_main(void) {
             // Log protocol health metrics
             LOG_INFO("Protocol: RX=%lu TX=%lu CRC_err=%u PKT_err=%u TO=%u\n",
                      stats.packets_received, stats.packets_sent,
-                     stats.crc_errors, stats.packet_errors, stats.parser_timeouts);
+                     stats.crc_errors, stats.packet_errors, stats.timeout_errors);
             
             LOG_INFO("Protocol: Retry=%u ACK_TO=%u NACK=%u Pending=%u\n",
-                     stats.retry_attempts, stats.ack_timeouts,
-                     stats.nack_received, stats.pending_commands);
+                     stats.retries, stats.ack_timeouts,
+                     stats.nacks_received, stats.pending_cmd_count);
             
             // Check for protocol health issues
             if (stats.crc_errors > 100) {
                 LOG_WARN("High CRC error rate detected - check wiring/EMI\n");
             }
-            if (stats.parser_timeouts > 50) {
+            if (stats.timeout_errors > 50) {
                 LOG_WARN("High parser timeout rate - possible UART issues\n");
             }
             if (stats.ack_timeouts > 20) {
