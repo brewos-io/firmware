@@ -114,6 +114,9 @@ set(COMMON_SOURCES
     src/bootloader.c
     src/diagnostics.c         # Hardware diagnostics tests
     src/class_b.c             # Class B safety self-tests (IEC 60730)
+    src/validation.c          # Input validation utilities
+    src/logging.c             # Structured logging system
+    src/packet_handlers.c     # Packet handler utilities
 )
 
 # -----------------------------------------------------------------------------

@@ -34,6 +34,9 @@
 #include "flash_safe.h"
 #include "class_b.h"
 #include "log_forward.h"
+#include "packet_handlers.h"
+#include "logging.h"
+#include "validation.h"
 
 // -----------------------------------------------------------------------------
 // Globals
@@ -181,529 +184,92 @@ static const char* get_msg_name(uint8_t type) {
 // Packet Handler (called from Core 1)
 // -----------------------------------------------------------------------------
 void handle_packet(const packet_t* packet) {
-    LOG_PRINT("CMD: %s (0x%02X) len=%d\n", get_msg_name(packet->type), packet->type, packet->length);
+    LOG_INFO("CMD: %s (0x%02X) len=%d\n", get_msg_name(packet->type), packet->type, packet->length);
     
-    // Register heartbeat from ESP32
+    // Register heartbeat from ESP32 - critical for safety system
     safety_esp32_heartbeat();
     
+    // Dispatch to modular packet handlers
+    // Each handler validates inputs, applies changes, and sends responses
     switch (packet->type) {
-        case MSG_PING: {
-            // Respond with ACK
-            protocol_send_ack(MSG_PING, packet->seq, ACK_SUCCESS);
+        case MSG_PING:
+            handle_cmd_ping(packet);
             break;
-        }
-        
-        case MSG_CMD_SET_TEMP: {
-            if (packet->length >= sizeof(cmd_set_temp_t)) {
-                // Use memcpy for safe unaligned access (Cortex-M33 is stricter)
-                cmd_set_temp_t cmd;
-                memcpy(&cmd, packet->payload, sizeof(cmd_set_temp_t));
-                
-                // Validate target: 0=brew, 1=steam
-                if (cmd.target > 1) {
-                    DEBUG_PRINT("CMD_SET_TEMP: Invalid target %d\n", cmd.target);
-                    protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_ERROR_INVALID);
-                    break;
-                }
-                
-                // Validate temperature range: 0-200°C (stored as 0-2000 in 0.1°C units)
-                // Negative temperatures don't make sense for espresso machines
-                if (cmd.temperature < 0 || cmd.temperature > 2000) {
-                    DEBUG_PRINT("CMD_SET_TEMP: Invalid temperature %d (valid: 0-2000)\n", cmd.temperature);
-                    protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_ERROR_INVALID);
-                    break;
-                }
-                
-                control_set_setpoint(cmd.target, cmd.temperature);
-                
-                // Save setpoint to flash (Pico is the source of truth for setpoints)
-                persisted_config_t config;
-                config_persistence_get(&config);
-                if (cmd.target == 0) {
-                    config.brew_setpoint = cmd.temperature;
-                } else {
-                    config.steam_setpoint = cmd.temperature;
-                }
-                config_persistence_set(&config);
-                config_persistence_save();
-                
-                protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_SUCCESS);
-            } else {
-                protocol_send_ack(MSG_CMD_SET_TEMP, packet->seq, ACK_ERROR_INVALID);
-            }
-            break;
-        }
-        
-        case MSG_CMD_SET_PID: {
-            if (packet->length >= sizeof(cmd_set_pid_t)) {
-                // Use memcpy for safe unaligned access (Cortex-M33 is stricter)
-                cmd_set_pid_t cmd;
-                memcpy(&cmd, packet->payload, sizeof(cmd_set_pid_t));
-                
-                // Validate target: 0=brew, 1=steam
-                if (cmd.target > 1) {
-                    DEBUG_PRINT("CMD_SET_PID: Invalid target %d\n", cmd.target);
-                    protocol_send_ack(MSG_CMD_SET_PID, packet->seq, ACK_ERROR_INVALID);
-                    break;
-                }
-                
-                // Validate PID gains: reasonable range 0-10000 (stored as value*100)
-                // Max 100.0 for any gain is already very aggressive
-                if (cmd.kp > 10000 || cmd.ki > 10000 || cmd.kd > 10000) {
-                    DEBUG_PRINT("CMD_SET_PID: Invalid gains Kp=%d Ki=%d Kd=%d (max 10000)\n", 
-                               cmd.kp, cmd.ki, cmd.kd);
-                    protocol_send_ack(MSG_CMD_SET_PID, packet->seq, ACK_ERROR_INVALID);
-                    break;
-                }
-                
-                control_set_pid(cmd.target, cmd.kp / 100.0f, cmd.ki / 100.0f, cmd.kd / 100.0f);
-                protocol_send_ack(MSG_CMD_SET_PID, packet->seq, ACK_SUCCESS);
-            } else {
-                protocol_send_ack(MSG_CMD_SET_PID, packet->seq, ACK_ERROR_INVALID);
-            }
-            break;
-        }
-        
-        case MSG_CMD_BREW: {
-            if (packet->length >= sizeof(cmd_brew_t)) {
-                // Use memcpy for safe unaligned access (Cortex-M33 is stricter)
-                cmd_brew_t cmd;
-                memcpy(&cmd, packet->payload, sizeof(cmd_brew_t));
-                if (cmd.action) {
-                    state_start_brew();
-                } else {
-                    state_stop_brew();
-                }
-                protocol_send_ack(MSG_CMD_BREW, packet->seq, ACK_SUCCESS);
-            } else {
-                protocol_send_ack(MSG_CMD_BREW, packet->seq, ACK_ERROR_INVALID);
-            }
-            break;
-        }
-        
-        case MSG_CMD_MODE: {
-            if (packet->length >= sizeof(cmd_mode_t)) {
-                // Use memcpy for safe unaligned access (Cortex-M33 is stricter)
-                cmd_mode_t cmd;
-                memcpy(&cmd, packet->payload, sizeof(cmd_mode_t));
-                machine_mode_t mode = (machine_mode_t)cmd.mode;
-                if (mode <= MODE_STEAM) {  // Valid modes: MODE_IDLE, MODE_BREW, MODE_STEAM
-                    if (state_set_mode(mode)) {
-                        protocol_send_ack(MSG_CMD_MODE, packet->seq, ACK_SUCCESS);
-                    } else {
-                        // Mode change rejected (e.g., brewing in progress)
-                        protocol_send_ack(MSG_CMD_MODE, packet->seq, ACK_ERROR_REJECTED);
-                    }
-                } else {
-                    protocol_send_ack(MSG_CMD_MODE, packet->seq, ACK_ERROR_INVALID);
-                }
-            } else {
-                protocol_send_ack(MSG_CMD_MODE, packet->seq, ACK_ERROR_INVALID);
-            }
-            break;
-        }
-        
-        case MSG_CMD_GET_CONFIG: {
-            config_payload_t config;
-            control_get_config(&config);
-            protocol_send_config(&config);
-            break;
-        }
-        
-        case MSG_CMD_CONFIG: {
-            // Variable payload based on config_type
-            if (packet->length >= 1) {
-                uint8_t config_type = packet->payload[0];
-                
-                if (config_type == CONFIG_ENVIRONMENTAL) {
-                    // Set environmental configuration
-                    if (packet->length >= sizeof(config_environmental_t) + 1) {
-                        // Use memcpy for safe unaligned access (Cortex-M33 is stricter)
-                        config_environmental_t env_cmd;
-                        memcpy(&env_cmd, &packet->payload[1], sizeof(config_environmental_t));
-                        
-                        // Validate voltage: 100-250V (covers 110V and 220-240V systems)
-                        if (env_cmd.nominal_voltage < 100 || env_cmd.nominal_voltage > 250) {
-                            DEBUG_PRINT("CMD_CONFIG: Invalid voltage %d (valid: 100-250V)\n", 
-                                       env_cmd.nominal_voltage);
-                            protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
-                            break;
-                        }
-                        
-                        // Validate max current: 1-50A (reasonable range for espresso machines)
-                        if (env_cmd.max_current_draw < 1.0f || env_cmd.max_current_draw > 50.0f) {
-                            DEBUG_PRINT("CMD_CONFIG: Invalid max current %.1f (valid: 1-50A)\n", 
-                                       env_cmd.max_current_draw);
-                            protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
-                            break;
-                        }
-                        
-                        environmental_electrical_t env_config = {
-                            .nominal_voltage = env_cmd.nominal_voltage,
-                            .max_current_draw = env_cmd.max_current_draw
-                        };
-                        environmental_config_set(&env_config);
-                        
-                        // Save configuration to flash
-                        persisted_config_t config;
-                        config_persistence_get(&config);
-                        config.environmental = env_config;
-                        config_persistence_set(&config);
-                        config_persistence_save();
-                        
-                        DEBUG_PRINT("Environmental config saved: %dV, %.1fA\n",
-                                   env_config.nominal_voltage, env_config.max_current_draw);
-                        
-                        // Send ACK
-                        protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_SUCCESS);
-                        
-                        // Send updated environmental config
-                        env_config_payload_t env_resp;
-                        environmental_electrical_t env;
-                        environmental_config_get(&env);
-                        electrical_state_t state;
-                        electrical_state_get(&state);
-                        
-                        env_resp.nominal_voltage = env.nominal_voltage;
-                        env_resp.max_current_draw = env.max_current_draw;
-                        env_resp.brew_heater_current = state.brew_heater_current;
-                        env_resp.steam_heater_current = state.steam_heater_current;
-                        env_resp.max_combined_current = state.max_combined_current;
-                        protocol_send_env_config(&env_resp);
-                    } else {
-                        protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
-                    }
-                } else if (config_type == CONFIG_HEATING_STRATEGY) {
-                    // Set heating strategy
-                    if (packet->length >= 2) {
-                        uint8_t strategy = packet->payload[1];
-                        if (control_set_heating_strategy(strategy)) {
-                            DEBUG_PRINT("CMD_CONFIG: Heating strategy set to %d\n", strategy);
-                            protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_SUCCESS);
-                        } else {
-                            DEBUG_PRINT("CMD_CONFIG: Invalid heating strategy %d\n", strategy);
-                            protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
-                        }
-                    } else {
-                        protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
-                    }
-                } else if (config_type == CONFIG_PREINFUSION) {
-                    // Set pre-infusion configuration
-                    if (packet->length >= sizeof(config_preinfusion_t) + 1) {
-                        // Use memcpy for safe unaligned access
-                        config_preinfusion_t preinfusion_cmd;
-                        memcpy(&preinfusion_cmd, &packet->payload[1], sizeof(config_preinfusion_t));
-                        
-                        // Validate timing parameters
-                        // on_time_ms: 0-10000ms (0 = disabled effectively)
-                        // pause_time_ms: 0-30000ms
-                        if (preinfusion_cmd.on_time_ms > 10000) {
-                            DEBUG_PRINT("CMD_CONFIG: Pre-infusion on_time too long %dms (max: 10000ms)\n", 
-                                       preinfusion_cmd.on_time_ms);
-                            protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
-                            break;
-                        }
-                        if (preinfusion_cmd.pause_time_ms > 30000) {
-                            DEBUG_PRINT("CMD_CONFIG: Pre-infusion pause_time too long %dms (max: 30000ms)\n", 
-                                       preinfusion_cmd.pause_time_ms);
-                            protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
-                            break;
-                        }
-                        
-                        // Apply pre-infusion settings
-                        state_set_preinfusion(
-                            preinfusion_cmd.enabled != 0,
-                            preinfusion_cmd.on_time_ms,
-                            preinfusion_cmd.pause_time_ms
-                        );
-                        
-                        // Save configuration to flash
-                        persisted_config_t config;
-                        config_persistence_get(&config);
-                        config.preinfusion_enabled = preinfusion_cmd.enabled != 0;
-                        config.preinfusion_on_ms = preinfusion_cmd.on_time_ms;
-                        config.preinfusion_pause_ms = preinfusion_cmd.pause_time_ms;
-                        config_persistence_set(&config);
-                        config_persistence_save();
-                        
-                        DEBUG_PRINT("Pre-infusion config saved: enabled=%d, on=%dms, pause=%dms\n",
-                                   preinfusion_cmd.enabled, preinfusion_cmd.on_time_ms, 
-                                   preinfusion_cmd.pause_time_ms);
-                        
-                        protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_SUCCESS);
-                    } else {
-                        DEBUG_PRINT("CMD_CONFIG: Pre-infusion payload too short (%d < %d)\n",
-                                   packet->length, (int)(sizeof(config_preinfusion_t) + 1));
-                        protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
-                    }
-                } else {
-                    // Other config types - just ACK for now
-                    protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_SUCCESS);
-                }
-            }
-            break;
-        }
-        
-        case MSG_CMD_GET_ENV_CONFIG: {
-            // Request environmental configuration
-            env_config_payload_t env_resp;
-            environmental_electrical_t env;
-            environmental_config_get(&env);
-            electrical_state_t state;
-            electrical_state_get(&state);
             
-            env_resp.nominal_voltage = env.nominal_voltage;
-            env_resp.max_current_draw = env.max_current_draw;
-            env_resp.brew_heater_current = state.brew_heater_current;
-            env_resp.steam_heater_current = state.steam_heater_current;
-            env_resp.max_combined_current = state.max_combined_current;
-            protocol_send_env_config(&env_resp);
+        case MSG_CMD_SET_TEMP:
+            handle_cmd_set_temp(packet);
             break;
-        }
-        
-        case MSG_CMD_GET_BOOT: {
-            // ESP32 requested boot info (version, machine type)
-            // Useful when ESP32 missed initial MSG_BOOT
-            protocol_send_boot();
-            break;
-        }
-        
-        case MSG_CMD_LOG_CONFIG: {
-            // Enable/disable log forwarding to ESP32 (dev mode feature)
-            log_forward_handle_command(packet->payload, packet->length);
-            protocol_send_ack(MSG_CMD_LOG_CONFIG, packet->seq, ACK_SUCCESS);
-            break;
-        }
-        
-        case MSG_CMD_CLEANING_START: {
-            // Start cleaning cycle
-            if (cleaning_start_cycle()) {
-                protocol_send_ack(MSG_CMD_CLEANING_START, packet->seq, ACK_SUCCESS);
-            } else {
-                protocol_send_ack(MSG_CMD_CLEANING_START, packet->seq, ACK_ERROR_REJECTED);
-            }
-            break;
-        }
-        
-        case MSG_CMD_CLEANING_STOP: {
-            // Stop cleaning cycle
-            cleaning_stop_cycle();
-            protocol_send_ack(MSG_CMD_CLEANING_STOP, packet->seq, ACK_SUCCESS);
-            break;
-        }
-        
-        case MSG_CMD_CLEANING_RESET: {
-            // Reset brew counter
-            cleaning_reset_brew_count();
-            protocol_send_ack(MSG_CMD_CLEANING_RESET, packet->seq, ACK_SUCCESS);
-            break;
-        }
-        
-        case MSG_CMD_CLEANING_SET_THRESHOLD: {
-            // Set cleaning reminder threshold
-            if (packet->length >= 2) {
-                uint16_t threshold = (packet->payload[0] << 8) | packet->payload[1];
-                
-                // Validate threshold range (cleaning_set_threshold also validates, but add debug)
-                if (threshold < 10 || threshold > 1000) {
-                    DEBUG_PRINT("CMD_CLEANING_SET_THRESHOLD: Invalid threshold %d (valid: 10-1000)\n", 
-                               threshold);
-                    protocol_send_ack(MSG_CMD_CLEANING_SET_THRESHOLD, packet->seq, ACK_ERROR_INVALID);
-                    break;
-                }
-                
-                if (cleaning_set_threshold(threshold)) {
-                    protocol_send_ack(MSG_CMD_CLEANING_SET_THRESHOLD, packet->seq, ACK_SUCCESS);
-                } else {
-                    protocol_send_ack(MSG_CMD_CLEANING_SET_THRESHOLD, packet->seq, ACK_ERROR_INVALID);
-                }
-            } else {
-                protocol_send_ack(MSG_CMD_CLEANING_SET_THRESHOLD, packet->seq, ACK_ERROR_INVALID);
-            }
-            break;
-        }
-        
-        case MSG_CMD_SET_ECO: {
-            // Set eco mode configuration
-            // Payload: [enabled:1][eco_brew_temp:2][timeout_minutes:2]
-            if (packet->length >= 5) {
-                bool enabled = packet->payload[0] != 0;
-                int16_t eco_temp = (int16_t)((packet->payload[1] << 8) | packet->payload[2]);
-                uint16_t timeout = (packet->payload[3] << 8) | packet->payload[4];
-                
-                // Validate eco temp: 500-900 (50.0-90.0°C) - must be lower than normal brew temp
-                if (eco_temp < 500 || eco_temp > 900) {
-                    DEBUG_PRINT("CMD_SET_ECO: Invalid eco temp %d (valid: 500-900)\n", eco_temp);
-                    protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_ERROR_INVALID);
-                    break;
-                }
-                
-                // Validate timeout: 0-480 minutes (0 = disabled, max 8 hours)
-                if (timeout > 480) {
-                    DEBUG_PRINT("CMD_SET_ECO: Invalid timeout %d (valid: 0-480 min)\n", timeout);
-                    protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_ERROR_INVALID);
-                    break;
-                }
-                
-                eco_config_t eco_config = {
-                    .enabled = enabled,
-                    .eco_brew_temp = eco_temp,
-                    .timeout_minutes = timeout
-                };
-                // state_set_eco_config() already saves to flash
-                state_set_eco_config(&eco_config);
-                
-                DEBUG_PRINT("Eco config set: enabled=%d, temp=%d, timeout=%d min\n",
-                           enabled, eco_temp, timeout);
-                protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_SUCCESS);
-            } else if (packet->length >= 1) {
-                // Single byte payload: enable/disable or enter/exit eco mode
-                uint8_t cmd = packet->payload[0];
-                if (cmd == 0) {
-                    // Exit eco mode
-                    if (state_exit_eco()) {
-                        protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_SUCCESS);
-                    } else {
-                        protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_ERROR_REJECTED);
-                    }
-                } else if (cmd == 1) {
-                    // Enter eco mode
-                    if (state_enter_eco()) {
-                        protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_SUCCESS);
-                    } else {
-                        protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_ERROR_REJECTED);
-                    }
-                } else {
-                    protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_ERROR_INVALID);
-                }
-            } else {
-                protocol_send_ack(MSG_CMD_SET_ECO, packet->seq, ACK_ERROR_INVALID);
-            }
-            break;
-        }
-        
-        case MSG_CMD_BOOTLOADER: {
-            // Enter bootloader mode and receive firmware
-            DEBUG_PRINT("Entering bootloader mode!\n");
-            protocol_send_ack(MSG_CMD_BOOTLOADER, packet->seq, ACK_SUCCESS);
             
-            // Small delay to ensure ACK is sent
-            sleep_ms(50);
-            
-            // Signal bootloader mode - pauses Core 0 control loop and protocol processing
-            bootloader_prepare();
-            DEBUG_PRINT("Bootloader: System paused, starting firmware receive\n");
-            
-            // Enter bootloader mode (does not return on success)
-            bootloader_result_t result = bootloader_receive_firmware();
-            
-            // If we get here, bootloader failed - resume normal operation
-            bootloader_exit();
-            DEBUG_PRINT("Bootloader error: %s\n", bootloader_get_status_message(result));
-            
-            // Send error ACK with appropriate error code
-            uint8_t ack_result = ACK_ERROR_FAILED;
-            if (result == BOOTLOADER_ERROR_TIMEOUT) {
-                ack_result = ACK_ERROR_TIMEOUT;
-            }
-            // Note: Can't send ACK here as we're back in normal protocol mode
-            // Send error message via debug instead
-            char error_msg[64];
-            snprintf(error_msg, sizeof(error_msg), "Bootloader failed: %s", 
-                     bootloader_get_status_message(result));
-            protocol_send_debug(error_msg);
+        case MSG_CMD_SET_PID:
+            handle_cmd_set_pid(packet);
             break;
-        }
-        
-        case MSG_CMD_DIAGNOSTICS: {
-            // Run diagnostic tests
-            uint8_t test_id = DIAG_TEST_ALL;
-            if (packet->length >= 1) {
-                test_id = packet->payload[0];
-            }
             
-            DEBUG_PRINT("Running diagnostics (test_id=%d)\n", test_id);
-            protocol_send_ack(MSG_CMD_DIAGNOSTICS, packet->seq, ACK_SUCCESS);
-            
-            if (test_id == DIAG_TEST_ALL) {
-                // Run all tests
-                diag_report_t report;
-                diagnostics_run_all(&report);
-                
-                // Send header first
-                diag_header_payload_t header = {
-                    .test_count = report.test_count,
-                    .pass_count = report.pass_count,
-                    .fail_count = report.fail_count,
-                    .warn_count = report.warn_count,
-                    .skip_count = report.skip_count,
-                    .is_complete = 0,  // More results coming
-                    .duration_ms = (uint16_t)(report.duration_ms > 65535 ? 65535 : report.duration_ms)
-                };
-                protocol_send_diag_header(&header);
-                
-                // Send each result
-                for (int i = 0; i < report.test_count && i < 16; i++) {
-                    diag_result_t* r = &report.results[i];
-                    diag_result_payload_t result_payload = {
-                        .test_id = r->test_id,
-                        .status = r->status,
-                        .raw_value = r->raw_value,
-                        .expected_min = r->expected_min,
-                        .expected_max = r->expected_max
-                    };
-                    strncpy(result_payload.message, r->message, sizeof(result_payload.message) - 1);
-                    result_payload.message[sizeof(result_payload.message) - 1] = '\0';
-                    protocol_send_diag_result(&result_payload);
-                    
-                    // Small delay between packets
-                    sleep_ms(10);
-                }
-                
-                // Send final header with is_complete=1
-                header.is_complete = 1;
-                protocol_send_diag_header(&header);
-            } else {
-                // Run single test
-                diag_result_t single_result;
-                diagnostics_run_test(test_id, &single_result);
-                
-                // Send header
-                diag_header_payload_t header = {
-                    .test_count = 1,
-                    .pass_count = (single_result.status == DIAG_STATUS_PASS) ? 1 : 0,
-                    .fail_count = (single_result.status == DIAG_STATUS_FAIL) ? 1 : 0,
-                    .warn_count = (single_result.status == DIAG_STATUS_WARN) ? 1 : 0,
-                    .skip_count = (single_result.status == DIAG_STATUS_SKIP) ? 1 : 0,
-                    .is_complete = 0,
-                    .duration_ms = 0
-                };
-                protocol_send_diag_header(&header);
-                
-                // Send result
-                diag_result_payload_t result_payload = {
-                    .test_id = single_result.test_id,
-                    .status = single_result.status,
-                    .raw_value = single_result.raw_value,
-                    .expected_min = single_result.expected_min,
-                    .expected_max = single_result.expected_max
-                };
-                strncpy(result_payload.message, single_result.message, sizeof(result_payload.message) - 1);
-                result_payload.message[sizeof(result_payload.message) - 1] = '\0';
-                protocol_send_diag_result(&result_payload);
-                
-                // Send final header
-                header.is_complete = 1;
-                protocol_send_diag_header(&header);
-            }
+        case MSG_CMD_BREW:
+            handle_cmd_brew(packet);
             break;
-        }
-        
+            
+        case MSG_CMD_MODE:
+            handle_cmd_mode(packet);
+            break;
+            
+        case MSG_CMD_GET_CONFIG:
+            handle_cmd_get_config(packet);
+            break;
+            
+        case MSG_CMD_CONFIG:
+            handle_cmd_config(packet);
+            break;
+            
+        case MSG_CMD_GET_ENV_CONFIG:
+            handle_cmd_get_env_config(packet);
+            break;
+            
+        case MSG_CMD_CLEANING_START:
+        case MSG_CMD_CLEANING_STOP:
+        case MSG_CMD_CLEANING_RESET:
+        case MSG_CMD_CLEANING_SET_THRESHOLD:
+            handle_cmd_cleaning(packet);
+            break;
+            
+        case MSG_CMD_GET_STATISTICS:
+            handle_cmd_get_statistics(packet);
+            break;
+            
+        case MSG_CMD_DEBUG:
+            handle_cmd_debug(packet);
+            break;
+            
+        case MSG_CMD_SET_ECO:
+            handle_cmd_set_eco(packet);
+            break;
+            
+        case MSG_CMD_BOOTLOADER:
+            handle_cmd_bootloader(packet);
+            break;
+            
+        case MSG_CMD_DIAGNOSTICS:
+            handle_cmd_diagnostics(packet);
+            break;
+            
+        case MSG_CMD_POWER_METER_CONFIG:
+        case MSG_CMD_POWER_METER_DISCOVER:
+            handle_cmd_power_meter(packet);
+            break;
+            
+        case MSG_CMD_GET_BOOT:
+            handle_cmd_get_boot(packet);
+            break;
+            
+        case MSG_CMD_LOG_CONFIG:
+            handle_cmd_log_config(packet);
+            break;
+            
         default:
-            DEBUG_PRINT("Unknown packet type: 0x%02X\n", packet->type);
+            LOG_WARN("Unknown packet type: 0x%02X\n", packet->type);
             break;
     }
 }
+
 
 // -----------------------------------------------------------------------------
 // Core 0 Entry Point (Control)

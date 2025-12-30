@@ -65,6 +65,8 @@ set(TEST_SOURCES
     test_power_meter.c
     test_class_b.c
     test_preinfusion.c
+    test_validation.c
+    ../src/validation.c
 )
 
 # =============================================================================

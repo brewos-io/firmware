@@ -95,21 +95,28 @@
 // -----------------------------------------------------------------------------
 // Logging
 // -----------------------------------------------------------------------------
-// Always output logs to USB serial (stdio_init_all() must be called first)
-// Both DEBUG_PRINT and LOG_PRINT output to USB serial in all builds
-// DEBUG_PRINT: Verbose debugging information
-// LOG_PRINT: Important operational logs
-// Note: log_forward.h is included here to enable automatic log forwarding
-// when enabled. This creates a dependency, but log_forward.h doesn't include config.h
-// so it's safe.
-#include "log_forward.h"
+// Use the new structured logging system with multiple log levels
+// The logging module provides LOG_ERROR, LOG_WARN, LOG_INFO, LOG_DEBUG, LOG_TRACE
+// and automatically handles USB serial output and ESP32 forwarding when enabled.
+//
+// For backwards compatibility, we map old macros to new logging system:
+// - DEBUG_PRINT -> LOG_DEBUG (debug-level information)
+// - LOG_PRINT -> LOG_INFO (important operational logs)
+//
+// New code should use the logging.h macros directly:
+//   LOG_ERROR() - Critical errors
+//   LOG_WARN()  - Warnings
+//   LOG_INFO()  - Important information
+//   LOG_DEBUG() - Debug information
+//   LOG_TRACE() - Detailed traces
 
-#define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
-#define LOG_PRINT(fmt, ...) do { \
-    printf(fmt, ##__VA_ARGS__); \
-    if (log_forward_is_enabled()) { \
-        log_forward_sendf(LOG_FWD_INFO, fmt, ##__VA_ARGS__); \
-    } \
-} while(0)
+#ifndef UNIT_TEST  // Real implementation for firmware
+    #include "logging.h"
+    #define DEBUG_PRINT(fmt, ...) LOG_DEBUG(fmt, ##__VA_ARGS__)
+    #define LOG_PRINT(fmt, ...)   LOG_INFO(fmt, ##__VA_ARGS__)
+#else  // Test environment - use simple printf
+    #define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
+    #define LOG_PRINT(fmt, ...)   printf(fmt, ##__VA_ARGS__)
+#endif
 
 #endif // CONFIG_H
