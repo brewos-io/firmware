@@ -179,6 +179,9 @@ static void process_pending_commands(void) {
     }
 }
 
+// Forward declaration
+static bool send_packet(uint8_t type, const uint8_t* payload, uint8_t length);
+
 // Send NACK for backpressure
 static void send_nack(uint8_t for_type, uint8_t seq) {
     ack_payload_t nack = {
@@ -495,10 +498,10 @@ static void process_byte(uint8_t byte) {
                 }
                 
                 // Validate packet length field
-                if (pastats.packet_errors++;
+                if (packet.length > PROTOCOL_MAX_PAYLOAD) {
+                    g_stats.packet_errors++;
                     LOG_PRINT("Protocol: ERROR - Invalid packet length %d (max %d, total errors: %lu)\n", 
-                               packet.length, PROTOCOL_MAX_PAYLOAD, g_stats. %d (max %d, total errors: %lu)\n", 
-                               packet.length, PROTOCOL_MAX_PAYLOAD, g_packet_errors);
+                               packet.length, PROTOCOL_MAX_PAYLOAD, g_stats.packet_errors);
                     g_rx_state = RX_WAIT_SYNC;
                     g_rx_index = 0;
                     break;
@@ -528,9 +531,9 @@ static void process_byte(uint8_t byte) {
                     g_last_seq_received = packet.seq;
                     g_stats.crc_errors++;
                     if (g_stats.crc_errors <= 5 || (g_stats.crc_errors % 10 == 0)) {
-                        LOG_PRINT("Protocol: CRC error (got=0x%04X exp=0x%04X, total: %lu)\n", 
-                                 received_crc, expected_crc, g_stats.X len=%d seq=%d\n",
-                               packet.type, packet.length, packet.seq);
+                        LOG_PRINT("Protocol: CRC error (got=0x%04X exp=0x%04X, total: %lu) type=0x%02X len=%d seq=%d\n", 
+                                 received_crc, expected_crc, g_stats.crc_errors,
+                                 packet.type, packet.length, packet.seq);
                     
                     // Handle handshake message
                     if (packet.type == MSG_HANDSHAKE) {
@@ -556,8 +559,8 @@ static void process_byte(uint8_t byte) {
                     }
                     
                     // Call callback
-          stats.packet_errors++;
-        LOG_PRINT("Protocol: ERROR - Buffer overflow, resetting state (total errors: %lu)\n", g_stats.
+                    g_stats.packet_errors++;
+                    LOG_PRINT("Protocol: ERROR - Buffer overflow, resetting state (total errors: %lu)\n", g_stats.packet_errors);
                     } else {
                         DEBUG_PRINT("Protocol: WARNING - No callback registered for packet 0x%02X\n",
                                    packet.type);
