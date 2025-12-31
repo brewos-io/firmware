@@ -5,24 +5,20 @@
 # This script mirrors the CI workflow (ci.yml) and runs all checks required 
 # before merging a PR:
 #
-# 1. Lint Web UI
-# 2. Type check Web UI
-# 3. Lint Cloud Service
-# 4. Type check Cloud Service
-# 5. Lint Admin UI
-# 6. Type check Admin UI
-# 7. Build Web UI
-# 8. Build Firmware (ESP32 + Pico)
-# 9. Build Cloud Service + Admin UI
-# 10. Run Pico Unit Tests
+# 1. Build App for ESP32 (from external app repository)
+# 2. Build Firmware (ESP32 + Pico)
+# 3. Run Pico Unit Tests
+#
+# Note: App and Cloud repositories have their own CI workflows.
 #
 # Usage:
-#   ./verify_pr.sh [--skip-firmware] [--skip-tests] [--fast]
+#   ./verify_pr.sh [--skip-firmware] [--skip-tests] [--skip-app] [--fast]
 #
 # Options:
 #   --skip-firmware  Skip firmware builds (ESP32 + Pico)
 #   --skip-tests     Skip running unit tests
-#   --fast           Skip firmware builds and tests (lint + build only)
+#   --skip-app       Skip building app for ESP32
+#   --fast           Skip firmware builds, tests, and app build
 #   --help, -h       Show this help message
 #
 
@@ -48,6 +44,7 @@ STEP_START_TIME=$START_TIME
 # Parse arguments
 SKIP_FIRMWARE=false
 SKIP_TESTS=false
+SKIP_APP=false
 
 for arg in "$@"; do
     case $arg in
@@ -59,13 +56,18 @@ for arg in "$@"; do
             SKIP_TESTS=true
             shift
             ;;
+        --skip-app)
+            SKIP_APP=true
+            shift
+            ;;
         --fast)
             SKIP_FIRMWARE=true
             SKIP_TESTS=true
+            SKIP_APP=true
             shift
             ;;
         --help|-h)
-            head -n 15 "$0" | tail -n +2
+            head -n 20 "$0" | tail -n +2
             exit 0
             ;;
         *)
@@ -126,121 +128,67 @@ trap on_error ERR
 # Main Verification Steps
 # ============================================================================
 
-print_header "BrewOS Pull Request Verification"
+print_header "BrewOS Pull Request Verification (Firmware)"
 echo ""
 echo -e "  ${CYAN}Repository:${NC} $PROJECT_ROOT"
 echo -e "  ${CYAN}Mode:${NC}       $([ "$SKIP_FIRMWARE" = true ] && echo "Fast (no firmware)" || echo "Full verification")"
 echo ""
 
 # ----------------------------------------------------------------------------
-# Step 1: Lint Web UI
+# Step 1: Build App for ESP32 (from external repository)
 # ----------------------------------------------------------------------------
-print_step "1/10 Linting Web UI..."
-cd "$PROJECT_ROOT/src/web"
-
-if [ ! -d "node_modules" ]; then
-    print_info "Installing web dependencies..."
-    npm ci > /dev/null
+if [ "$SKIP_APP" = false ]; then
+    print_step "1/3 Building App for ESP32 (from external app repository)..."
+    APP_DIR="$PROJECT_ROOT/../app"
+    
+    if [ ! -d "$APP_DIR" ]; then
+        print_warning "App repository not found at $APP_DIR"
+        print_info "Cloning app repository..."
+        cd "$PROJECT_ROOT/.."
+        git clone https://github.com/brewos-io/app.git app || {
+            print_error "Failed to clone app repository"
+            print_info "You can skip this step with --skip-app"
+            exit 1
+        }
+    fi
+    
+    cd "$SCRIPT_DIR"
+    if [ -f "./build_app_for_esp32.sh" ]; then
+        ./build_app_for_esp32.sh --build-only > /dev/null
+        print_success "App built for ESP32"
+    else
+        print_warning "build_app_for_esp32.sh not found, skipping app build"
+    fi
+else
+    print_step "1/3 Building App for ESP32..."
+    print_warning "Skipped (--skip-app or --fast)"
 fi
 
-npm run lint
-print_success "Web UI linting passed"
-
 # ----------------------------------------------------------------------------
-# Step 2: Type Check Web UI
-# ----------------------------------------------------------------------------
-print_step "2/10 Type checking Web UI..."
-cd "$PROJECT_ROOT/src/web"
-npx tsc --noEmit
-print_success "Web UI type check passed"
-
-# ----------------------------------------------------------------------------
-# Step 3: Lint Cloud Service
-# ----------------------------------------------------------------------------
-print_step "3/10 Linting Cloud Service..."
-cd "$PROJECT_ROOT/src/cloud"
-
-if [ ! -d "node_modules" ]; then
-    print_info "Installing cloud dependencies..."
-    npm ci > /dev/null
-fi
-
-npm run lint
-print_success "Cloud service linting passed"
-
-# ----------------------------------------------------------------------------
-# Step 4: Type Check Cloud Service
-# ----------------------------------------------------------------------------
-print_step "4/10 Type checking Cloud Service..."
-cd "$PROJECT_ROOT/src/cloud"
-npx tsc --noEmit
-print_success "Cloud service type check passed"
-
-# ----------------------------------------------------------------------------
-# Step 5: Lint Admin UI
-# ----------------------------------------------------------------------------
-print_step "5/10 Linting Admin UI..."
-cd "$PROJECT_ROOT/src/cloud/admin"
-
-if [ ! -d "node_modules" ]; then
-    print_info "Installing admin dependencies..."
-    npm ci > /dev/null
-fi
-
-# Admin doesn't have lint script yet, just do type check
-print_success "Admin UI linting passed (no lint rules)"
-
-# ----------------------------------------------------------------------------
-# Step 6: Type Check Admin UI
-# ----------------------------------------------------------------------------
-print_step "6/10 Type checking Admin UI..."
-cd "$PROJECT_ROOT/src/cloud/admin"
-npx tsc --noEmit
-print_success "Admin UI type check passed"
-
-# ----------------------------------------------------------------------------
-# Step 7: Build Web UI
-# ----------------------------------------------------------------------------
-print_step "7/10 Building Web UI (ESP32 + Cloud)..."
-cd "$SCRIPT_DIR"
-./build_app.sh all > /dev/null
-print_success "Web UI built successfully"
-
-# ----------------------------------------------------------------------------
-# Step 8: Build Firmware (optional)
+# Step 2: Build Firmware (optional)
 # ----------------------------------------------------------------------------
 if [ "$SKIP_FIRMWARE" = false ]; then
-    print_step "8/10 Building Firmware (ESP32 + Pico)..."
+    print_step "2/3 Building Firmware (ESP32 + Pico)..."
     cd "$SCRIPT_DIR"
     # Run full build and let errors propagate (set -e will catch them)
     ./build_firmware.sh all
     print_success "Firmware built successfully"
 else
-    print_step "8/10 Building Firmware (ESP32 + Pico)..."
+    print_step "2/3 Building Firmware (ESP32 + Pico)..."
     print_warning "Skipped (--skip-firmware or --fast)"
 fi
 
 # ----------------------------------------------------------------------------
-# Step 9: Build Cloud Service + Admin UI
-# ----------------------------------------------------------------------------
-print_step "9/10 Building Cloud Service + Admin UI..."
-cd "$PROJECT_ROOT/src/cloud"
-npm run build > /dev/null
-cd "$PROJECT_ROOT/src/cloud/admin"
-npm run build > /dev/null
-print_success "Cloud service and Admin UI built successfully"
-
-# ----------------------------------------------------------------------------
-# Step 10: Run Unit Tests (optional)
+# Step 3: Run Unit Tests (optional)
 # ----------------------------------------------------------------------------
 if [ "$SKIP_TESTS" = false ]; then
-    print_step "10/10 Running Pico Unit Tests..."
+    print_step "3/3 Running Pico Unit Tests..."
     cd "$SCRIPT_DIR"
     # Run tests and let errors propagate (set -e will catch them)
     ./run_pico_tests.sh
     print_success "All unit tests passed"
 else
-    print_step "10/10 Running Pico Unit Tests..."
+    print_step "3/3 Running Pico Unit Tests..."
     print_warning "Skipped (--skip-tests or --fast)"
 fi
 
