@@ -157,7 +157,7 @@ private:
     // Thread safety - WebSocketsClient is NOT thread-safe
     SemaphoreHandle_t _mutex = nullptr;
     QueueHandle_t _sendQueue = nullptr;  // Queue of messages to send
-    static const int SEND_QUEUE_SIZE = 10;  // Reduced queue size to save heap
+    static const int SEND_QUEUE_SIZE = 20;  // Increased to handle rapid state updates
     static const int MAX_MSG_SIZE = 2048;   // Reduced message size
     
     // Process queued messages (called from task)

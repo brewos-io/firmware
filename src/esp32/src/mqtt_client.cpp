@@ -262,8 +262,17 @@ int MQTTClient::testConnectionWithConfig(const MQTTConfig& testConfig) {
 
 bool MQTTClient::connect() {
     if (WiFi.status() != WL_CONNECTED) {
+        LOG_W("MQTT: WiFi not connected");
         return false;
     }
+    
+    // Log network diagnostics
+    int32_t rssi = WiFi.RSSI();
+    IPAddress localIP = WiFi.localIP();
+    LOG_I("MQTT: Network: IP=%s, RSSI=%d dBm", localIP.toString().c_str(), rssi);
+    
+    // Configure WiFi client timeout (default 1000ms may be too short)
+    _wifiClient.setTimeout(10000);  // 10 second timeout for MQTT operations
     
     LOG_I("Connecting to MQTT broker %s:%d...", _config.broker, _config.port);
     
@@ -313,7 +322,21 @@ bool MQTTClient::connect() {
             _onConnected();
         }
     } else {
-        LOG_W("MQTT connection failed: %d", _client.state());
+        int state = _client.state();
+        const char* errorMsg = "";
+        switch (state) {
+            case -4: errorMsg = "Connection timeout"; break;
+            case -3: errorMsg = "Connection lost"; break;
+            case -2: errorMsg = "Connect failed"; break;
+            case -1: errorMsg = "Disconnected"; break;
+            case 1: errorMsg = "Bad protocol"; break;
+            case 2: errorMsg = "Bad client ID"; break;
+            case 3: errorMsg = "Unavailable"; break;
+            case 4: errorMsg = "Bad credentials"; break;
+            case 5: errorMsg = "Unauthorized"; break;
+            default: errorMsg = "Unknown error"; break;
+        }
+        LOG_W("MQTT connection failed: %d (%s)", state, errorMsg);
         _connected = false;
     }
     
@@ -423,15 +446,16 @@ void MQTTClient::publishStatus(const ui_state_t& state) {
     char statusBuffer[1024];
     size_t len = serializeJson(doc, statusBuffer, sizeof(statusBuffer));
     
-    // Publish to status topic (retained)
-    char statusTopic[64];
-    snprintf(statusTopic, sizeof(statusTopic), "brewos/%s/status", _config.ha_device_id);
-    if (!_client.publish(statusTopic, (const uint8_t*)statusBuffer, len, true)) {
+    // Publish to status topic (retained) - use topic() helper to respect topic_prefix
+    String statusTopic = topic("status");
+    if (!_client.publish(statusTopic.c_str(), (const uint8_t*)statusBuffer, len, true)) {
         LOG_W("Failed to publish status");
         // Check if connection was lost during publish
         if (!_client.connected()) {
             _connected = false;
         }
+    } else {
+        LOG_D("Published status to %s (%d bytes)", statusTopic.c_str(), len);
     }
     
     xSemaphoreGive(_mutex);
@@ -507,14 +531,15 @@ void MQTTClient::publishStatistics(uint16_t shotsToday, uint32_t totalShots, flo
     char statsBuffer[128];
     size_t len = serializeJson(doc, statsBuffer, sizeof(statsBuffer));
     
-    // Publish to statistics topic (retained)
-    char statsTopic[64];
-    snprintf(statsTopic, sizeof(statsTopic), "brewos/%s/statistics", _config.ha_device_id);
-    if (!_client.publish(statsTopic, (const uint8_t*)statsBuffer, len, true)) {
+    // Publish to statistics topic (retained) - use topic() helper to respect topic_prefix
+    String statsTopic = topic("statistics");
+    if (!_client.publish(statsTopic.c_str(), (const uint8_t*)statsBuffer, len, true)) {
         LOG_W("Failed to publish statistics");
         if (!_client.connected()) {
             _connected = false;
         }
+    } else {
+        LOG_D("Published statistics to %s (%d bytes)", statsTopic.c_str(), len);
     }
     
     xSemaphoreGive(_mutex);

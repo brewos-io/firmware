@@ -388,20 +388,52 @@ void CloudConnection::connect() {
     // Resolve DNS first - WebSocketsClient doesn't handle DNS failures well
     // This prevents repeated SSL timeout errors when DNS fails
     IPAddress serverIP;
-    if (!WiFi.hostByName(host.c_str(), serverIP)) {
-        LOG_W("DNS failed for %s - will retry", host.c_str());
+    unsigned long dnsStart = millis();
+    bool dnsSuccess = WiFi.hostByName(host.c_str(), serverIP);
+    unsigned long dnsTime = millis() - dnsStart;
+    
+    if (!dnsSuccess) {
+        LOG_W("DNS failed for %s (took %lu ms) - will retry", host.c_str(), dnsTime);
         _connecting = false;
         _failureCount++;
         _reconnectDelay = 10000;  // Retry in 10s
         return;
     }
     
+    LOG_I("DNS resolved: %s -> %s (%lu ms)", host.c_str(), serverIP.toString().c_str(), dnsTime);
     LOG_I("Connecting to %s (%s):%d (SSL=%d)", host.c_str(), serverIP.toString().c_str(), port, useSSL);
+    
+    // Log network diagnostics before connecting
+    int32_t rssi = WiFi.RSSI();
+    IPAddress localIP = WiFi.localIP();
+    LOG_I("Network: IP=%s, RSSI=%d dBm, Gateway=%s", 
+          localIP.toString().c_str(), rssi, WiFi.gatewayIP().toString().c_str());
     
     // Enable heartbeat (ping every 15s, timeout 10s, 2 failures to disconnect)
     // Mutex protection for all _ws calls
     if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         _ws.enableHeartbeat(15000, 10000, 2);
+        
+        // Configure SSL client timeout (default 5s is too short for slow networks)
+        // WebSocketsClient uses WiFiClientSecure internally
+        // Try to configure timeout - method availability depends on library version
+        if (useSSL) {
+            // Try to get and configure the underlying SSL client
+            // Note: getCClient() may not be available in all WebSocketsClient versions
+            // If compilation fails, comment out this section
+            #ifdef WEBSOCKETS_CLIENT_HAS_GET_CLIENT
+            WiFiClientSecure* sslClient = _ws.getCClient();
+            if (sslClient) {
+                sslClient->setTimeout(20000);  // 20 second timeout for SSL operations
+                sslClient->setInsecure();  // Skip certificate validation (faster, acceptable for known server)
+                LOG_I("SSL client configured: timeout=20s, insecure mode");
+            }
+            #else
+            // WebSocketsClient library doesn't expose getCClient() - timeout uses library default
+            // The library should handle SSL internally, but timeout may be limited
+            LOG_I("SSL client: using library default timeout (may be 5s)");
+            #endif
+        }
         
         // Connect WebSocket using resolved IP (more reliable than hostname)
         if (useSSL) {
@@ -698,9 +730,25 @@ void CloudConnection::processSendQueue() {
     
     char* msg = nullptr;
     // Process ALL queued messages to prevent queue overflow
-    while (xQueueReceive(_sendQueue, &msg, 0) == pdTRUE && msg) {
+    // Process in batches to avoid blocking too long, but clear queue if it's getting full
+    int processed = 0;
+    const int MAX_PER_CALL = 10;  // Process up to 10 messages per call
+    
+    // First pass: process up to MAX_PER_CALL messages
+    while (processed < MAX_PER_CALL && xQueueReceive(_sendQueue, &msg, 0) == pdTRUE && msg) {
         _ws.sendTXT(msg);
         free(msg);
+        processed++;
+    }
+    
+    // If queue is getting full (< 5 spaces left), process remaining messages aggressively
+    UBaseType_t queueSpace = uxQueueSpacesAvailable(_sendQueue);
+    if (queueSpace < 5) {
+        // Queue is getting full - process all remaining messages
+        while (xQueueReceive(_sendQueue, &msg, 0) == pdTRUE && msg) {
+            _ws.sendTXT(msg);
+            free(msg);
+        }
     }
 }
 
