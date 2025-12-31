@@ -32,7 +32,7 @@ const MANIFEST_FILE = path.join(
 );
 
 // GitHub repository for release URLs
-const GITHUB_REPO = "mizrachiran/brewos";
+const GITHUB_REPO = "brewos-io/firmware";
 
 // Files to update
 const PICO_CONFIG = path.join(PROJECT_ROOT, "src/pico/include/config.h");

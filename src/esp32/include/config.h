@@ -91,8 +91,8 @@
 #define OTA_MAX_SIZE            (2 * 1024 * 1024)   // 2MB max
 
 // GitHub OTA - Download firmware from GitHub releases
-#define GITHUB_OWNER            "mizrachiran"
-#define GITHUB_REPO             "brewos"
+#define GITHUB_OWNER            "brewos-io"
+#define GITHUB_REPO             "firmware"
 #define GITHUB_ESP32_ASSET      "brewos_esp32.bin"
 #define GITHUB_ESP32_LITTLEFS_ASSET "brewos_esp32_littlefs.bin"
 
