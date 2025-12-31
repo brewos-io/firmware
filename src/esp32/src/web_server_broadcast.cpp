@@ -515,9 +515,27 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
             _ws.textAll(g_statusBuffer);
         }
         
+        // Throttle cloud updates to prevent queue overflow when idle
+        // Send immediately when machine is active (heating/brewing), but throttle when idle
+        static unsigned long lastCloudBroadcast = 0;
+        static uint8_t lastMachineState = 255;  // Track state changes
+        const unsigned long CLOUD_BROADCAST_INTERVAL_IDLE = 2000;  // 2 seconds when idle
+        const unsigned long CLOUD_BROADCAST_INTERVAL_ACTIVE = 500;  // 500ms when active (heating/brewing)
+        
+        bool isActive = state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_BREWING;
+        unsigned long interval = isActive ? CLOUD_BROADCAST_INTERVAL_ACTIVE : CLOUD_BROADCAST_INTERVAL_IDLE;
+        
+        unsigned long now = millis();
+        bool stateChanged = (state.machine_state != lastMachineState);
+        bool intervalExpired = (now - lastCloudBroadcast >= interval);
+        bool shouldSendToCloud = stateChanged || intervalExpired;
+        
         // Also send to cloud - use buffer directly to avoid String allocation
-        if (_cloudConnection && _cloudConnection->isConnected()) {
+        // Throttle updates when idle to prevent queue overflow, but send immediately on state changes
+        if (_cloudConnection && _cloudConnection->isConnected() && shouldSendToCloud) {
             _cloudConnection->send(g_statusBuffer);
+            lastCloudBroadcast = now;
+            lastMachineState = state.machine_state;
         }
     } else {
         LOG_W("Status JSON too large: %d > %d", jsonSize, STATUS_BUFFER_SIZE);

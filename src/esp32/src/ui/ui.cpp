@@ -238,6 +238,8 @@ void UI::showScreen(screen_id_t screen) {
                 LOG_E("Cannot lazy load screen: %d", screen);
                 return;
         }
+        // Yield after screen creation to allow network operations
+        yield();
     }
     
     if (!_screens[screen]) {
@@ -288,6 +290,8 @@ void UI::showScreen(screen_id_t screen) {
         LOG_I("Destroying screen to free memory: %d", oldScreen);
         lv_obj_del(oldScreenObj);
         _screens[oldScreen] = nullptr;
+        // Yield after screen deletion to allow network operations
+        yield();
     }
     
     // Focus an object on the new screen (for encoder navigation)
@@ -496,8 +500,9 @@ void UI::handleButtonPress() {
             break;
             
         case SCREEN_ALARM:
-            // Acknowledge alarm
-            clearAlarm();
+            // Short press on alarm screen: do nothing (don't switch screens)
+            // Alarm screen will only switch away when alarm state actually clears
+            // This prevents the screen from switching back and forth
             break;
             
         default:

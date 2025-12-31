@@ -17,7 +17,7 @@
 
 #define DISPLAY_WIDTH           480
 #define DISPLAY_HEIGHT          480
-#define DISPLAY_ROTATION        180     // 0, 90, 180, 270 (hardware rotation via ST7701S)
+#define DISPLAY_ROTATION        0     // 0, 90, 180, 270 (hardware rotation via ST7701S)
                                       // Zero performance impact - handled by display controller
 
 // Round display - center point

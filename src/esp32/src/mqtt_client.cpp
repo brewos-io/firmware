@@ -42,6 +42,10 @@ MQTTClient::MQTTClient()
     _client.setCallback(messageCallback);
     _client.setBufferSize(MQTT_BUFFER_SIZE);
     
+    // Set socket timeout for PubSubClient (default is 15s, but WiFiClient timeout might be shorter)
+    // This ensures MQTT connection attempts wait long enough
+    _client.setSocketTimeout(15);  // 15 second socket timeout
+    
     // Create mutex for thread-safe access
     _mutex = xSemaphoreCreateMutex();
 }
@@ -269,12 +273,25 @@ bool MQTTClient::connect() {
     // Log network diagnostics
     int32_t rssi = WiFi.RSSI();
     IPAddress localIP = WiFi.localIP();
-    LOG_I("MQTT: Network: IP=%s, RSSI=%d dBm", localIP.toString().c_str(), rssi);
+    IPAddress gatewayIP = WiFi.gatewayIP();
+    LOG_I("MQTT: Network: IP=%s, RSSI=%d dBm, Gateway=%s", 
+          localIP.toString().c_str(), rssi, gatewayIP.toString().c_str());
     
-    // Configure WiFi client timeout (default 1000ms may be too short)
-    _wifiClient.setTimeout(10000);  // 10 second timeout for MQTT operations
+    // Configure WiFi client timeout - PubSubClient uses this for connection attempts
+    // Increase to 15 seconds to handle slow networks or broker delays
+    _wifiClient.setTimeout(15000);  // 15 second timeout for MQTT operations
     
     LOG_I("Connecting to MQTT broker %s:%d...", _config.broker, _config.port);
+    
+    // Test broker connectivity first (non-blocking check)
+    // This helps diagnose if broker is unreachable vs authentication failure
+    IPAddress brokerIP;
+    if (WiFi.hostByName(_config.broker, brokerIP)) {
+        LOG_I("MQTT: Broker resolved to %s", brokerIP.toString().c_str());
+    } else {
+        LOG_W("MQTT: DNS resolution failed for %s", _config.broker);
+        // Continue anyway - PubSubClient will try DNS itself
+    }
     
     // Build will topic for LWT
     String willTopic = topic("availability");

@@ -68,11 +68,27 @@ void StateManager::loop() {
         saveStats();
     }
     
-    // Deferred shot history save (non-blocking)
-    // Save 2 seconds after shot completes to avoid blocking main loop
+    // Deferred shot history save (non-blocking, on-demand only)
+    // Only save if there are actual shots in history (avoid unnecessary saves)
+    // Save 5 seconds after shot completes to avoid blocking main loop during UI operations
     if (_shotHistoryDirty && (millis() - _lastShotHistorySave >= SHOT_HISTORY_SAVE_DELAY)) {
-        _shotHistoryDirty = false;
-        saveShotHistory();
+        // Only save if there are shots to save (on-demand)
+        if (_shotHistory.count > 0) {
+            // Only save if we have enough heap (indicates system is not under heavy load)
+            // This prevents blocking during critical operations like screen switching
+            size_t freeHeap = ESP.getFreeHeap();
+            if (freeHeap > 60000) {  // Only save if we have plenty of heap (system is idle)
+                _shotHistoryDirty = false;
+                saveShotHistory();
+            } else {
+                // Defer further if heap is low (system is busy with UI/network operations)
+                // Reset timer to retry in 2 seconds
+                _lastShotHistorySave = millis() - (SHOT_HISTORY_SAVE_DELAY - 2000);
+            }
+        } else {
+            // No shots to save - clear dirty flag
+            _shotHistoryDirty = false;
+        }
     }
     
     // Daily reset check
@@ -567,6 +583,7 @@ void StateManager::loadShotHistory() {
 }
 
 void StateManager::saveShotHistory() {
+    // This operation can take 2-4 seconds - add yield points to allow network operations
     File file = LittleFS.open(SHOT_HISTORY_FILE, "w");
     if (!file) {
         Serial.println("[State] Failed to write shot history");
@@ -578,7 +595,14 @@ void StateManager::saveShotHistory() {
     JsonArray arr = doc.to<JsonArray>();
     _shotHistory.toJson(arr);
     
+    // Yield before slow file write to allow network operations
+    yield();
+    
     serializeJson(doc, file);
+    
+    // Yield during file close (can be slow)
+    yield();
+    
     file.close();
     
     Serial.printf("[State] Shot history saved (%d entries)\n", _shotHistory.count);

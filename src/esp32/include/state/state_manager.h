@@ -216,7 +216,7 @@ private:
     // Deferred shot history save (to avoid blocking main loop)
     bool _shotHistoryDirty = false;
     uint32_t _lastShotHistorySave = 0;
-    static constexpr uint32_t SHOT_HISTORY_SAVE_DELAY = 2000;  // Save 2 seconds after shot completes
+    static constexpr uint32_t SHOT_HISTORY_SAVE_DELAY = 5000;  // Save 5 seconds after shot completes (increased to avoid UI operations)
     
     // Schedule callback
     ScheduleCallback _onScheduleTriggered;

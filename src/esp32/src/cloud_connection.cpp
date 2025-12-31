@@ -13,7 +13,7 @@
 #define STARTUP_GRACE_PERIOD_MS 15000  // 15s grace period after WiFi for local access
 #define MIN_HEAP_FOR_CONNECT 40000  // Need 40KB heap for SSL buffers + web server headroom
 #define MIN_HEAP_TO_STAY_CONNECTED 28000  // Disconnect if heap drops below this (state broadcast temporarily uses ~7KB)
-#define SSL_HANDSHAKE_TIMEOUT_MS 15000  // 15s timeout (RSA should take 5-10s)
+#define SSL_HANDSHAKE_TIMEOUT_MS 30000  // 30s timeout (increased for slow networks)
 #define CLOUD_TASK_STACK_SIZE 6144  // 6KB stack for SSL operations (reduced from 8KB)
 #define CLOUD_TASK_PRIORITY 1  // Low priority - below web server
 
@@ -729,25 +729,45 @@ void CloudConnection::processSendQueue() {
     }
     
     char* msg = nullptr;
-    // Process ALL queued messages to prevent queue overflow
-    // Process in batches to avoid blocking too long, but clear queue if it's getting full
+    // Process messages in batches to prevent blocking SSL writes
+    // Add yields between sends to prevent timeouts
     int processed = 0;
     const int MAX_PER_CALL = 10;  // Process up to 10 messages per call
+    const int MAX_AGGRESSIVE = 20;  // Max messages even when queue is full (prevents long blocks)
     
     // First pass: process up to MAX_PER_CALL messages
     while (processed < MAX_PER_CALL && xQueueReceive(_sendQueue, &msg, 0) == pdTRUE && msg) {
         _ws.sendTXT(msg);
         free(msg);
         processed++;
+        
+        // Yield every 5 messages to prevent blocking SSL writes
+        if (processed % 5 == 0) {
+            vTaskDelay(pdMS_TO_TICKS(10));  // 10ms yield to allow SSL to process
+        }
     }
     
-    // If queue is getting full (< 5 spaces left), process remaining messages aggressively
+    // If queue is getting full (< 5 spaces left), process more aggressively but still limit
     UBaseType_t queueSpace = uxQueueSpacesAvailable(_sendQueue);
-    if (queueSpace < 5) {
-        // Queue is getting full - process all remaining messages
-        while (xQueueReceive(_sendQueue, &msg, 0) == pdTRUE && msg) {
+    if (queueSpace < 5 && processed < MAX_AGGRESSIVE) {
+        // Queue is getting full - process more messages but still limit to prevent long blocks
+        int aggressiveCount = 0;
+        while (processed < MAX_AGGRESSIVE && xQueueReceive(_sendQueue, &msg, 0) == pdTRUE && msg) {
             _ws.sendTXT(msg);
             free(msg);
+            processed++;
+            aggressiveCount++;
+            
+            // Yield every 3 messages during aggressive processing
+            if (aggressiveCount % 3 == 0) {
+                vTaskDelay(pdMS_TO_TICKS(10));  // 10ms yield to allow SSL to process
+            }
+        }
+        
+        if (queueSpace < 2) {
+            // Queue is critically full - log warning
+            LOG_W("Cloud send queue critically full (%d/%d), processed %d messages", 
+                  uxQueueMessagesWaiting(_sendQueue), SEND_QUEUE_SIZE, processed);
         }
     }
 }
