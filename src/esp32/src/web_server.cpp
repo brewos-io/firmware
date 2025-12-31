@@ -929,17 +929,18 @@ void BrewWebServer::setupRoutes() {
     // Log buffer is NOT allocated unless explicitly enabled - zero impact when off
     // =========================================================================
     
-    // GET /api/logs/info - Get log status (enabled, size, pico forwarding)
+    // GET /api/logs/info - Get log status (enabled, size, pico forwarding, debug logs)
     _server.on("/api/logs/info", HTTP_GET, [](AsyncWebServerRequest* request) {
         bool enabled = g_logManager && g_logManager->isEnabled();
         
-        char response[160];
+        char response[200];
         snprintf(response, sizeof(response), 
-            "{\"enabled\":%s,\"size\":%u,\"maxSize\":%u,\"picoForwarding\":%s}",
+            "{\"enabled\":%s,\"size\":%u,\"maxSize\":%u,\"picoForwarding\":%s,\"debugLogs\":%s}",
             enabled ? "true" : "false",
             enabled ? (unsigned)g_logManager->getLogsSize() : 0,
             LOG_BUFFER_SIZE,
-            (enabled && g_logManager->isPicoLogForwardingEnabled()) ? "true" : "false");
+            (enabled && g_logManager->isPicoLogForwardingEnabled()) ? "true" : "false",
+            State.settings().system.debugLogsEnabled ? "true" : "false");
         request->send(200, "application/json", response);
     });
     
@@ -955,11 +956,21 @@ void BrewWebServer::setupRoutes() {
         bool success = true;
         if (enable) {
             success = LogManager::instance().enable();
+            
+            // Restore Pico log forwarding if it was previously enabled
+            if (success && State.settings().system.picoLogForwardingEnabled) {
+                delay(100);  // Brief delay for Pico to be ready
+                LogManager::instance().setPicoLogForwarding(true, [this](uint8_t* payload, size_t len) {
+                    return _picoUart.sendCommand(MSG_CMD_LOG_CONFIG, payload, len);
+                });
+            }
         } else {
             LogManager::instance().disable();
             
             // Also disable Pico log forwarding when disabling buffer
             _picoUart.sendCommand(MSG_CMD_LOG_CONFIG, (uint8_t[]){0}, 1);
+            // Clear the persisted setting as well
+            State.settings().system.picoLogForwardingEnabled = false;
         }
         
         if (success) {
@@ -975,6 +986,35 @@ void BrewWebServer::setupRoutes() {
         } else {
             request->send(500, "application/json", "{\"error\":\"Failed to allocate log buffer\"}");
         }
+    });
+    
+    // POST /api/logs/debug - Enable/disable DEBUG level logs
+    _server.on("/api/logs/debug", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        bool enable = false;
+        if (request->hasParam("enabled", true)) {
+            enable = request->getParam("enabled", true)->value() == "true";
+        } else if (request->hasParam("enabled")) {
+            enable = request->getParam("enabled")->value() == "true";
+        }
+        
+        // Apply log level immediately
+        if (enable) {
+            setLogLevel(BREWOS_LOG_DEBUG);
+            broadcastLogLevel("info", "Debug logs enabled");
+        } else {
+            setLogLevel(BREWOS_LOG_INFO);
+            broadcastLogLevel("info", "Debug logs disabled");
+        }
+        
+        // Persist the setting to NVS
+        State.settings().system.debugLogsEnabled = enable;
+        State.saveSystemSettings();
+        
+        char response[64];
+        snprintf(response, sizeof(response), 
+            "{\"status\":\"ok\",\"enabled\":%s}", 
+            enable ? "true" : "false");
+        request->send(200, "application/json", response);
     });
     
     // GET /api/logs - Download system logs as text file
@@ -1022,6 +1062,10 @@ void BrewWebServer::setupRoutes() {
         g_logManager->setPicoLogForwarding(enabled, [this](uint8_t* payload, size_t len) {
             return _picoUart.sendCommand(MSG_CMD_LOG_CONFIG, payload, len);
         });
+        
+        // Persist the setting to NVS
+        State.settings().system.picoLogForwardingEnabled = enabled;
+        State.saveSystemSettings();
         
         char response[64];
         snprintf(response, sizeof(response), 

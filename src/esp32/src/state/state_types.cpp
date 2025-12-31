@@ -240,11 +240,15 @@ bool UserPreferences::fromJson(JsonObjectConst obj) {
 void SystemSettings::toJson(JsonObject& obj) const {
     obj["setupComplete"] = setupComplete;
     obj["logBufferEnabled"] = logBufferEnabled;
+    obj["debugLogsEnabled"] = debugLogsEnabled;
+    obj["picoLogForwardingEnabled"] = picoLogForwardingEnabled;
 }
 
 bool SystemSettings::fromJson(JsonObjectConst obj) {
     if (obj["setupComplete"].is<bool>()) setupComplete = obj["setupComplete"];
     if (obj["logBufferEnabled"].is<bool>()) logBufferEnabled = obj["logBufferEnabled"];
+    if (obj["debugLogsEnabled"].is<bool>()) debugLogsEnabled = obj["debugLogsEnabled"];
+    if (obj["picoLogForwardingEnabled"].is<bool>()) picoLogForwardingEnabled = obj["picoLogForwardingEnabled"];
     return true;
 }
 

@@ -1368,6 +1368,14 @@ void setup() {
     Serial.println("State Manager initialized OK");
     // Serial.flush(); // Removed - can block on USB CDC
     
+    // Apply debug log level setting early (so boot logs are included)
+    if (State.settings().system.debugLogsEnabled) {
+        setLogLevel(BREWOS_LOG_DEBUG);
+        Serial.println("[Log] Debug logs enabled (from settings)");
+    } else {
+        setLogLevel(BREWOS_LOG_INFO);  // Ensure INFO level (default)
+    }
+    
     // Initialize Log Manager if enabled in settings (dev mode feature)
     // Only allocates 50KB buffer when enabled - zero impact when disabled
     if (State.settings().system.logBufferEnabled) {
@@ -1375,6 +1383,19 @@ void setup() {
         if (LogManager::instance().enable()) {
             Serial.print("Free heap after LogManager: ");
             Serial.println(ESP.getFreeHeap());
+            
+            // Restore Pico log forwarding setting if it was enabled
+            if (State.settings().system.picoLogForwardingEnabled && picoUart) {
+                // Wait a bit for Pico to be ready (if connected)
+                delay(100);
+                LogManager::instance().setPicoLogForwarding(true, [](uint8_t* payload, size_t len) {
+                    if (picoUart) {
+                        return picoUart->sendCommand(MSG_CMD_LOG_CONFIG, payload, len);
+                    }
+                    return false;
+                });
+                Serial.println("Pico log forwarding restored from settings");
+            }
         }
     } else {
         Serial.println("Log buffer disabled (enable in settings/dev mode)");

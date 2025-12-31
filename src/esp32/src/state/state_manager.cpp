@@ -193,6 +193,8 @@ void StateManager::loadSettings() {
     // System
     _settings.system.setupComplete = prefs.getBool("setupDone", false);
     _settings.system.logBufferEnabled = prefs.getBool("logBufEn", false);
+    _settings.system.debugLogsEnabled = prefs.getBool("debugLogs", false);
+    _settings.system.picoLogForwardingEnabled = prefs.getBool("picoLogFwd", false);
     
     // User Preferences
     _settings.preferences.firstDayOfWeek = prefs.getUChar("prefDOW", 0);
@@ -361,10 +363,14 @@ void StateManager::saveSystemSettings() {
     }
     _prefs.putBool("setupDone", _settings.system.setupComplete);
     _prefs.putBool("logBufEn", _settings.system.logBufferEnabled);
+    _prefs.putBool("debugLogs", _settings.system.debugLogsEnabled);
+    _prefs.putBool("picoLogFwd", _settings.system.picoLogForwardingEnabled);
     _prefs.end();  // This commits the changes to flash
-    Serial.printf("[State] System settings saved (setupComplete=%s, logBuffer=%s)\n",
+    Serial.printf("[State] System settings saved (setupComplete=%s, logBuffer=%s, debugLogs=%s, picoForwarding=%s)\n",
                   _settings.system.setupComplete ? "true" : "false",
-                  _settings.system.logBufferEnabled ? "true" : "false");
+                  _settings.system.logBufferEnabled ? "true" : "false",
+                  _settings.system.debugLogsEnabled ? "true" : "false",
+                  _settings.system.picoLogForwardingEnabled ? "true" : "false");
     notifySettingsChanged();
 }
 
