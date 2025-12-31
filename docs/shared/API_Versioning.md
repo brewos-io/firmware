@@ -229,7 +229,7 @@ features: [
 ### 3. Add Feature Constant to Web UI
 
 ```typescript
-// In src/web/src/lib/api-version.ts
+// In app/src/lib/api-version.ts (external repository)
 export const FEATURES = {
   // existing...
   MY_NEW_FEATURE: "my_new_feature",

@@ -6,8 +6,8 @@ BrewOS is an open-source espresso machine controller with:
 
 - **Pico (RP2350)** - Real-time machine control
 - **ESP32-S3** - Connectivity, UI, and smart features
-- **Web Interface** - Modern React dashboard
-- **Cloud Service** - Remote access from anywhere
+- **App** - Modern React Progressive Web App ([separate repository](https://github.com/brewos-io/app))
+- **Cloud Service** - Remote access from anywhere ([separate repository](https://github.com/brewos-io/cloud))
 
 ## Documentation Structure
 
@@ -31,18 +31,6 @@ docs/
 │   ├── State_Management.md
 │   ├── features/          # Schedules, eco mode, statistics
 │   └── integrations/      # MQTT, BLE scales, brew-by-weight, API
-├── web/                   # Web interface (React dashboard)
-│   ├── README.md          # Web development guide
-│   ├── PWA.md
-│   ├── Push_Notifications.md
-│   ├── Power_Metering.md  # Power monitoring user guide
-│   └── WebSocket_Protocol.md
-├── cloud/                 # Cloud service (remote access)
-│   ├── README.md          # Cloud architecture
-│   ├── Deployment.md
-│   ├── ESP32_Integration.md
-│   ├── Pairing_and_Sharing.md
-│   └── Push_Notifications.md
 ├── shared/                # Shared documentation
 │   ├── Communication_Protocol.md
 │   ├── Feature_Status_Table.md
@@ -87,17 +75,19 @@ homeassistant/             # Home Assistant integration
 - [UI Simulator](esp32/Simulator.md) - Desktop preview tool
 - [State Management](esp32/State_Management.md) - Settings, stats, shot history
 
-### Web & Cloud
+### App & Cloud (External Repositories)
 
-- [Web Interface](web/README.md) ⭐ _React dashboard development_
-- [Progressive Web App (PWA)](web/PWA.md) - PWA features and offline support
-- [Push Notifications](web/Push_Notifications.md) - Push notification setup and usage
-- [WebSocket Protocol](web/WebSocket_Protocol.md) - Message format reference
-- [Cloud Service](cloud/README.md) ⭐ _Remote access architecture_
-- [Cloud Deployment](cloud/Deployment.md) - Deployment guides
-- [Cloud Push Notifications](cloud/Push_Notifications.md) - Push notification implementation
-- [ESP32 Cloud Integration](cloud/ESP32_Integration.md) - Connect ESP32 to cloud
-- [Pairing & Sharing](cloud/Pairing_and_Sharing.md) - Device pairing and sharing
+- **[App Documentation](https://github.com/brewos-io/app/tree/main/docs)** ⭐ _Progressive Web App development_
+  - [App README](https://github.com/brewos-io/app#readme) - Development guide
+  - [PWA Features](https://github.com/brewos-io/app/blob/main/docs/PWA.md) - PWA and offline support
+  - [Push Notifications](https://github.com/brewos-io/app/blob/main/docs/Push_Notifications.md) - Push notification setup
+  - [WebSocket Protocol](https://github.com/brewos-io/app/blob/main/docs/WebSocket_Protocol.md) - Message format reference
+- **[Cloud Service Documentation](https://github.com/brewos-io/cloud/tree/main/docs)** ⭐ _Remote access architecture_
+  - [Cloud README](https://github.com/brewos-io/cloud#readme) - Setup and deployment
+  - [Cloud Architecture](https://github.com/brewos-io/cloud/blob/main/docs/README.md) - System design
+  - [Deployment Guide](https://github.com/brewos-io/cloud/blob/main/docs/Deployment.md) - Deployment instructions
+  - [ESP32 Integration](https://github.com/brewos-io/cloud/blob/main/docs/ESP32_Integration.md) - Connect ESP32 to cloud
+  - [Pairing & Sharing](https://github.com/brewos-io/cloud/blob/main/docs/Pairing_and_Sharing.md) - Device pairing and sharing
 
 ### Integrations
 
@@ -105,7 +95,7 @@ homeassistant/             # Home Assistant integration
 - [MQTT](esp32/integrations/MQTT.md) - MQTT setup and auto-discovery
 - [BLE Scales](esp32/integrations/BLE_Scales.md) - Bluetooth scale integration
 - [Brew-by-Weight](esp32/integrations/Brew_By_Weight.md) - Auto-stop at target weight
-- [Power Metering](web/Power_Metering.md) - Power monitoring (hardware modules + MQTT smart plugs)
+- [Power Metering](https://github.com/brewos-io/app/blob/main/docs/Power_Metering.md) - Power monitoring (hardware modules + MQTT smart plugs)
 - [Web API Reference](esp32/integrations/Web_API.md) - HTTP endpoints and WebSocket
 - [Notifications](esp32/integrations/Notifications.md) - Push reminders and alerts
 

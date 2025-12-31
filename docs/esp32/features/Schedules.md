@@ -346,5 +346,5 @@ The Schedules page (`/schedules`) provides:
 
 - [State Management](../State_Management.md)
 - [Eco Mode](./Eco_Mode.md)
-- [WebSocket Protocol](../../web/WebSocket_Protocol.md)
+- [WebSocket Protocol](https://github.com/brewos-io/app/blob/main/docs/WebSocket_Protocol.md)
 

@@ -133,7 +133,7 @@ The web app provides:
 - Commands: `set_eco`, `enter_eco`, `exit_eco`
 
 **Files:**
-- `src/web/src/pages/Settings.tsx` - Eco mode configuration form
+- `app/src/pages/settings/` - Eco mode configuration form (external repository)
 
 ## Power Savings
 
@@ -179,5 +179,5 @@ Estimated power reduction in eco mode:
 
 - [State Management](../State_Management.md)
 - [Communication Protocol](../../shared/Communication_Protocol.md)
-- [WebSocket Protocol](../../web/WebSocket_Protocol.md)
+- [WebSocket Protocol](https://github.com/brewos-io/app/blob/main/docs/WebSocket_Protocol.md)
 

@@ -266,7 +266,7 @@ The `cloud_notifier.cpp` module handles sending notifications to the cloud:
 - **Authentication:** Device ID (no user auth required)
 - **Payload:** Notification type, message, timestamp, alert flag
 
-See [Cloud Push Notifications Documentation](../../cloud/Push_Notifications.md) for API details.
+See [Cloud Push Notifications Documentation](https://github.com/brewos-io/cloud/blob/main/docs/Push_Notifications.md) for API details.
 
 ## Summary
 

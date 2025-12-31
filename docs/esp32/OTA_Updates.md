@@ -323,7 +323,7 @@ The `dev-latest` release is automatically updated on every push to `main` that t
 
 - `src/esp32/`
 - `src/pico/`
-- `src/web/`
+- `../app/` (external repository)
 - `src/shared/`
 
 This provides developers with always-current builds without manual releases.
@@ -343,4 +343,4 @@ GitHub Release (v1.0.0)
 
 - [RELEASING.md](../RELEASING.md) - Release management and versioning
 - [Communication Protocol](../shared/Communication_Protocol.md) - ESP32 ↔ Pico protocol
-- [WebSocket Protocol](../web/WebSocket_Protocol.md) - Web app communication
+- [WebSocket Protocol](https://github.com/brewos-io/app/blob/main/docs/WebSocket_Protocol.md) - Web app communication

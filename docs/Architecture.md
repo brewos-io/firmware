@@ -90,8 +90,12 @@ User Request → ESP32 → Pico → Machine Hardware
 
 ## Related Documentation
 
+### Firmware Documentation
 - [Pico Architecture](pico/Architecture.md) - Real-time control details
 - [ESP32 State Management](esp32/State_Management.md) - Data persistence
-- [Cloud Service](cloud/README.md) - WebSocket relay details
-- [WebSocket Protocol](web/WebSocket_Protocol.md) - Message formats
 - [Communication Protocol](shared/Communication_Protocol.md) - ESP32 ↔ Pico
+
+### External Repositories
+- [App Documentation](https://github.com/brewos-io/app/tree/main/docs) - Progressive Web App
+- [Cloud Service Documentation](https://github.com/brewos-io/cloud/tree/main/docs) - WebSocket relay details
+- [WebSocket Protocol](https://github.com/brewos-io/app/blob/main/docs/WebSocket_Protocol.md) - Message formats

@@ -378,5 +378,5 @@ Check:
 ## See Also
 
 - [Home Assistant Integration](../../../homeassistant/README.md) - Full HA integration with custom card
-- [Power Metering Guide](../../web/Power_Metering.md) - Power monitoring setup
-- [WebSocket Protocol](../../web/WebSocket_Protocol.md) - Real-time web interface protocol
+- [Power Metering Guide](https://github.com/brewos-io/app/blob/main/docs/Power_Metering.md) - Power monitoring setup
+- [WebSocket Protocol](https://github.com/brewos-io/app/blob/main/docs/WebSocket_Protocol.md) - Real-time web interface protocol

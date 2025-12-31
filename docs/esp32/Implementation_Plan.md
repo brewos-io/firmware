@@ -27,7 +27,7 @@ The ESP32-S3 serves as the connectivity and UI hub for the BrewOS coffee machine
 | LVGL Display        | ✅ Complete | Round display UI                                        |
 | BLE Scale           | ✅ Complete | Multi-scale support (Acaia, Felicita, Decent, Timemore) |
 | Brew by Weight      | ✅ Complete | Auto-stop at target weight                              |
-| Cloud Integration   | ✅ Complete | [Details](../cloud/README.md)                           |
+| Cloud Integration   | ✅ Complete | [Details](https://github.com/brewos-io/cloud/blob/main/docs/README.md) |
 
 ---
 
@@ -144,7 +144,7 @@ See [Web API Reference](integrations/Web_API.md) for full documentation.
 
 **Status:** ✅ Complete
 
-See [Cloud Service Documentation](../cloud/README.md) for full details.
+See [Cloud Service Documentation](https://github.com/brewos-io/cloud/blob/main/docs/README.md) for full details.
 
 ### Summary
 

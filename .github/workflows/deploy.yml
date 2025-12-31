@@ -1,143 +1,28 @@
-# Deploy to STAGING on push to main
-# Production deploys happen via release.yml when a version tag is pushed
-name: "Main → Deploy to Staging"
+# Note: This workflow is deprecated
+# Cloud and app deployments are now handled by their respective repositories:
+# - app repository: handles app builds and releases
+# - cloud repository: handles cloud service deployments
+# This file is kept for reference but will not run automatically
+name: "Main → Deploy to Staging (Deprecated)"
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "src/cloud/**"
-      - "src/web/**"
-      - ".github/workflows/deploy.yml"
-
-# Only allow one deploy at a time - cancel older runs
-concurrency:
-  group: deploy-staging
-  cancel-in-progress: true
+  workflow_dispatch:
+    inputs:
+      skip:
+        description: "This workflow is deprecated - use cloud repository workflows instead"
+        required: false
 
 jobs:
-  # First, verify the build works in CI before deploying
-  build-check:
-    name: Verify Build
+  deprecated:
+    name: Deprecated Workflow
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: |
-            src/web/package-lock.json
-            src/cloud/package-lock.json
-
-      - name: Build Web UI
+      - name: Notice
         run: |
-          cd src/web
-          npm ci
-          # Increase Node.js memory limit for Vite build
-          NODE_OPTIONS="--max-old-space-size=4096" npm run build
-
-      - name: Check Cloud Service
-        run: |
-          cd src/cloud
-          npm ci
-          npx tsc --noEmit
-
-      - name: Build Admin UI
-        run: |
-          cd src/cloud/admin
-          npm ci
-          npm run build
-
-  deploy-staging:
-    name: Deploy to Staging
-    needs: build-check
-    runs-on: ubuntu-latest
-    environment:
-      name: staging
-      url: https://staging.brewos.io
-    steps:
-      - name: Deploy to staging server
-        uses: appleboy/ssh-action@v1.2.4
-        env:
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-        with:
-          host: ${{ secrets.STAGING_SSH_HOST || 'staging.brewos.io' }}
-          username: root
-          key: ${{ secrets.STAGING_SERVER_SSH_KEY }}
-          envs: GOOGLE_CLIENT_ID
-          command_timeout: 15m
-          script: |
-            set -e
-            cd /root/brewos
-
-            # Reset to match repo exactly (avoid conflicts from manual edits)
-            git fetch origin main
-            git reset --hard origin/main
-            git clean -fd
-
-            # Create .env for web build (Vite needs these at build time)
-            cat > src/web/.env << EOF
-            VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-            VITE_CLOUD_WS_URL=wss://staging.brewos.io/ws
-            VITE_ENVIRONMENT=staging
-            EOF
-
-            # Create .env for cloud service
-            cat > src/cloud/.env << EOF
-            GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-            PORT=3001
-            DATA_DIR=/data
-            TRUST_PROXY=true
-            EOF
-
-            # Rebuild web UI (fail fast on errors)
-            cd src/web
-            npm ci
-            # Increase Node.js memory limit for Vite build
-            NODE_OPTIONS="--max-old-space-size=4096" npm run build
-
-            # Copy built web UI to cloud service
-            cp -r dist ../cloud/web
-
-            # Build Admin UI
-            cd ../cloud/admin
-            npm ci
-            npm run build
-
-            # Admin dist is already in place (src/cloud/admin/dist)
-
-            # Build new container without stopping old one
-            cd ..
-            
-            # Use shared build script (handles BuildKit cache issues)
-            bash /root/brewos/scripts/docker-build.sh
-
-            # Only restart after successful build
-            docker compose down
-            docker compose up -d
-
-            # Wait for service to be healthy
-            echo "Waiting for service to start..."
-            sleep 5
-
-            # Health check
-            for i in 1 2 3 4 5; do
-              if curl -sf http://localhost:3001/api/health > /dev/null; then
-                echo "✓ Staging service is healthy!"
-                
-                # Cleanup Docker build cache to free disk space
-                echo "Cleaning up Docker cache..."
-                docker system prune -af --filter "until=1h" || true
-                
-                exit 0
-              fi
-              echo "Waiting... ($i/5)"
-              sleep 3
-            done
-
-            echo "✗ Health check failed!"
-            docker compose logs --tail=50
-            exit 1
+          echo "⚠️  This workflow is deprecated"
+          echo ""
+          echo "Cloud and app deployments are now handled by their respective repositories:"
+          echo "  - app repository: https://github.com/brewos-io/app"
+          echo "  - cloud repository: https://github.com/brewos-io/cloud"
+          echo ""
+          echo "Please use the workflows in those repositories for deployments."

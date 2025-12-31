@@ -34,7 +34,8 @@ Examples:
 
 ### Dev Channel
 
-- Automated builds from `main` branch on every push (to `src/esp32/`, `src/pico/`, `src/web/`, or `src/shared/`)
+- Automated builds from `main` branch on every push (to `src/esp32/`, `src/pico/`, or `src/shared/`)
+- App and cloud repositories have their own release workflows
 - For developers testing latest changes
 - Single rolling release tagged as `dev-latest` (updated in-place, not recreated)
 - Only **one** dev release exists at any time - new builds replace the previous one
@@ -71,7 +72,7 @@ node src/scripts/version.js --bump minor --release --dry-run
 | -------------------------------------- | ----------------------------- |
 | `VERSION`                              | Source of truth for version   |
 | `version.json`                         | Machine-readable version info |
-| `src/web/public/version-manifest.json` | OTA update manifest           |
+| `app/public/version-manifest.json` | OTA update manifest (external repository) |
 | `src/pico/include/config.h`            | Pico firmware version         |
 | `src/esp32/include/config.h`           | ESP32 firmware version        |
 | `src/shared/protocol_defs.h`           | Protocol version              |
@@ -251,8 +252,8 @@ Response:
 | ---------------------------- | --------------------------------------- |
 | `version.json`               | Central version info for all components |
 | `src/esp32/include/config.h` | ESP32 firmware version                  |
-| `src/web/package.json`       | Web app version                         |
-| `src/cloud/package.json`     | Cloud service version                   |
+| `app/package.json`           | App version (external repository)      |
+| `cloud/package.json`         | Cloud service version (external repository) |
 
 ## GitHub Actions (CI/CD)
 

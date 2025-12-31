@@ -205,11 +205,11 @@ See [SETUP.md](SETUP.md) for detailed instructions.
 | [MQTT Integration](docs/esp32/integrations/MQTT.md)             | MQTT protocol and auto-discovery           |
 | [Home Assistant](https://github.com/brewos-io/homeassistant)   | Custom card, native integration, examples  |
 | [BLE Scales](docs/esp32/integrations/BLE_Scales.md)             | Bluetooth scale integration                |
-| **Web & Cloud**                                                 |                                            |
-| [Web Interface](docs/web/README.md)                             | React dashboard development                |
-| [PWA & Push Notifications](docs/web/QUICK_START_PWA.md)         | Quick start for PWA and push notifications |
-| [Cloud Service](docs/cloud/README.md)                           | Remote access architecture                 |
-| [WebSocket Protocol](docs/web/WebSocket_Protocol.md)            | Message format reference                   |
+| **App & Cloud** (External Repositories)                        |                                            |
+| [App Repository](https://github.com/brewos-io/app)              | Progressive Web App                        |
+| [App Documentation](https://github.com/brewos-io/app/tree/main/docs) | App development guide                |
+| [Cloud Repository](https://github.com/brewos-io/cloud)          | Cloud service for remote access            |
+| [Cloud Documentation](https://github.com/brewos-io/cloud/tree/main/docs) | Cloud setup and deployment         |
 | **Shared**                                                      |                                            |
 | [Communication Protocol](docs/shared/Communication_Protocol.md) | Binary protocol Pico ↔ ESP32               |
 | **Hardware**                                                    |                                            |
