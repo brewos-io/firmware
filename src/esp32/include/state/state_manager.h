@@ -213,6 +213,11 @@ private:
     static constexpr uint32_t STATS_SAVE_INTERVAL = 300000;  // 5 minutes
     static constexpr uint32_t SCHEDULE_CHECK_INTERVAL = 10000;  // 10 seconds
     
+    // Deferred shot history save (to avoid blocking main loop)
+    bool _shotHistoryDirty = false;
+    uint32_t _lastShotHistorySave = 0;
+    static constexpr uint32_t SHOT_HISTORY_SAVE_DELAY = 2000;  // Save 2 seconds after shot completes
+    
     // Schedule callback
     ScheduleCallback _onScheduleTriggered;
     

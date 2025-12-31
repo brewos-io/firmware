@@ -68,6 +68,13 @@ void StateManager::loop() {
         saveStats();
     }
     
+    // Deferred shot history save (non-blocking)
+    // Save 2 seconds after shot completes to avoid blocking main loop
+    if (_shotHistoryDirty && (millis() - _lastShotHistorySave >= SHOT_HISTORY_SAVE_DELAY)) {
+        _shotHistoryDirty = false;
+        saveShotHistory();
+    }
+    
     // Daily reset check
     checkDailyReset();
     
@@ -579,7 +586,10 @@ void StateManager::saveShotHistory() {
 
 void StateManager::addShotRecord(const ShotRecord& shot) {
     _shotHistory.addShot(shot);
-    saveShotHistory();
+    // Defer save to avoid blocking main loop (2 second delay)
+    // This prevents slow loops that block network operations
+    _shotHistoryDirty = true;
+    _lastShotHistorySave = millis();
     recordShot();
     
     if (_onShotCompleted) {
