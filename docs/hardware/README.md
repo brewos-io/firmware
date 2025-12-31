@@ -162,7 +162,7 @@ See [BOM](spec/07-BOM.md) for complete bill of materials.
 ## 📁 Related Documentation
 
 - **Firmware:** `docs/pico/` - Pico firmware and power metering integration
-- **Web Interface:** `src/web/` - React dashboard and settings
+- **Web Interface:** See `app/` repository - React dashboard and settings
 - **ESP32 Display:** `src/esp32/` - Display module firmware
 
 ---

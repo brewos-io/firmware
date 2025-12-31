@@ -8,7 +8,6 @@ on:
     paths:
       - "src/esp32/**"
       - "src/pico/**"
-      - "src/web/**"
       - "src/shared/**"
 
 # Only allow one dev release at a time - cancel older runs
@@ -60,21 +59,32 @@ jobs:
           cmake -DBUILD_ALL_MACHINES=ON -DCMAKE_BUILD_TYPE=Release ..
           make -j$(nproc)
 
-      # ===== Web UI Build for ESP32 =====
+      # ===== App Build for ESP32 =====
+      - name: Checkout App Repository
+        uses: actions/checkout@v6
+        with:
+          repository: brewos-io/app
+          path: app
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: src/web/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
-      - name: Build Web UI for ESP32
+      - name: Build App for ESP32
         run: |
-          cd src/web
+          cd app
           npm ci
           # Clean old files before build (prevent stale hashed assets)
-          rm -rf ../esp32/data/assets ../esp32/data/index.html ../esp32/data/*.svg ../esp32/data/*.png ../esp32/data/*.json ../esp32/data/sw.js 2>/dev/null || true
-          npm run build:esp32
+          rm -rf ../src/esp32/data/assets ../src/esp32/data/index.html ../src/esp32/data/*.svg ../src/esp32/data/*.png ../src/esp32/data/*.json ../src/esp32/data/sw.js 2>/dev/null || true
+          # Build with ESP32 mode (__ESP32__=true, __CLOUD__=false)
+          ESP32_DATA_DIR=../src/esp32/data npm run build:esp32
+          echo "=== ESP32 App Built ==="
+          ls -lah ../src/esp32/data/
+          du -sh ../src/esp32/data/
 
       # ===== ESP32 Firmware Build =====
       - name: Setup Python

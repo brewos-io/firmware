@@ -144,7 +144,8 @@ To test against a local cloud server:
 
 ```bash
 # Terminal 1: Run local cloud service
-cd src/cloud
+# Note: Cloud service is now in the separate 'cloud' repository
+cd ../cloud
 npm run dev  # Runs on localhost:3001
 
 # On your ESP32, set cloud URL to:
@@ -159,9 +160,10 @@ cd src/esp32
 pio run -e esp32s3 -t upload
 
 # Build and flash web UI to ESP32
-cd src/web
-npm run build:esp32
-cd ../esp32
+# Note: Web UI is now in the separate 'app' repository
+cd ../app
+ESP32_DATA_DIR=../firmware/src/esp32/data npm run build:esp32
+cd ../firmware/src/esp32
 pio run -e esp32s3 -t uploadfs
 ```
 

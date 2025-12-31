@@ -28,7 +28,7 @@ const VERSION_FILE = path.join(PROJECT_ROOT, "VERSION");
 const VERSION_JSON = path.join(PROJECT_ROOT, "version.json");
 const MANIFEST_FILE = path.join(
   PROJECT_ROOT,
-  "src/web/public/version-manifest.json"
+  "src/esp32/data/version-manifest.json"
 );
 
 // GitHub repository for release URLs
@@ -46,7 +46,7 @@ const VERSION_FILES = [
   "src/pico/include/config.h",
   "src/esp32/include/config.h",
   "src/shared/protocol_defs.h",
-  "src/web/public/version-manifest.json",
+  "src/esp32/data/version-manifest.json",
 ];
 
 /**
@@ -203,7 +203,7 @@ function writeVersionManifest(firmwareVersion, protocolVersion) {
   }
 
   fs.writeFileSync(MANIFEST_FILE, JSON.stringify(manifest, null, 2) + "\n");
-  console.log(`✓ Updated src/web/public/version-manifest.json`);
+  console.log(`✓ Updated src/esp32/data/version-manifest.json`);
 }
 
 /**
@@ -458,7 +458,7 @@ Examples:
 Files Updated:
   VERSION                              - Source of truth
   version.json                         - Machine-readable version info
-  src/web/public/version-manifest.json - OTA update manifest
+  src/esp32/data/version-manifest.json - OTA update manifest
   src/pico/include/config.h            - Pico firmware version
   src/esp32/include/config.h           - ESP32 firmware version
   src/shared/protocol_defs.h           - Protocol version

@@ -18,7 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PICO_DIR="$SRC_DIR/pico"
 ESP32_DIR="$SRC_DIR/esp32"
-WEB_DIR="$SRC_DIR/web"
+# App repository is external - see build_app_for_esp32.sh
+APP_DIR="$(cd "$SRC_DIR/../../app" 2>/dev/null && pwd || echo "")"
 
 # Functions
 print_header() {
@@ -128,40 +129,24 @@ build_pico() {
     fi
 }
 
-# Build Web UI for ESP32
+# Build Web UI for ESP32 (from external app repository)
 build_web() {
     print_header "Building Web UI for ESP32"
     
-    cd "$WEB_DIR"
-    
-    # Check if npm is available
-    if ! command -v npm &> /dev/null; then
-        print_error "npm not found"
-        echo "Please install Node.js: https://nodejs.org/"
+    # Check if app repository exists
+    if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
+        print_error "App repository not found"
+        echo "Please ensure the app repository is cloned as a sibling to the firmware repository:"
+        echo "  git clone https://github.com/brewos-io/app.git ../app"
+        echo ""
+        echo "Or use the dedicated script:"
+        echo "  ./build_app_for_esp32.sh"
         exit 1
     fi
     
-    # Install dependencies if needed
-    if [ ! -d "node_modules" ]; then
-        print_info "Installing dependencies..."
-        npm ci || npm install || {
-            print_error "npm install failed"
-            exit 1
-        }
-    fi
-    
-    # Clean ESP32 data folder before build (prevent stale hashed files)
-    print_info "Cleaning ESP32 data folder..."
-    rm -rf "$ESP32_DIR/data/assets" 2>/dev/null || true
-    rm -f "$ESP32_DIR/data/index.html" "$ESP32_DIR/data/favicon.svg" \
-          "$ESP32_DIR/data/logo.png" "$ESP32_DIR/data/logo-icon.svg" \
-          "$ESP32_DIR/data/manifest.json" "$ESP32_DIR/data/sw.js" \
-          "$ESP32_DIR/data/version-manifest.json" 2>/dev/null || true
-    rm -rf "$ESP32_DIR/data/.well-known" 2>/dev/null || true
-    
-    # Build for ESP32 (outputs directly to esp32/data with emptyOutDir)
-    print_info "Building web UI..."
-    npm run build:esp32 || {
+    # Use the dedicated script
+    print_info "Using build_app_for_esp32.sh script..."
+    "$SCRIPT_DIR/build_app_for_esp32.sh" --build-only || {
         print_error "Web build failed"
         exit 1
     }

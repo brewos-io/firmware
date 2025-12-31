@@ -6,14 +6,10 @@ This directory contains all source code for the BrewOS project.
 
 ```
 src/
-├── cloud/          # Cloud service (Node.js + WebSocket relay)
-│   ├── src/        # TypeScript source
-│   └── Dockerfile
-│
 ├── esp32/          # ESP32-S3 firmware (PlatformIO)
 │   ├── src/        # C++ source files
 │   ├── include/    # Header files
-│   ├── data/       # Built web UI (LittleFS)
+│   ├── data/       # Built web UI (LittleFS) - populated from app repository
 │   └── platformio.ini
 │
 ├── pico/           # Pico firmware (CMake + Pico SDK)
@@ -21,19 +17,18 @@ src/
 │   ├── include/    # Header files
 │   └── CMakeLists.txt
 │
-├── web/            # React web interface
-│   ├── src/        # TypeScript/React source
-│   └── vite.config.ts
-│
 ├── shared/         # Shared protocol definitions
 │   └── protocol_defs.h
 │
 └── scripts/        # Build and utility scripts
     ├── build_firmware.sh
-    ├── build_web.sh
-    ├── run_storybook.sh
+    ├── build_app_for_esp32.sh
     └── version.js
 ```
+
+**Note:** The web UI and cloud service have been moved to separate repositories:
+- **Web UI:** [app repository](https://github.com/brewos-io/app) - Progressive Web App
+- **Cloud Service:** [cloud repository](https://github.com/brewos-io/cloud) - WebSocket relay service
 
 ## Quick Start
 
@@ -108,27 +103,26 @@ make -j4
 2. Connect USB
 3. Copy `ecm_pico.uf2` to the RPI-RP2 drive
 
-### Storybook (Component Library)
+### Building Web UI for ESP32
 
-Browse and test all UI components with live theme switching:
+The web UI is built from the external [app repository](https://github.com/brewos-io/app):
+
+```bash
+# From the app repository
+cd ../app
+ESP32_DATA_DIR=../firmware/src/esp32/data npm run build:esp32
+
+# Then upload to ESP32
+cd ../firmware/src/esp32
+pio run -t uploadfs
+```
+
+Or use the helper script from firmware:
 
 ```bash
 cd src/scripts
-
-# Start Storybook dev server
-./run_storybook.sh
-
-# Build static Storybook site
-./run_storybook.sh --build
+./build_app_for_esp32.sh
 ```
-
-Storybook will be available at http://localhost:6006
-
-**Features:**
-- 🎨 **Theme Switcher** - Use the paintbrush icon in toolbar to preview all 10 themes
-- 📚 **Component Docs** - Auto-generated documentation for all components
-- 🔧 **Interactive Controls** - Adjust props and see live updates
-- 📱 **Responsive Testing** - Test components at different viewport sizes
 
 ## Development Workflow
 
