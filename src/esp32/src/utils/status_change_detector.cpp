@@ -227,14 +227,12 @@ bool StatusChangeDetector::hasChanged(const ui_state_t& current, ChangedFields* 
     }
     
     // Temperatures - with threshold (grouped as "temps")
-    bool tempChanged = false;
     if (floatChanged(current.brew_temp, _previous.brew_temp, STATUS_TEMP_THRESHOLD) ||
         floatChanged(current.brew_setpoint, _previous.brew_setpoint, STATUS_TEMP_THRESHOLD) ||
         floatChanged(current.steam_temp, _previous.steam_temp, STATUS_TEMP_THRESHOLD) ||
         floatChanged(current.steam_setpoint, _previous.steam_setpoint, STATUS_TEMP_THRESHOLD) ||
         floatChanged(current.group_temp, _previous.group_temp, STATUS_TEMP_THRESHOLD)) {
         changed = true;
-        tempChanged = true;
         changedField = "temps";
         if (changedFields) changedFields->temps = true;
     }
@@ -286,14 +284,12 @@ bool StatusChangeDetector::hasChanged(const ui_state_t& current, ChangedFields* 
     }
     
     // Connection status - always check (grouped as "connections")
-    bool connChanged = false;
     if (current.pico_connected != _previous.pico_connected ||
         current.wifi_connected != _previous.wifi_connected ||
         current.mqtt_connected != _previous.mqtt_connected ||
         current.scale_connected != _previous.scale_connected ||
         current.cloud_connected != _previous.cloud_connected) {
         changed = true;
-        connChanged = true;
         changedField = "connections";
         if (changedFields) {
             changedFields->connections = true;
@@ -322,12 +318,10 @@ bool StatusChangeDetector::hasChanged(const ui_state_t& current, ChangedFields* 
     }
     
     // WiFi (grouped - RSSI, AP mode, IP)
-    bool wifiChanged = false;
     if (abs(current.wifi_rssi - _previous.wifi_rssi) >= 10 ||
         current.wifi_ap_mode != _previous.wifi_ap_mode ||
         strcmp(current.wifi_ip, _previous.wifi_ip) != 0) {
         changed = true;
-        wifiChanged = true;
         changedField = "wifi";
         if (changedFields) changedFields->wifi = true;
     }
