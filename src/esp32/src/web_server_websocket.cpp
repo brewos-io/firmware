@@ -48,8 +48,11 @@ void BrewWebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
         case WS_EVT_CONNECT:
             {
                 // Limit to 1 concurrent client to save RAM (each WS client uses ~4KB)
+                // Note: count() includes the connecting client, so > 1 means there's already another client
                 if (server->count() > 1) {
-                    LOG_W("Too many WebSocket clients (%u), rejecting %u", server->count(), client->id());
+                    LOG_W("Too many WebSocket clients (%u), rejecting new client %u from %s", 
+                          server->count(), client->id(), client->remoteIP().toString().c_str());
+                    // Close gracefully - this will trigger WS_EVT_DISCONNECT, not WS_EVT_ERROR
                     client->close();
                     return;
                 }
@@ -64,11 +67,18 @@ void BrewWebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
                 // Check if we have enough memory to send device info and status (needs ~3KB for JSON)
                 size_t freeHeap = ESP.getFreeHeap();
                 if (freeHeap > 10000) {
-                    // Send device info immediately so UI has the saved settings
-                    broadcastDeviceInfo();
-                    // Send full status on connect so client has complete state
-                    // This ensures client can apply delta updates correctly
-                    broadcastFullStatus(runtimeState().get());
+                    // Send device info and status, but only if client is ready
+                    // Check client readiness to prevent WebSocket errors on unready connections
+                    if (client->canSend()) {
+                        // Send device info immediately so UI has the saved settings
+                        broadcastDeviceInfo();
+                        // Send full status on connect so client has complete state
+                        // This ensures client can apply delta updates correctly
+                        broadcastFullStatus(runtimeState().get());
+                    } else {
+                        // Client not ready yet - it will request state via "request_state" command
+                        LOG_D("Client %u not ready for initial broadcast, will request state", client->id());
+                    }
                 } else {
                     LOG_W("Low memory (%zu bytes), deferring device info broadcast", freeHeap);
                     // Client will request full state later when memory is available
@@ -91,7 +101,22 @@ void BrewWebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
             break;
             
         case WS_EVT_ERROR:
-            LOG_E("WebSocket error on client %u", client->id());
+            {
+                // Log error with available details
+                // Note: 'data' may contain error information, 'len' is the length
+                if (data && len > 0) {
+                    LOG_E("WebSocket error on client %u from %s: %.*s", 
+                          client->id(), 
+                          client->remoteIP().toString().c_str(),
+                          (int)len, (char*)data);
+                } else {
+                    LOG_E("WebSocket error on client %u from %s (no error details)", 
+                          client->id(), 
+                          client->remoteIP().toString().c_str());
+                }
+                // Close the connection on error to free resources
+                client->close();
+            }
             break;
     }
 }

@@ -57,6 +57,9 @@ static status_payload_t g_status_buffers[2];
 static volatile uint32_t g_active_buffer = 0;  // 0 or 1 - index of buffer Core 1 should read
 static volatile bool g_status_updated = false;  // Flag to indicate new data available
 
+// Alarm state tracking - only send alarm messages when state changes
+static uint8_t g_last_sent_alarm = ALARM_NONE;
+
 // -----------------------------------------------------------------------------
 // Helper: Send environmental config to ESP32
 // -----------------------------------------------------------------------------
@@ -521,13 +524,30 @@ int main(void) {
             // Check safety first
             safety_state_t safety = safety_check();
             
+            // Only send alarm messages when the alarm state changes
+            uint8_t current_alarm = ALARM_NONE;
             if (safety == SAFETY_CRITICAL) {
                 // Enter safe state - all outputs off
                 safety_enter_safe_state();
-                protocol_send_alarm(safety_get_last_alarm(), 2, 0);
+                current_alarm = safety_get_last_alarm();
             } else if (safety == SAFETY_FAULT) {
                 // Warning condition - may continue with limits
-                protocol_send_alarm(safety_get_last_alarm(), 1, 0);
+                current_alarm = safety_get_last_alarm();
+            }
+            // else: safety == SAFETY_OK or SAFETY_WARNING, current_alarm stays ALARM_NONE
+            
+            // Send alarm message only if state changed
+            if (current_alarm != g_last_sent_alarm) {
+                if (safety == SAFETY_CRITICAL) {
+                    protocol_send_alarm(current_alarm, 2, 0);
+                } else if (safety == SAFETY_FAULT) {
+                    protocol_send_alarm(current_alarm, 1, 0);
+                } else if (g_last_sent_alarm != ALARM_NONE) {
+                    // Safety is OK now, but we had an alarm before - send ALARM_NONE to clear
+                    protocol_send_alarm(ALARM_NONE, 0, 0);
+                }
+                // else: both current and last are ALARM_NONE, no need to send
+                g_last_sent_alarm = current_alarm;
             }
             
             // Run periodic Class B self-tests (IEC 60730/60335)

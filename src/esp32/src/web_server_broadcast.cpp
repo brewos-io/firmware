@@ -868,7 +868,8 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
             _ws.cleanupClients();
             for (size_t i = 0; i < _ws.count(); i++) {
                 AsyncWebSocketClient* client = _ws.client(i);
-                if (client && client->status() == WS_CONNECTED) {
+                // Check both connection status and send queue availability to prevent errors
+                if (client && client->status() == WS_CONNECTED && client->canSend()) {
                     client->binary(g_statusBuffer, msgpackSize);
                 }
             }
@@ -955,7 +956,17 @@ void BrewWebServer::broadcastDeviceInfo() {
     
     if (jsonBuffer) {
         serializeJson(doc, jsonBuffer, jsonSize);
-        _ws.textAll(jsonBuffer);
+        
+        // Check each client individually before sending (prevents errors on unready clients)
+        // This prevents WebSocket errors when client just connected and isn't ready yet
+        if (_ws.count() > 0) {
+            for (size_t i = 0; i < _ws.count(); i++) {
+                AsyncWebSocketClient* client = _ws.client(i);
+                if (client && client->canSend()) {
+                    client->text(jsonBuffer);
+                }
+            }
+        }
         
         // Also send to cloud - use jsonBuffer directly to avoid String allocation
         if (_cloudConnection) {

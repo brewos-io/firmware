@@ -136,6 +136,12 @@ BrewOSLogLevel stringToLogLevel(const char* str) {
 // Set to true to enable BLE scale support (may cause instability on some networks)
 static bool scaleEnabled = false;
 
+// Alarm debouncing to prevent rapid toggling
+static uint8_t lastProcessedAlarmCode = 0x00;  // ALARM_NONE - tracks what we actually processed
+static uint8_t lastReceivedAlarmCode = 0x00;   // Tracks last received code for debouncing
+static uint32_t lastAlarmChangeTime = 0;
+static constexpr uint32_t ALARM_DEBOUNCE_MS = 2000;  // 2 seconds debounce - require stable period
+
 // Machine state from Pico - Now managed by RuntimeState class
 // All state access should go through runtimeState() singleton
 
@@ -425,6 +431,31 @@ static void onPicoPacket(const PicoPacket& packet) {
         
         case MSG_ALARM: {
             uint8_t alarmCode = packet.payload[0];
+            uint32_t now = millis();
+            
+            // Debounce: Require stable alarm state before processing changes
+            // This prevents rapid toggling between alarm codes (e.g., 0x05 <-> 0x00)
+            // Strategy: Track the last received code and only process when it's been stable
+            bool shouldProcess = false;
+            
+            if (alarmCode != lastReceivedAlarmCode) {
+                // New alarm code received - reset debounce timer
+                lastReceivedAlarmCode = alarmCode;
+                lastAlarmChangeTime = now;
+                // Don't process yet - wait for it to be stable
+            } else if ((now - lastAlarmChangeTime) >= ALARM_DEBOUNCE_MS) {
+                // Same code received for debounce period - it's stable, process it
+                shouldProcess = true;
+            }
+            // Otherwise: same code but not stable yet - continue waiting
+            
+            if (!shouldProcess) {
+                // Ignore this alarm message - waiting for stable state
+                break;
+            }
+            
+            // Process the stable alarm code
+            lastProcessedAlarmCode = alarmCode;
             
             // Check current state before updating (need to read first)
             const ui_state_t& currentState = runtimeState().get();
@@ -1587,16 +1618,32 @@ void loop() {
     // This handles the case where MSG_BOOT was missed (e.g., ESP32 rebooted while Pico was running)
     if (picoConnected) {
         static unsigned long lastBootInfoRequest = 0;
+        static uint8_t bootInfoRequestCount = 0;
+        const uint8_t MAX_BOOT_INFO_REQUESTS = 12;  // Try for 1 minute (12 * 5s = 60s)
+        
         if (State.getMachineType() == 0 && (millis() - lastBootInfoRequest > 5000)) {
-            lastBootInfoRequest = millis();
-            LOG_W("Pico connected but machine type unknown - requesting boot info...");
-            if (picoUart->requestBootInfo()) {
-                delay(100);
-                picoUart->loop();
-                if (State.getMachineType() != 0) {
-                    LOG_I("Machine type received: %d", State.getMachineType());
+            if (bootInfoRequestCount < MAX_BOOT_INFO_REQUESTS) {
+                bootInfoRequestCount++;
+                lastBootInfoRequest = millis();
+                LOG_W("Pico connected but machine type unknown - requesting boot info (%u/%u)...", 
+                      bootInfoRequestCount, MAX_BOOT_INFO_REQUESTS);
+                if (picoUart->requestBootInfo()) {
+                    delay(100);
+                    picoUart->loop();
+                    if (State.getMachineType() != 0) {
+                        LOG_I("Machine type received: %d", State.getMachineType());
+                        bootInfoRequestCount = 0;  // Reset on success
+                    }
                 }
+            } else if (bootInfoRequestCount == MAX_BOOT_INFO_REQUESTS) {
+                // Only log once when we give up
+                bootInfoRequestCount++;  // Increment to prevent repeated warnings
+                LOG_E("Failed to get machine type from Pico after %u attempts. Giving up.", MAX_BOOT_INFO_REQUESTS);
+                LOG_W("Machine type will remain unknown. Some features may be limited.");
             }
+        } else if (State.getMachineType() != 0 && bootInfoRequestCount > 0) {
+            // Machine type was set (maybe from a spontaneous MSG_BOOT), reset counter
+            bootInfoRequestCount = 0;
         }
     }
     
