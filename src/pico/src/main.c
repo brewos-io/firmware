@@ -52,10 +52,10 @@ static volatile uint32_t g_core1_last_seen = 0;
 #define CORE1_TIMEOUT_MS 1000  // Core 1 must respond within 1 second
 
 // Status payload (updated by control loop on Core 0, read by comms on Core 1)
-// Protected by mutex for thread-safe access between cores
-static status_payload_t g_status;
-static bool g_status_updated = false;
-static mutex_t g_status_mutex;  // Protects g_status and g_status_updated
+// Double-buffered for non-blocking access: Core 0 writes to inactive buffer, Core 1 reads from active
+static status_payload_t g_status_buffers[2];
+static volatile uint32_t g_active_buffer = 0;  // 0 or 1 - index of buffer Core 1 should read
+static volatile bool g_status_updated = false;  // Flag to indicate new data available
 
 // -----------------------------------------------------------------------------
 // Helper: Send environmental config to ESP32
@@ -118,16 +118,16 @@ void core1_main(void) {
         if (now - last_status_send >= STATUS_SEND_PERIOD_MS) {
             last_status_send = now;
             
-            // Thread-safe read of status with mutex protection
+            // Double-buffered read: read from active buffer (no mutex needed)
             status_payload_t status_copy;
             bool should_send = false;
             
-            mutex_enter_blocking(&g_status_mutex);
             if (g_status_updated) {
-                memcpy(&status_copy, &g_status, sizeof(status_payload_t));
+                uint32_t read_idx = g_active_buffer;  // Read from active buffer
+                __dmb();  // Data memory barrier - ensure we see latest active_buffer value
+                memcpy(&status_copy, &g_status_buffers[read_idx], sizeof(status_payload_t));
                 should_send = true;
             }
-            mutex_exit(&g_status_mutex);
             
             if (should_send) {
                 protocol_send_status(&status_copy);
@@ -315,8 +315,8 @@ int main(void) {
     // Record boot time
     g_boot_time = to_ms_since_boot(get_absolute_time());
     
-    // Initialize mutex for thread-safe status sharing between cores
-    mutex_init(&g_status_mutex);
+    // Double-buffering initialized: g_status_buffers and g_active_buffer are statically initialized
+    // No mutex needed - Core 0 writes to inactive buffer, Core 1 reads from active buffer
     
     // Initialize stdio (USB serial for logging)
     stdio_init_all();
@@ -535,6 +535,11 @@ int main(void) {
             // SAF-003: Feed watchdog only from main control loop after safety checks pass
             // Also verify Core 1 (communication) is still responsive before kicking.
             // If Core 1 hangs, we want the watchdog to reset the system.
+            //
+            // Note: Watchdog is fed after safety checks but before loop timing check.
+            // This means the watchdog catches CPU freezes/hangs, but not timing violations.
+            // Timing violations are logged separately (see loop overrun detection below).
+            // This design prioritizes safety (catching freezes) over timing precision.
             if (g_core1_alive) {
                 // Core 1 is alive - reset flag and kick watchdog
                 g_core1_alive = false;
@@ -558,14 +563,14 @@ int main(void) {
                 control_update();
             }
             
-            // Update status for Core 1 (thread-safe with mutex)
+            // Update status for Core 1 (double-buffered, non-blocking)
             sensor_data_t sensor_data;
             sensors_get_data(&sensor_data);
             
             control_outputs_t outputs;
             control_get_outputs(&outputs);
             
-            // Build status locally first, then copy under mutex
+            // Build status locally first, then copy to inactive buffer
             status_payload_t new_status = {0};
             
             // Machine-type aware status population
@@ -614,11 +619,14 @@ int main(void) {
             if (sensor_data.water_level < SAFETY_MIN_WATER_LEVEL) new_status.flags |= STATUS_FLAG_WATER_LOW;
             if (safety_is_safe_state()) new_status.flags |= STATUS_FLAG_ALARM;
             
-            // Thread-safe update of shared status
-            mutex_enter_blocking(&g_status_mutex);
-            memcpy(&g_status, &new_status, sizeof(status_payload_t));
+            // Double-buffered update: write to inactive buffer, then atomically swap
+            // This avoids blocking in the critical control loop
+            uint32_t write_idx = 1 - g_active_buffer;  // Write to inactive buffer
+            memcpy(&g_status_buffers[write_idx], &new_status, sizeof(status_payload_t));
+            __dmb();  // Data memory barrier - ensure write completes before swap
+            g_active_buffer = write_idx;  // Atomically swap active buffer
             g_status_updated = true;
-            mutex_exit(&g_status_mutex);
+            __dmb();  // Ensure flag update is visible to Core 1
         }
         
         // Small sleep

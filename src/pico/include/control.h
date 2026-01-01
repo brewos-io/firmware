@@ -8,11 +8,15 @@
 // -----------------------------------------------------------------------------
 // Output State
 // -----------------------------------------------------------------------------
+// Optimized member order (largest to smallest) to minimize padding:
+// uint16 (2 bytes) -> uint8 (1 byte)
 typedef struct {
-    uint8_t brew_heater;    // 0-100%
-    uint8_t steam_heater;   // 0-100%
-    uint8_t pump;           // 0-100%
     uint16_t power_watts;   // Estimated power draw
+    uint8_t brew_heater;     // 0-100%
+    uint8_t steam_heater;    // 0-100%
+    uint8_t pump;            // 0-100%
+    // 1 byte padding may be added by compiler for alignment
+    // Total size: 6 bytes (with padding) or 5 bytes (packed)
 } control_outputs_t;
 
 // -----------------------------------------------------------------------------

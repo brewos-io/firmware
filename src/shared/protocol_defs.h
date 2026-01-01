@@ -40,8 +40,9 @@ extern "C" {
 #define PROTOCOL_CRC_SIZE       2
 #define PROTOCOL_MAX_PACKET     (PROTOCOL_HEADER_SIZE + PROTOCOL_MAX_PAYLOAD + PROTOCOL_CRC_SIZE)
 
-// Note: config_payload_t is 60 bytes, exceeding PROTOCOL_MAX_PAYLOAD
-// Environmental config should be sent separately or config_payload_t should be split
+// Note: config_payload_t is 14 bytes (well under PROTOCOL_MAX_PAYLOAD)
+// Environmental config is sent separately via MSG_ENV_CONFIG (18 bytes)
+// Compile-time assertions in protocol.h verify payload sizes
 
 // =============================================================================
 // Message Types - Status/Response (0x00 - 0x0F)

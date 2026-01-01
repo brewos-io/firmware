@@ -221,98 +221,138 @@ float pid_compute(pid_state_t* pid, float process_value, float dt) {
 // Heating Strategy Implementation (Dual Boiler Only)
 // =============================================================================
 
+// Function pointer type for heating strategies
+typedef void (*strategy_func_t)(
+    float brew_demand, float steam_demand,
+    float brew_temp, float steam_temp,
+    float* brew_duty, float* steam_duty
+);
+
+// Strategy: Brew only - only brew boiler heats, steam stays off
+static void strategy_brew_only(
+    float brew_demand, float steam_demand,
+    float brew_temp, float steam_temp,
+    float* brew_duty, float* steam_duty
+) {
+    (void)steam_demand;  // Unused
+    (void)brew_temp;      // Unused
+    (void)steam_temp;     // Unused
+    *brew_duty = brew_demand;
+    *steam_duty = 0.0f;
+}
+
+// Strategy: Sequential - brew first, steam starts after brew reaches threshold
+static void strategy_sequential(
+    float brew_demand, float steam_demand,
+    float brew_temp, float steam_temp,
+    float* brew_duty, float* steam_duty
+) {
+    (void)steam_temp;  // Unused
+    float brew_setpoint = g_brew_pid.setpoint;
+    *brew_duty = brew_demand;
+    float brew_pct = (brew_temp / brew_setpoint) * 100.0f;
+    *steam_duty = (brew_pct >= g_sequential_threshold_pct) ? steam_demand : 0.0f;
+}
+
+// Strategy: Parallel - both heat simultaneously (fastest, highest power)
+static void strategy_parallel(
+    float brew_demand, float steam_demand,
+    float brew_temp, float steam_temp,
+    float* brew_duty, float* steam_duty
+) {
+    (void)brew_temp;   // Unused
+    (void)steam_temp;  // Unused
+    electrical_state_t elec_state;
+    electrical_state_get(&elec_state);
+    
+    float brew_current = elec_state.brew_heater_current * (brew_demand / 100.0f);
+    float steam_current = elec_state.steam_heater_current * (steam_demand / 100.0f);
+    float total_current = brew_current + steam_current;
+    
+    if (total_current > elec_state.max_combined_current) {
+        float scale_factor = elec_state.max_combined_current / total_current;
+        brew_demand *= scale_factor;
+        steam_demand *= scale_factor;
+    }
+    *brew_duty = brew_demand;
+    *steam_duty = steam_demand;
+}
+
+// Strategy: Smart stagger - both heat with limited combined duty and phase synchronization
+static void strategy_smart_stagger(
+    float brew_demand, float steam_demand,
+    float brew_temp, float steam_temp,
+    float* brew_duty, float* steam_duty
+) {
+    (void)brew_temp;   // Unused
+    (void)steam_temp;  // Unused
+    // Phase-synchronized control: Calculate duty cycles and phase offsets
+    float brew_duty_pct = brew_demand;
+    float steam_duty_pct = steam_demand;
+    
+    // Clamp total based on max_combined_duty
+    float max_total = g_max_combined_duty;
+    float total_req = brew_duty_pct + steam_duty_pct;
+    
+    if (total_req > max_total) {
+        if (g_stagger_priority == 0) {
+            // Brew priority: give brew what it wants, steam gets remainder
+            if (brew_duty_pct > max_total) brew_duty_pct = max_total;
+            steam_duty_pct = max_total - brew_duty_pct;
+        } else {
+            // Steam priority
+            if (steam_duty_pct > max_total) steam_duty_pct = max_total;
+            brew_duty_pct = max_total - steam_duty_pct;
+        }
+    }
+    
+    // Convert duty % to time (ms) within 1-second period
+    uint32_t brew_time_ms = (uint32_t)(brew_duty_pct * 10.0f);  // 0-1000ms
+    uint32_t steam_time_ms = (uint32_t)(steam_duty_pct * 10.0f);
+    
+    // PHASE SHIFT: Brew starts at t=0, Steam starts AFTER brew finishes
+    // This ensures strict interleaving (no overlap)
+    uint32_t brew_start = 0;
+    uint32_t steam_start = brew_time_ms;
+    
+    // If total > 1000ms, steam wraps to beginning (creates controlled overlap)
+    if (steam_start + steam_time_ms > PHASE_SYNC_PERIOD_MS) {
+        steam_start = 0;  // Wrap to beginning
+        // Note: This creates overlap, but it's controlled and intentional
+    }
+    
+    // Set schedules for phase-synchronized control
+    set_ssr_schedule(0, brew_start, brew_time_ms);      // Brew SSR
+    set_ssr_schedule(1, steam_start, steam_time_ms);     // Steam SSR
+    
+    // Return duty values for reporting (but actual control uses phase sync)
+    *brew_duty = brew_duty_pct;
+    *steam_duty = steam_duty_pct;
+}
+
+// Strategy function pointer array - indexed by heating_strategy_t enum
+static const strategy_func_t STRATEGIES[] = {
+    strategy_brew_only,      // HEAT_BREW_ONLY = 0
+    strategy_sequential,      // HEAT_SEQUENTIAL = 1
+    strategy_parallel,       // HEAT_PARALLEL = 2
+    strategy_smart_stagger   // HEAT_SMART_STAGGER = 3
+};
+
 void apply_heating_strategy(
     float brew_demand, float steam_demand,
     float brew_temp, float steam_temp,
     float* brew_duty, float* steam_duty
 ) {
-    float brew_setpoint = g_brew_pid.setpoint;
-    float steam_setpoint = g_steam_pid.setpoint;
-    
-    electrical_state_t elec_state;
-    electrical_state_get(&elec_state);
-    
-    switch (g_heating_strategy) {
-        case HEAT_BREW_ONLY:
-            *brew_duty = brew_demand;
-            *steam_duty = 0.0f;
-            break;
-            
-        case HEAT_SEQUENTIAL: {
-            *brew_duty = brew_demand;
-            float brew_pct = (brew_temp / brew_setpoint) * 100.0f;
-            *steam_duty = (brew_pct >= g_sequential_threshold_pct) ? steam_demand : 0.0f;
-            break;
-        }
-            
-        case HEAT_PARALLEL: {
-            float brew_current = elec_state.brew_heater_current * (brew_demand / 100.0f);
-            float steam_current = elec_state.steam_heater_current * (steam_demand / 100.0f);
-            float total_current = brew_current + steam_current;
-            
-            if (total_current > elec_state.max_combined_current) {
-                float scale_factor = elec_state.max_combined_current / total_current;
-                brew_demand *= scale_factor;
-                steam_demand *= scale_factor;
-            }
-            *brew_duty = brew_demand;
-            *steam_duty = steam_demand;
-            break;
-        }
-            
-        case HEAT_SMART_STAGGER: {
-            // Phase-synchronized control: Calculate duty cycles and phase offsets
-            float brew_duty_pct = brew_demand;
-            float steam_duty_pct = steam_demand;
-            
-            // Clamp total based on max_combined_duty
-            float max_total = g_max_combined_duty;
-            float total_req = brew_duty_pct + steam_duty_pct;
-            
-            if (total_req > max_total) {
-                if (g_stagger_priority == 0) {
-                    // Brew priority: give brew what it wants, steam gets remainder
-                    if (brew_duty_pct > max_total) brew_duty_pct = max_total;
-                    steam_duty_pct = max_total - brew_duty_pct;
-                } else {
-                    // Steam priority
-                    if (steam_duty_pct > max_total) steam_duty_pct = max_total;
-                    brew_duty_pct = max_total - steam_duty_pct;
-                }
-            }
-            
-            // Convert duty % to time (ms) within 1-second period
-            uint32_t brew_time_ms = (uint32_t)(brew_duty_pct * 10.0f);  // 0-1000ms
-            uint32_t steam_time_ms = (uint32_t)(steam_duty_pct * 10.0f);
-            
-            // PHASE SHIFT: Brew starts at t=0, Steam starts AFTER brew finishes
-            // This ensures strict interleaving (no overlap)
-            uint32_t brew_start = 0;
-            uint32_t steam_start = brew_time_ms;
-            
-            // If total > 1000ms, steam wraps to beginning (creates controlled overlap)
-            if (steam_start + steam_time_ms > PHASE_SYNC_PERIOD_MS) {
-                steam_start = 0;  // Wrap to beginning
-                // Note: This creates overlap, but it's controlled and intentional
-            }
-            
-            // Set schedules for phase-synchronized control
-            set_ssr_schedule(0, brew_start, brew_time_ms);      // Brew SSR
-            set_ssr_schedule(1, steam_start, steam_time_ms);     // Steam SSR
-            
-            // Return duty values for reporting (but actual control uses phase sync)
-            *brew_duty = brew_duty_pct;
-            *steam_duty = steam_duty_pct;
-            break;
-        }
-            
-        default:
-            *brew_duty = brew_demand;
-            *steam_duty = 0.0f;
-            break;
+    // Bounds check - use brew_only as safe fallback for invalid strategy
+    if (g_heating_strategy >= sizeof(STRATEGIES) / sizeof(STRATEGIES[0])) {
+        strategy_brew_only(brew_demand, steam_demand, brew_temp, steam_temp, brew_duty, steam_duty);
+        return;
     }
     
-    // Apply safety limit
+    // Call appropriate strategy function
+    STRATEGIES[g_heating_strategy](brew_demand, steam_demand, brew_temp, steam_temp, brew_duty, steam_duty);
+    
+    // Apply safety limit (common to all strategies)
     float max_duty = 95.0f;
     *brew_duty = fminf(*brew_duty, max_duty);
     *steam_duty = fminf(*steam_duty, max_duty);
@@ -597,7 +637,7 @@ void control_update(void) {
     sensor_data_t sensors;
     sensors_get_data(&sensors);
     
-    float dt = CONTROL_LOOP_PERIOD_MS / 1000.0f;
+    float dt = CONTROL_DT_SEC;  // Control loop time delta (0.1s = 100ms / 1000)
     float brew_temp = sensors.brew_temp / 10.0f;
     float steam_temp = sensors.steam_temp / 10.0f;
     float group_temp = sensors.group_temp / 10.0f;

@@ -46,7 +46,9 @@
 // -----------------------------------------------------------------------------
 // Timing
 // -----------------------------------------------------------------------------
-#define CONTROL_LOOP_PERIOD_MS  100             // 10Hz control loop
+#define CONTROL_LOOP_FREQ_HZ    10             // Control loop frequency (Hz)
+#define CONTROL_LOOP_PERIOD_MS  100            // Control loop period (1000 / CONTROL_LOOP_FREQ_HZ)
+#define CONTROL_DT_SEC           (1.0f / CONTROL_LOOP_FREQ_HZ)  // Control loop time delta in seconds (0.1s)
 #define STATUS_SEND_PERIOD_MS   250             // 4Hz status updates
 #define SENSOR_READ_PERIOD_MS   50              // 20Hz sensor reads
 #define BOOT_INFO_RESEND_MS     (5 * 60 * 1000) // Resend boot info every 5 minutes

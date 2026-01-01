@@ -298,4 +298,25 @@ void protocol_set_callback(packet_callback_t callback);
 // CRC calculation
 uint16_t protocol_crc16(const uint8_t* data, size_t length);
 
+// -----------------------------------------------------------------------------
+// Compile-time Payload Size Verification
+// -----------------------------------------------------------------------------
+// Static assertions to catch payload size mismatches at compile time
+// These ensure all payloads fit within PROTOCOL_MAX_PAYLOAD (56 bytes)
+
+_Static_assert(sizeof(config_payload_t) <= PROTOCOL_MAX_PAYLOAD,
+               "config_payload_t exceeds PROTOCOL_MAX_PAYLOAD");
+_Static_assert(sizeof(status_payload_t) <= PROTOCOL_MAX_PAYLOAD,
+               "status_payload_t exceeds PROTOCOL_MAX_PAYLOAD");
+_Static_assert(sizeof(env_config_payload_t) <= PROTOCOL_MAX_PAYLOAD,
+               "env_config_payload_t exceeds PROTOCOL_MAX_PAYLOAD");
+_Static_assert(sizeof(cmd_set_temp_t) <= PROTOCOL_MAX_PAYLOAD,
+               "cmd_set_temp_t exceeds PROTOCOL_MAX_PAYLOAD");
+_Static_assert(sizeof(cmd_set_pid_t) <= PROTOCOL_MAX_PAYLOAD,
+               "cmd_set_pid_t exceeds PROTOCOL_MAX_PAYLOAD");
+_Static_assert(sizeof(config_environmental_t) <= PROTOCOL_MAX_PAYLOAD,
+               "config_environmental_t exceeds PROTOCOL_MAX_PAYLOAD");
+_Static_assert(sizeof(config_preinfusion_t) <= PROTOCOL_MAX_PAYLOAD,
+               "config_preinfusion_t exceeds PROTOCOL_MAX_PAYLOAD");
+
 #endif // PROTOCOL_H

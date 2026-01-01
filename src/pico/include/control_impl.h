@@ -32,18 +32,21 @@ typedef enum {
 // PID State (shared structure)
 // =============================================================================
 
+// Optimized member order (largest to smallest) to minimize padding:
+// float (4 bytes) -> bool (1 byte, but may be padded to 4 bytes)
 typedef struct {
-    float kp, ki, kd;
-    float setpoint;
+    float kp, ki, kd;           // PID gains (4 bytes each)
+    float setpoint;             // Current setpoint
     float setpoint_target;      // Target for ramping
-    float integral;
-    float last_error;
+    float integral;             // Integral term accumulator
+    float last_error;           // Previous error value
     float last_measurement;     // For derivative-on-measurement (avoids setpoint kick)
     float last_derivative;      // For derivative filtering
-    float output;
-    bool setpoint_ramping;      // Enable setpoint ramping
+    float output;               // PID output value
     float ramp_rate;            // Degrees per second
+    bool setpoint_ramping;      // Enable setpoint ramping
     bool first_run;             // True on first call (skips derivative to avoid spike)
+    // 2 bytes padding may be added by compiler for alignment
 } pid_state_t;
 
 // =============================================================================

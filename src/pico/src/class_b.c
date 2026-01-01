@@ -231,7 +231,15 @@ class_b_result_t class_b_test_ram(void) {
 // =============================================================================
 
 // Chunk size for incremental CRC calculation (to avoid blocking)
+// This is tunable - smaller chunks reduce Flash contention but take more cycles
+// 4KB chunks provide good balance: ~100µs per chunk, completes 256KB in ~60 seconds
 #define FLASH_CRC_CHUNK_SIZE    4096
+
+// NOTE: Flash CRC accesses Flash (XIP) which may cause contention if Core 0
+// tries to fetch instructions from Flash simultaneously. For maximum real-time
+// performance, consider marking critical Core 0 control loop functions with
+// __not_in_flash_func() to run from SRAM, ensuring Flash CRC checks don't
+// stall instruction fetching for critical safety checks.
 
 class_b_result_t class_b_crc32_flash_incremental(uint32_t* crc, bool* complete) {
     if (!g_flash_crc_in_progress) {

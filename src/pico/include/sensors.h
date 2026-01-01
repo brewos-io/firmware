@@ -7,12 +7,16 @@
 // -----------------------------------------------------------------------------
 // Sensor Data Structure
 // -----------------------------------------------------------------------------
+// Optimized member order (largest to smallest) to minimize padding:
+// int16/uint16 (2 bytes) -> uint8 (1 byte)
 typedef struct {
     int16_t brew_temp;      // Celsius * 10 (0.1C resolution)
     int16_t steam_temp;     // Celsius * 10
     int16_t group_temp;     // Celsius * 10
     uint16_t pressure;      // Bar * 100 (0.01 bar resolution)
     uint8_t water_level;    // 0-100%
+    // 1 byte padding may be added by compiler for alignment
+    // Total size: 10 bytes (with padding) or 9 bytes (packed)
 } sensor_data_t;
 
 // -----------------------------------------------------------------------------
