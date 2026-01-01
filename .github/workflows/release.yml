@@ -285,7 +285,7 @@ jobs:
 
             **Pico:** Hold BOOTSEL button, connect USB, copy the `.uf2` file to the drive
 
-            See [SETUP.md](https://github.com/mizrachiran/brewos/blob/main/SETUP.md) for detailed instructions.
+            See [SETUP.md](https://github.com/brewos-io/firmware/blob/main/SETUP.md) for detailed instructions.
 
             ## Checksums
 
