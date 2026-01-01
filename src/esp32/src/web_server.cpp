@@ -467,11 +467,20 @@ void BrewWebServer::setupRoutes() {
         
         // Use direct file send - more efficient than beginResponse
         if (LittleFS.exists("/index.html")) {
-            request->send(LittleFS, "/index.html", "text/html", false);
-            LOG_I("/ served in %lu ms", millis() - startTime);
+            File indexFile = LittleFS.open("/index.html", "r");
+            if (indexFile) {
+                size_t fileSize = indexFile.size();
+                LOG_D("Serving index.html (%zu bytes)", fileSize);
+                indexFile.close();
+                request->send(LittleFS, "/index.html", "text/html", false);
+                LOG_I("/ served in %lu ms", millis() - startTime);
+            } else {
+                LOG_E("Failed to open index.html for reading");
+                request->send(500, "text/plain", "Failed to read index.html");
+            }
         } else {
-            LOG_E("index.html not found!");
-            request->send(404, "text/plain", "index.html not found");
+            LOG_E("index.html not found in LittleFS!");
+            request->send(404, "text/plain", "index.html not found - web files may not be flashed");
         }
     });
     
@@ -2120,9 +2129,12 @@ void BrewWebServer::setupRoutes() {
     
     // Use built-in serveStatic which is more efficient
     // It automatically handles Content-Length and caching
+    // Note: serveStatic must be registered AFTER all API routes to ensure proper routing
     _server.serveStatic("/", LittleFS, "/")
            .setDefaultFile("index.html")
            .setCacheControl("public, max-age=31536000, immutable");
+    
+    LOG_D("Static file serving configured for LittleFS root");
     
     // Handle SPA fallback and API 404s
     _server.onNotFound([this](AsyncWebServerRequest* request) {

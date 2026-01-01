@@ -283,9 +283,13 @@ bool MQTTClient::connect() {
     LOG_I("MQTT: Network: IP=%s, RSSI=%d dBm, Gateway=%s", 
           localIP.toString().c_str(), rssi, gatewayIP.toString().c_str());
     
-    // Configure WiFi client timeout - PubSubClient uses this for connection attempts
-    // Increase to 15 seconds to handle slow networks or broker delays
+    // Configure WiFi client timeout - MUST be set before connection attempt
+    // ESP32 NetworkClient has a default 3s timeout that needs to be overridden
+    // Set both socket timeout and overall client timeout
     _wifiClient.setTimeout(15000);  // 15 second timeout for MQTT operations
+    
+    // Also set socket timeout explicitly (PubSubClient uses this)
+    _client.setSocketTimeout(15);  // Ensure PubSubClient uses 15s timeout
     
     LOG_I("Connecting to MQTT broker %s:%d...", _config.broker, _config.port);
     
@@ -297,6 +301,12 @@ bool MQTTClient::connect() {
     } else {
         LOG_W("MQTT: DNS resolution failed for %s", _config.broker);
         // Continue anyway - PubSubClient will try DNS itself
+    }
+    
+    // Additional diagnostic: Check if broker IP is reachable
+    // This helps identify network/firewall issues
+    if (brokerIP != INADDR_NONE) {
+        LOG_D("MQTT: Broker IP resolved, attempting TCP connection...");
     }
     
     // Build will topic for LWT
