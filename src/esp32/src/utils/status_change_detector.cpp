@@ -297,7 +297,6 @@ bool StatusChangeDetector::hasChanged(const ui_state_t& current, ChangedFields* 
         changedField = "connections";
         if (changedFields) {
             changedFields->connections = true;
-            changedFields->scale_connected = (current.scale_connected != _previous.scale_connected);
         }
     }
     
