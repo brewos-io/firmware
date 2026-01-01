@@ -8,6 +8,7 @@
 #include "power_meter/power_meter_manager.h"
 #include "brew_by_weight.h"
 #include "msgpack_helper.h"
+#include "utils/status_change_detector.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <stdarg.h>
@@ -195,16 +196,12 @@ void BrewWebServer::broadcastRaw(const char* json) {
 // =============================================================================
 // Unified Status Broadcast - Single comprehensive message
 // Uses pre-allocated PSRAM buffers to avoid repeated allocation every 500ms
+// Optimized to only build JSON/MessagePack when actually needed
 // =============================================================================
 void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     // Skip status broadcasts during OTA to prevent WebSocket queue overflow
     if (_otaInProgress) {
         return;
-    }
-    
-    // Safety check - only broadcast if we have clients
-    if (_ws.count() == 0 && (!_cloudConnection || !_cloudConnection->isConnected())) {
-        return;  // No one to send to
     }
     
     // Initialize pre-allocated buffers if not already done
@@ -214,6 +211,40 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
             LOG_E("Failed to allocate broadcast buffers");
             return;
         }
+    }
+    
+    // Check if we have local WebSocket clients (always send to them every 500ms)
+    bool hasLocalClients = (_ws.count() > 0);
+    
+    // Check cloud connection and change detection BEFORE building expensive JSON
+    static StatusChangeDetector cloudChangeDetector;
+    static unsigned long lastCloudHeartbeat = 0;
+    static bool lastCloudConnected = false;
+    const unsigned long CLOUD_HEARTBEAT_INTERVAL = 30000;  // 30 seconds minimum heartbeat
+    
+    bool cloudConnected = _cloudConnection && _cloudConnection->isConnected();
+    bool cloudChanged = false;
+    bool cloudHeartbeatDue = false;
+    
+    if (cloudConnected) {
+        // Reset detector when cloud connection is established (ensures first update is sent)
+        if (!lastCloudConnected) {
+            cloudChangeDetector.reset();
+        }
+        lastCloudConnected = true;
+        
+        cloudChanged = cloudChangeDetector.hasChanged(state);
+        unsigned long now = millis();
+        cloudHeartbeatDue = (now - lastCloudHeartbeat >= CLOUD_HEARTBEAT_INTERVAL);
+    } else {
+        lastCloudConnected = false;
+    }
+    
+    bool shouldSendToCloud = cloudConnected && (cloudChanged || cloudHeartbeatDue);
+    
+    // Early exit: only build JSON/MessagePack if we have local clients OR need to send to cloud
+    if (!hasLocalClients && !shouldSendToCloud) {
+        return;  // No one to send to, skip expensive JSON building
     }
     
     // Clear the pre-allocated document for reuse
@@ -507,10 +538,12 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     esp32["uptime"] = millis();
     
     // Serialize to MessagePack binary format (much smaller than JSON)
+    // Only do this expensive operation if we actually need to send
     size_t msgpackSize = MessagePackHelper::serialize(doc, g_statusBuffer, STATUS_BUFFER_SIZE);
     if (msgpackSize > 0) {
         // Send to WebSocket clients as binary (MessagePack format)
-        if (_ws.count() > 0) {
+        // Local clients always get updates every 500ms for responsive UI
+        if (hasLocalClients) {
             // AsyncWebSocket doesn't have binaryAll, so send to each client
             _ws.cleanupClients();
             for (size_t i = 0; i < _ws.count(); i++) {
@@ -521,27 +554,13 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
             }
         }
         
-        // Throttle cloud updates to prevent queue overflow when idle
-        // Send immediately when machine is active (heating/brewing), but throttle when idle
-        static unsigned long lastCloudBroadcast = 0;
-        static uint8_t lastMachineState = 255;  // Track state changes
-        const unsigned long CLOUD_BROADCAST_INTERVAL_IDLE = 2000;  // 2 seconds when idle
-        const unsigned long CLOUD_BROADCAST_INTERVAL_ACTIVE = 500;  // 500ms when active (heating/brewing)
-        
-        bool isActive = state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_BREWING;
-        unsigned long interval = isActive ? CLOUD_BROADCAST_INTERVAL_ACTIVE : CLOUD_BROADCAST_INTERVAL_IDLE;
-        
-        unsigned long now = millis();
-        bool stateChanged = (state.machine_state != lastMachineState);
-        bool intervalExpired = (now - lastCloudBroadcast >= interval);
-        bool shouldSendToCloud = stateChanged || intervalExpired;
-        
-        // Also send to cloud - use binary MessagePack format
-        // Throttle updates when idle to prevent queue overflow, but send immediately on state changes
-        if (_cloudConnection && _cloudConnection->isConnected() && shouldSendToCloud) {
+        // Send to cloud if status changed or heartbeat due
+        if (shouldSendToCloud) {
             _cloudConnection->sendBinary(g_statusBuffer, msgpackSize);
-            lastCloudBroadcast = now;
-            lastMachineState = state.machine_state;
+            lastCloudMsgpackSize = msgpackSize;
+            if (cloudHeartbeatDue) {
+                lastCloudHeartbeat = millis();
+            }
         }
     } else {
         LOG_W("MessagePack serialization failed or buffer too small");

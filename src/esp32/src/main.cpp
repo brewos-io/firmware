@@ -66,6 +66,9 @@
 // Power Metering
 #include "power_meter/power_meter_manager.h"
 
+// Status Change Detection
+#include "utils/status_change_detector.h"
+
 // Global instances - use pointers to defer construction until setup()
 // This prevents crashes in constructors before Serial is initialized
 WiFiManager* wifiManager = nullptr;
@@ -1737,12 +1740,30 @@ void loop() {
         machineState.dose_weight = brewByWeight->getDoseWeight();
     }
     
-    // Publish MQTT status periodically (1 second interval)
-    static unsigned long lastMQTTPublish = 0;
-    if (millis() - lastMQTTPublish > 1000) {
-        lastMQTTPublish = millis();
-        if (mqttClient && mqttClient->isConnected()) {
+    // Publish MQTT status only when changes detected or on periodic heartbeat
+    // This reduces MQTT traffic while maintaining real-time updates
+    static StatusChangeDetector mqttChangeDetector;
+    static unsigned long lastMQTTHeartbeat = 0;
+    static bool lastMQTTConnected = false;
+    const unsigned long MQTT_HEARTBEAT_INTERVAL = 30000;  // 30 seconds minimum heartbeat
+    
+    // Reset detector when MQTT connection is established (ensures first update is sent)
+    bool mqttConnected = mqttClient && mqttClient->isConnected();
+    if (mqttConnected && !lastMQTTConnected) {
+        mqttChangeDetector.reset();
+    }
+    lastMQTTConnected = mqttConnected;
+    
+    if (mqttConnected) {
+        bool hasChanged = mqttChangeDetector.hasChanged(machineState);
+        unsigned long now = millis();
+        bool heartbeatDue = (now - lastMQTTHeartbeat >= MQTT_HEARTBEAT_INTERVAL);
+        
+        if (hasChanged || heartbeatDue) {
             mqttClient->publishStatus(machineState);
+            if (heartbeatDue) {
+                lastMQTTHeartbeat = now;
+            }
         }
     }
     
