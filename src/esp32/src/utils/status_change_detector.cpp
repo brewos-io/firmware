@@ -22,6 +22,139 @@ bool StatusChangeDetector::floatChanged(float current, float previous, float thr
     return fabsf(current - previous) >= threshold;
 }
 
+ChangedFields StatusChangeDetector::getChangedFields(const ui_state_t& current) {
+    ChangedFields fields;
+    
+    // First call - all fields changed
+    if (!_initialized) {
+        fields.machine_state = true;
+        fields.machine_mode = true;
+        fields.heating_strategy = true;
+        fields.is_heating = true;
+        fields.is_brewing = true;
+        fields.temps = true;
+        fields.pressure = true;
+        fields.power = true;
+        fields.scale_weight = true;
+        fields.scale_flow_rate = true;
+        fields.scale_connected = true;
+        fields.brew_time = true;
+        fields.target_weight = true;
+        fields.connections = true;
+        fields.water_low = true;
+        fields.alarm = true;
+        fields.cleaning = true;
+        fields.wifi = true;
+        fields.mqtt = true;
+        fields.stats = true;
+        fields.esp32 = true;
+        return fields;
+    }
+    
+    // Machine state and mode
+    if (current.machine_state != _previous.machine_state) {
+        fields.machine_state = true;
+        // Mode is derived from state, so mark it too
+        fields.machine_mode = true;
+    }
+    
+    // Heating strategy
+    if (current.heating_strategy != _previous.heating_strategy) {
+        fields.heating_strategy = true;
+    }
+    
+    // Heating/brewing flags
+    if (current.is_heating != _previous.is_heating) {
+        fields.is_heating = true;
+    }
+    
+    if (current.is_brewing != _previous.is_brewing) {
+        fields.is_brewing = true;
+    }
+    
+    // Temperatures - check if any changed
+    if (floatChanged(current.brew_temp, _previous.brew_temp, STATUS_TEMP_THRESHOLD) ||
+        floatChanged(current.brew_setpoint, _previous.brew_setpoint, STATUS_TEMP_THRESHOLD) ||
+        floatChanged(current.steam_temp, _previous.steam_temp, STATUS_TEMP_THRESHOLD) ||
+        floatChanged(current.steam_setpoint, _previous.steam_setpoint, STATUS_TEMP_THRESHOLD) ||
+        floatChanged(current.group_temp, _previous.group_temp, STATUS_TEMP_THRESHOLD)) {
+        fields.temps = true;
+    }
+    
+    // Pressure
+    if (floatChanged(current.pressure, _previous.pressure, STATUS_PRESSURE_THRESHOLD)) {
+        fields.pressure = true;
+    }
+    
+    // Power
+    if (abs((int)current.power_watts - (int)_previous.power_watts) >= (int)STATUS_POWER_THRESHOLD) {
+        fields.power = true;
+    }
+    
+    // Scale weight
+    if (floatChanged(current.brew_weight, _previous.brew_weight, STATUS_WEIGHT_THRESHOLD)) {
+        fields.scale_weight = true;
+    }
+    
+    // Flow rate
+    if (floatChanged(current.flow_rate, _previous.flow_rate, STATUS_FLOW_RATE_THRESHOLD)) {
+        fields.scale_flow_rate = true;
+    }
+    
+    // Scale connected
+    if (current.scale_connected != _previous.scale_connected) {
+        fields.scale_connected = true;
+    }
+    
+    // Brew time (when brewing)
+    if (current.is_brewing && current.brew_time_ms != _previous.brew_time_ms) {
+        fields.brew_time = true;
+    }
+    
+    // Target weight
+    if (floatChanged(current.target_weight, _previous.target_weight, STATUS_WEIGHT_THRESHOLD)) {
+        fields.target_weight = true;
+    }
+    
+    // Connection status - check if any changed
+    if (current.pico_connected != _previous.pico_connected ||
+        current.wifi_connected != _previous.wifi_connected ||
+        current.mqtt_connected != _previous.mqtt_connected ||
+        current.scale_connected != _previous.scale_connected ||
+        current.cloud_connected != _previous.cloud_connected) {
+        fields.connections = true;
+    }
+    
+    // Water level
+    if (current.water_low != _previous.water_low) {
+        fields.water_low = true;
+    }
+    
+    // Alarm
+    if (current.alarm_active != _previous.alarm_active ||
+        current.alarm_code != _previous.alarm_code) {
+        fields.alarm = true;
+    }
+    
+    // Cleaning
+    if (current.cleaning_reminder != _previous.cleaning_reminder ||
+        current.brew_count != _previous.brew_count) {
+        fields.cleaning = true;
+    }
+    
+    // WiFi details
+    if (current.wifi_ap_mode != _previous.wifi_ap_mode ||
+        strcmp(current.wifi_ip, _previous.wifi_ip) != 0 ||
+        abs(current.wifi_rssi - _previous.wifi_rssi) >= 10) {
+        fields.wifi = true;
+    }
+    
+    // MQTT and stats are considered changed if we detect other changes
+    // They'll be included in full status updates
+    
+    return fields;
+}
+
 bool StatusChangeDetector::hasChanged(const ui_state_t& current) {
     // First call - always return true and store current state
     if (!_initialized) {

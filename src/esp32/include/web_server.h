@@ -7,6 +7,7 @@
 #include <ArduinoJson.h>
 #include "wifi_manager.h"
 #include "ui/ui.h"
+#include "utils/status_change_detector.h"
 
 // Forward declarations
 class PicoUART;
@@ -47,6 +48,8 @@ public:
     bool isWiFiReady();
     
     // Send data to all WebSocket clients - Unified Status Broadcast
+    bool buildDeltaStatus(const ui_state_t& state, const ChangedFields& changed, 
+                          uint32_t sequence, JsonDocument& doc);  // Build delta status (only changed fields)
     void broadcastFullStatus(const ui_state_t& machineState);  // Comprehensive status (periodic)
     void broadcastDeviceInfo();   // Device info (on connect only)
     void broadcastPowerMeterStatus();  // Power meter status update

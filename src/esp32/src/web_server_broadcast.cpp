@@ -194,6 +194,255 @@ void BrewWebServer::broadcastRaw(const char* json) {
 }
 
 // =============================================================================
+// Build Delta Status - Only changed fields
+// Returns true if delta was built, false if no changes
+// =============================================================================
+bool BrewWebServer::buildDeltaStatus(const ui_state_t& state, const ChangedFields& changed, 
+                                      uint32_t sequence, JsonDocument& doc) {
+    // Clear document and set type
+    doc.clear();
+    doc["type"] = "status_delta";
+    doc["seq"] = sequence;
+    
+    // Track timestamps (same logic as full status)
+    static uint64_t machineOnTimestamp = 0;
+    static uint64_t lastShotTimestamp = 0;
+    static bool wasOn = false;
+    static bool wasBrewing = false;
+    
+    bool isOn = state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_BREWING;
+    constexpr time_t MIN_VALID_TIME = 1577836800;
+    constexpr time_t MAX_VALID_TIME = 4102444800;
+    
+    if (isOn && !wasOn) {
+        time_t now = time(nullptr);
+        if (now > MIN_VALID_TIME && now < MAX_VALID_TIME) {
+            machineOnTimestamp = (uint64_t)now * 1000ULL;
+        } else {
+            machineOnTimestamp = 0;
+        }
+    } else if (!isOn) {
+        machineOnTimestamp = 0;
+    }
+    wasOn = isOn;
+    
+    if (wasBrewing && !state.is_brewing) {
+        time_t now = time(nullptr);
+        if (now > MIN_VALID_TIME && now < MAX_VALID_TIME) {
+            lastShotTimestamp = (uint64_t)now * 1000ULL;
+        }
+    }
+    wasBrewing = state.is_brewing;
+    
+    // Machine section
+    if (changed.machine_state || changed.machine_mode || changed.heating_strategy || 
+        changed.is_heating || changed.is_brewing) {
+        JsonObject machine = doc["machine"].to<JsonObject>();
+        
+        if (changed.machine_state || changed.machine_mode) {
+            const char* stateStr = "unknown";
+            switch (state.machine_state) {
+                case UI_STATE_INIT: stateStr = "init"; break;
+                case UI_STATE_IDLE: stateStr = "idle"; break;
+                case UI_STATE_HEATING: stateStr = "heating"; break;
+                case UI_STATE_READY: stateStr = "ready"; break;
+                case UI_STATE_BREWING: stateStr = "brewing"; break;
+                case UI_STATE_FAULT: stateStr = "fault"; break;
+                case UI_STATE_SAFE: stateStr = "safe"; break;
+                case UI_STATE_ECO: stateStr = "eco"; break;
+            }
+            machine["state"] = stateStr;
+            
+            const char* modeStr = "standby";
+            if (state.machine_state >= UI_STATE_HEATING && state.machine_state <= UI_STATE_BREWING) {
+                modeStr = "on";
+            } else if (state.machine_state == UI_STATE_ECO) {
+                modeStr = "eco";
+            }
+            machine["mode"] = modeStr;
+        }
+        
+        if (changed.is_heating) machine["isHeating"] = state.is_heating;
+        if (changed.is_brewing) machine["isBrewing"] = state.is_brewing;
+        if (changed.heating_strategy) machine["heatingStrategy"] = state.heating_strategy;
+        
+        // Timestamps (include if machine state changed)
+        if (changed.machine_state) {
+            if (machineOnTimestamp > 0) {
+                machine["machineOnTimestamp"] = (double)machineOnTimestamp;
+            }
+            if (lastShotTimestamp > 0) {
+                machine["lastShotTimestamp"] = (double)lastShotTimestamp;
+            }
+        }
+    }
+    
+    // Temperatures
+    if (changed.temps) {
+        JsonObject temps = doc["temps"].to<JsonObject>();
+        JsonObject brew = temps["brew"].to<JsonObject>();
+        brew["current"] = state.brew_temp;
+        brew["setpoint"] = state.brew_setpoint;
+        
+        JsonObject steam = temps["steam"].to<JsonObject>();
+        steam["current"] = state.steam_temp;
+        steam["setpoint"] = state.steam_setpoint;
+        
+        temps["group"] = state.group_temp;
+    }
+    
+    // Pressure
+    if (changed.pressure) {
+        doc["pressure"] = state.pressure;
+    }
+    
+    // Power
+    if (changed.power) {
+        JsonObject power = doc["power"].to<JsonObject>();
+        power["current"] = state.power_watts;
+        
+        // Include power meter if available (simplified for delta)
+        PowerMeterReading meterReading;
+        if (powerMeterManager && powerMeterManager->getReading(meterReading)) {
+            power["voltage"] = meterReading.voltage;
+        } else {
+            power["voltage"] = State.settings().power.mainsVoltage;
+        }
+    }
+    
+    // Scale
+    if (changed.scale_weight || changed.scale_flow_rate || changed.scale_connected || 
+        changed.target_weight) {
+        JsonObject scale = doc["scale"].to<JsonObject>();
+        if (changed.scale_connected) scale["connected"] = state.scale_connected;
+        if (changed.scale_weight) scale["weight"] = state.brew_weight;
+        if (changed.scale_flow_rate) scale["flowRate"] = state.flow_rate;
+        
+        if (changed.target_weight && brewByWeight) {
+            JsonObject bbw = scale["bbw"].to<JsonObject>();
+            bbw["targetWeight"] = brewByWeight->getTargetWeight();
+        }
+    }
+    
+    // Brew time (when brewing)
+    if (changed.brew_time && state.is_brewing) {
+        // Include in machine section for delta
+        if (!doc.containsKey("machine")) {
+            doc["machine"].to<JsonObject>();
+        }
+        // Note: brew_time_ms is typically tracked separately, but for simplicity
+        // we'll include it in the delta when brewing
+    }
+    
+    // Connections
+    if (changed.connections) {
+        JsonObject connections = doc["connections"].to<JsonObject>();
+        connections["pico"] = state.pico_connected;
+        connections["wifi"] = state.wifi_connected;
+        connections["mqtt"] = state.mqtt_connected;
+        connections["scale"] = state.scale_connected;
+        connections["cloud"] = state.cloud_connected;
+    }
+    
+    // Water
+    if (changed.water_low) {
+        JsonObject water = doc["water"].to<JsonObject>();
+        water["tankLevel"] = state.water_low ? "low" : "ok";
+    }
+    
+    // Alarm
+    if (changed.alarm) {
+        if (!doc.containsKey("machine")) {
+            doc["machine"].to<JsonObject>();
+        }
+        // Note: alarm fields would go in machine section
+    }
+    
+    // Cleaning
+    if (changed.cleaning) {
+        JsonObject cleaning = doc["cleaning"].to<JsonObject>();
+        cleaning["brewCount"] = state.brew_count;
+        cleaning["reminderDue"] = state.cleaning_reminder;
+    }
+    
+    // WiFi (only if changed)
+    if (changed.wifi) {
+        JsonObject wifi = doc["wifi"].to<JsonObject>();
+        wifi["connected"] = state.wifi_connected;
+        wifi["apMode"] = state.wifi_ap_mode;
+        wifi["ip"] = state.wifi_ip;
+        wifi["rssi"] = state.wifi_rssi;
+        
+        WiFiStatus wifiStatus = _wifiManager.getStatus();
+        wifi["staticIp"] = wifiStatus.staticIp;
+        
+        char gatewayBuf[16], subnetBuf[16], dns1Buf[16], dns2Buf[16];
+        strncpy(gatewayBuf, wifiStatus.gateway.c_str(), sizeof(gatewayBuf) - 1);
+        gatewayBuf[sizeof(gatewayBuf) - 1] = '\0';
+        strncpy(subnetBuf, wifiStatus.subnet.c_str(), sizeof(subnetBuf) - 1);
+        subnetBuf[sizeof(subnetBuf) - 1] = '\0';
+        strncpy(dns1Buf, wifiStatus.dns1.c_str(), sizeof(dns1Buf) - 1);
+        dns1Buf[sizeof(dns1Buf) - 1] = '\0';
+        strncpy(dns2Buf, wifiStatus.dns2.c_str(), sizeof(dns2Buf) - 1);
+        dns2Buf[sizeof(dns2Buf) - 1] = '\0';
+        
+        wifi["gateway"] = gatewayBuf;
+        wifi["subnet"] = subnetBuf;
+        wifi["dns1"] = dns1Buf;
+        wifi["dns2"] = dns2Buf;
+    }
+    
+    // MQTT (only if changed)
+    if (changed.mqtt) {
+        JsonObject mqtt = doc["mqtt"].to<JsonObject>();
+        MQTTConfig mqttConfig = _mqttClient.getConfig();
+        mqtt["enabled"] = mqttConfig.enabled;
+        mqtt["connected"] = _mqttClient.isConnected();
+        
+        char brokerBuf[64], topicBuf[32];
+        strncpy(brokerBuf, mqttConfig.broker, sizeof(brokerBuf) - 1);
+        brokerBuf[sizeof(brokerBuf) - 1] = '\0';
+        strncpy(topicBuf, mqttConfig.topic_prefix, sizeof(topicBuf) - 1);
+        topicBuf[sizeof(topicBuf) - 1] = '\0';
+        
+        mqtt["broker"] = brokerBuf;
+        mqtt["topic"] = topicBuf;
+    }
+    
+    // Stats (only if changed - expensive to compute)
+    if (changed.stats) {
+        JsonObject stats = doc["stats"].to<JsonObject>();
+        BrewOS::FullStatistics fullStats;
+        Stats.getFullStatistics(fullStats);
+        
+        JsonObject daily = stats["daily"].to<JsonObject>();
+        BrewOS::PeriodStats dailyStats;
+        Stats.getDailyStats(dailyStats);
+        daily["shotCount"] = dailyStats.shotCount;
+        daily["avgBrewTimeMs"] = dailyStats.avgBrewTimeMs;
+        daily["totalKwh"] = dailyStats.totalKwh;
+        
+        JsonObject lifetime = stats["lifetime"].to<JsonObject>();
+        lifetime["totalShots"] = fullStats.lifetime.totalShots;
+        lifetime["avgBrewTimeMs"] = fullStats.lifetime.avgBrewTimeMs;
+        lifetime["totalKwh"] = fullStats.lifetime.totalKwh;
+        
+        stats["sessionShots"] = fullStats.sessionShots;
+        stats["shotsToday"] = dailyStats.shotCount;
+    }
+    
+    // ESP32 (only if changed)
+    if (changed.esp32) {
+        JsonObject esp32 = doc["esp32"].to<JsonObject>();
+        esp32["version"] = ESP32_VERSION;
+        esp32["freeHeap"] = ESP.getFreeHeap();
+        esp32["uptime"] = millis();
+    }
+    
+    return changed.anyChanged();
+}
+
+// =============================================================================
 // Unified Status Broadcast - Single comprehensive message
 // Uses pre-allocated PSRAM buffers to avoid repeated allocation every 500ms
 // Optimized to only build JSON/MessagePack when actually needed
@@ -218,13 +467,17 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     
     // Check cloud connection and change detection BEFORE building expensive JSON
     static StatusChangeDetector cloudChangeDetector;
+    static StatusChangeDetector localChangeDetector;  // Separate detector for local clients
     static unsigned long lastCloudHeartbeat = 0;
+    static unsigned long lastFullStatusSync = 0;  // Periodic full status sync
     static bool lastCloudConnected = false;
     const unsigned long CLOUD_HEARTBEAT_INTERVAL = 30000;  // 30 seconds minimum heartbeat
+    const unsigned long FULL_STATUS_SYNC_INTERVAL = 300000;  // 5 minutes for full status sync
     
     bool cloudConnected = _cloudConnection && _cloudConnection->isConnected();
     bool cloudChanged = false;
     bool cloudHeartbeatDue = false;
+    ChangedFields cloudChangedFields;
     
     if (cloudConnected) {
         // Reset detector when cloud connection is established (ensures first update is sent)
@@ -234,6 +487,9 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
         lastCloudConnected = true;
         
         cloudChanged = cloudChangeDetector.hasChanged(state);
+        if (cloudChanged) {
+            cloudChangedFields = cloudChangeDetector.getChangedFields(state);
+        }
         unsigned long now = millis();
         cloudHeartbeatDue = (now - lastCloudHeartbeat >= CLOUD_HEARTBEAT_INTERVAL);
     } else {
@@ -242,15 +498,67 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     
     bool shouldSendToCloud = cloudConnected && (cloudChanged || cloudHeartbeatDue);
     
+    // Check local client changes
+    bool localChanged = false;
+    ChangedFields localChangedFields;
+    bool isFirstLocalMessage = false;
+    if (hasLocalClients) {
+        // Reset detector when local client connects (ensures first update is sent)
+        static bool lastHasLocalClients = false;
+        if (!lastHasLocalClients && hasLocalClients) {
+            localChangeDetector.reset();
+            isFirstLocalMessage = true;
+        }
+        lastHasLocalClients = hasLocalClients;
+        
+        localChanged = localChangeDetector.hasChanged(state, &localChangedFields);
+    }
+    
     // Early exit: only build JSON/MessagePack if we have local clients OR need to send to cloud
     if (!hasLocalClients && !shouldSendToCloud) {
         return;  // No one to send to, skip expensive JSON building
     }
     
+    // Sequence number for tracking updates and detecting missed messages
+    static uint32_t statusSequence = 0;
+    statusSequence++;
+    
+    // Decide: delta or full status?
+    // Send full status on:
+    // 1. Major state changes (machine_state changed)
+    // 2. Periodic sync (every 5 minutes)
+    // 3. First connection (client just connected)
+    // 4. Heartbeat (to ensure consistency)
+    unsigned long now = millis();
+    bool fullStatusSyncDue = (now - lastFullStatusSync >= FULL_STATUS_SYNC_INTERVAL);
+    bool majorStateChange = (cloudChanged && cloudChangedFields.machine_state) || 
+                           (localChanged && localChangedFields.machine_state);
+    bool sendFullStatus = majorStateChange || fullStatusSyncDue || cloudHeartbeatDue || isFirstLocalMessage;
+    
     // Clear the pre-allocated document for reuse
     g_statusDoc->clear();
     JsonDocument& doc = *g_statusDoc;
-    doc["type"] = "status";
+    
+    // Build delta or full status
+    if (!sendFullStatus && (cloudChanged || localChanged)) {
+        // Build delta status - use the changed fields from the appropriate detector
+        ChangedFields changed = hasLocalClients ? localChangedFields : cloudChangedFields;
+        if (buildDeltaStatus(state, changed, statusSequence, doc)) {
+            // Delta built successfully
+        } else {
+            // No changes detected, fall back to full status
+            sendFullStatus = true;
+        }
+    } else {
+        // Build full status
+        sendFullStatus = true;
+    }
+    
+    // If we decided to send full status, build it now
+    if (sendFullStatus) {
+        doc.clear();
+        doc["type"] = "status";
+        doc["seq"] = statusSequence;
     
     // Timestamps - track machine on time and last shot
     // Use Unix timestamps (milliseconds) for client compatibility
@@ -529,13 +837,19 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     mqtt["broker"] = brokerBuf;
     mqtt["topic"] = topicBuf;
     
-    // =========================================================================
-    // ESP32 Info
-    // =========================================================================
-    JsonObject esp32 = doc["esp32"].to<JsonObject>();
-    esp32["version"] = ESP32_VERSION;
-    esp32["freeHeap"] = ESP.getFreeHeap();
-    esp32["uptime"] = millis();
+        // =========================================================================
+        // ESP32 Info
+        // =========================================================================
+        JsonObject esp32 = doc["esp32"].to<JsonObject>();
+        esp32["version"] = ESP32_VERSION;
+        esp32["freeHeap"] = ESP.getFreeHeap();
+        esp32["uptime"] = millis();
+        
+        // Update full status sync timer
+        if (fullStatusSyncDue) {
+            lastFullStatusSync = now;
+        }
+    }
     
     // Serialize to MessagePack binary format (much smaller than JSON)
     // Only do this expensive operation if we actually need to send
@@ -557,7 +871,6 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
         // Send to cloud if status changed or heartbeat due
         if (shouldSendToCloud) {
             _cloudConnection->sendBinary(g_statusBuffer, msgpackSize);
-            lastCloudMsgpackSize = msgpackSize;
             if (cloudHeartbeatDue) {
                 lastCloudHeartbeat = millis();
             }

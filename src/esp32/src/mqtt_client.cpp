@@ -403,6 +403,11 @@ void MQTTClient::publishStatus(const ui_state_t& state) {
     StaticJsonDocument<1024> doc;
     #pragma GCC diagnostic pop
     
+    // Sequence number for tracking updates
+    static uint32_t mqttStatusSequence = 0;
+    mqttStatusSequence++;
+    doc["seq"] = mqttStatusSequence;
+    
     // Machine state - convert to string for HA templates
     const char* stateStr = "unknown";
     const char* modeStr = "standby";
@@ -473,6 +478,134 @@ void MQTTClient::publishStatus(const ui_state_t& state) {
         }
     } else {
         LOG_D("Published status to %s (%d bytes)", statusTopic.c_str(), len);
+    }
+    
+    xSemaphoreGive(_mutex);
+}
+
+void MQTTClient::publishStatusDelta(const ui_state_t& state, const ChangedFields& changed) {
+    // Thread-safe publish with connection check
+    if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return;
+    }
+    
+    // Check actual connection state
+    if (!_client.connected()) {
+        _connected = false;
+        xSemaphoreGive(_mutex);
+        return;
+    }
+    
+    // Build delta status JSON - only changed fields
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    StaticJsonDocument<512> doc;  // Smaller buffer for delta
+    #pragma GCC diagnostic pop
+    
+    // Sequence number (shared with full status)
+    static uint32_t mqttStatusSequence = 0;
+    mqttStatusSequence++;
+    doc["seq"] = mqttStatusSequence;
+    doc["type"] = "status_delta";
+    
+    // Machine state
+    if (changed.machine_state || changed.machine_mode) {
+        const char* stateStr = "unknown";
+        const char* modeStr = "standby";
+        switch (state.machine_state) {
+            case UI_STATE_INIT: stateStr = "init"; modeStr = "standby"; break;
+            case UI_STATE_IDLE: stateStr = "standby"; modeStr = "standby"; break;
+            case UI_STATE_HEATING: stateStr = "heating"; modeStr = "on"; break;
+            case UI_STATE_READY: stateStr = "ready"; modeStr = "on"; break;
+            case UI_STATE_BREWING: stateStr = "brewing"; modeStr = "on"; break;
+            case UI_STATE_FAULT: stateStr = "fault"; modeStr = "standby"; break;
+            case UI_STATE_SAFE: stateStr = "safe"; modeStr = "standby"; break;
+            case UI_STATE_ECO: stateStr = "eco"; modeStr = "eco"; break;
+        }
+        doc["state"] = stateStr;
+        doc["mode"] = modeStr;
+    }
+    
+    if (changed.heating_strategy) {
+        doc["heating_strategy"] = state.heating_strategy;
+    }
+    
+    // Temperatures
+    if (changed.temps) {
+        char tempBuf[16];
+        snprintf(tempBuf, sizeof(tempBuf), "%.1f", state.brew_temp);
+        doc["brew_temp"] = serialized(tempBuf);
+        snprintf(tempBuf, sizeof(tempBuf), "%.1f", state.brew_setpoint);
+        doc["brew_setpoint"] = serialized(tempBuf);
+        snprintf(tempBuf, sizeof(tempBuf), "%.1f", state.steam_temp);
+        doc["steam_temp"] = serialized(tempBuf);
+        snprintf(tempBuf, sizeof(tempBuf), "%.1f", state.steam_setpoint);
+        doc["steam_setpoint"] = serialized(tempBuf);
+    }
+    
+    // Pressure
+    if (changed.pressure) {
+        char tempBuf[16];
+        snprintf(tempBuf, sizeof(tempBuf), "%.2f", state.pressure);
+        doc["pressure"] = serialized(tempBuf);
+    }
+    
+    // Scale
+    if (changed.scale_weight || changed.scale_flow_rate) {
+        char tempBuf[16];
+        if (changed.scale_weight) {
+            snprintf(tempBuf, sizeof(tempBuf), "%.1f", state.brew_weight);
+            doc["scale_weight"] = serialized(tempBuf);
+        }
+        if (changed.scale_flow_rate) {
+            snprintf(tempBuf, sizeof(tempBuf), "%.1f", state.flow_rate);
+            doc["flow_rate"] = serialized(tempBuf);
+        }
+    }
+    
+    if (changed.scale_connected) {
+        doc["scale_connected"] = state.scale_connected;
+    }
+    
+    // Shot data
+    if (changed.is_brewing || changed.brew_time) {
+        doc["is_brewing"] = state.is_brewing;
+        if (state.is_brewing) {
+            doc["shot_duration"] = state.brew_time_ms / 1000.0f;
+            char tempBuf[16];
+            snprintf(tempBuf, sizeof(tempBuf), "%.1f", state.brew_weight);
+            doc["shot_weight"] = serialized(tempBuf);
+        }
+    }
+    
+    if (changed.target_weight) {
+        char tempBuf[16];
+        snprintf(tempBuf, sizeof(tempBuf), "%.1f", state.target_weight);
+        doc["target_weight"] = serialized(tempBuf);
+    }
+    
+    // Status flags
+    if (changed.is_heating) doc["is_heating"] = state.is_heating;
+    if (changed.water_low) doc["water_low"] = state.water_low;
+    if (changed.alarm) doc["alarm_active"] = state.alarm_active;
+    if (changed.connections) {
+        doc["pico_connected"] = state.pico_connected;
+        doc["wifi_connected"] = state.wifi_connected;
+    }
+    
+    // Serialize to stack buffer
+    char statusBuffer[512];
+    size_t len = serializeJson(doc, statusBuffer, sizeof(statusBuffer));
+    
+    // Publish to delta topic (non-retained)
+    String deltaTopic = topic("status/delta");
+    if (!_client.publish(deltaTopic.c_str(), (const uint8_t*)statusBuffer, len, false)) {
+        LOG_W("Failed to publish status delta");
+        if (!_client.connected()) {
+            _connected = false;
+        }
+    } else {
+        LOG_D("Published status delta to %s (%d bytes)", deltaTopic.c_str(), len);
     }
     
     xSemaphoreGive(_mutex);

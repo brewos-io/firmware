@@ -60,11 +60,14 @@ void BrewWebServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* 
                     _cloudConnection->pause();
                 }
                 
-                // Check if we have enough memory to send device info (needs ~3KB for JSON)
+                // Check if we have enough memory to send device info and status (needs ~3KB for JSON)
                 size_t freeHeap = ESP.getFreeHeap();
                 if (freeHeap > 10000) {
                     // Send device info immediately so UI has the saved settings
                     broadcastDeviceInfo();
+                    // Send full status on connect so client has complete state
+                    // This ensures client can apply delta updates correctly
+                    broadcastFullStatus(machineState);
                 } else {
                     LOG_W("Low memory (%zu bytes), deferring device info broadcast", freeHeap);
                     // Client will request full state later when memory is available
@@ -129,8 +132,8 @@ void BrewWebServer::processCommand(JsonDocument& doc) {
         LOG_I("Command: ping");
         _picoUart.sendPing();
     }
-    else if (type == "request_state") {
-        // Cloud client requesting full state - check heap first
+    else if (type == "request_state" || type == "request_full_status") {
+        // Client requesting full state (local WebSocket or cloud) - check heap first
         // We use pre-allocated PSRAM buffers, so we mainly need enough for the send queue
         size_t freeHeap = ESP.getFreeHeap();
         const size_t MIN_HEAP_FOR_STATE_BROADCAST = 35000;  // Need 35KB (state uses PSRAM buffers)
@@ -144,15 +147,18 @@ void BrewWebServer::processCommand(JsonDocument& doc) {
         
         if (freeHeap < MIN_HEAP_FOR_STATE_BROADCAST) {
             // Heap critically low - schedule deferred broadcast
-            LOG_W("Cloud: Scheduling deferred state broadcast (heap=%zu, need %zu)", 
+            LOG_W("Scheduling deferred state broadcast (heap=%zu, need %zu)", 
                   freeHeap, MIN_HEAP_FOR_STATE_BROADCAST);
             _pendingCloudStateBroadcast = true;
             _pendingCloudStateBroadcastTime = millis() + 3000;  // Try in 3 seconds
             return;
         }
         
-        LOG_I("Cloud: Sending full state to cloud client (heap=%zu)", freeHeap);
+        LOG_I("Sending full state to client (heap=%zu)", freeHeap);
         _pendingCloudStateBroadcast = false;
+        // Send full status and device info
+        // Note: broadcastFullStatus will send full status (not delta) on next call
+        // because the change detector will be reset or this is an explicit request
         broadcastFullStatus(machineState);
         broadcastDeviceInfo();
     }

@@ -1740,12 +1740,14 @@ void loop() {
         machineState.dose_weight = brewByWeight->getDoseWeight();
     }
     
-    // Publish MQTT status only when changes detected or on periodic heartbeat
-    // This reduces MQTT traffic while maintaining real-time updates
+    // Publish MQTT status with delta updates for efficiency
+    // Full status on major changes or periodic sync, delta for incremental changes
     static StatusChangeDetector mqttChangeDetector;
     static unsigned long lastMQTTHeartbeat = 0;
+    static unsigned long lastMQTTFullStatus = 0;
     static bool lastMQTTConnected = false;
     const unsigned long MQTT_HEARTBEAT_INTERVAL = 30000;  // 30 seconds minimum heartbeat
+    const unsigned long MQTT_FULL_STATUS_INTERVAL = 300000;  // 5 minutes for full status sync
     
     // Reset detector when MQTT connection is established (ensures first update is sent)
     bool mqttConnected = mqttClient && mqttClient->isConnected();
@@ -1756,11 +1758,30 @@ void loop() {
     
     if (mqttConnected) {
         bool hasChanged = mqttChangeDetector.hasChanged(machineState);
+        ChangedFields changedFields;
+        if (hasChanged) {
+            changedFields = mqttChangeDetector.getChangedFields(machineState);
+        }
+        
         unsigned long now = millis();
         bool heartbeatDue = (now - lastMQTTHeartbeat >= MQTT_HEARTBEAT_INTERVAL);
+        bool fullStatusDue = (now - lastMQTTFullStatus >= MQTT_FULL_STATUS_INTERVAL);
+        
+        // Send full status on: major state change, periodic sync, or heartbeat
+        bool majorStateChange = hasChanged && changedFields.machine_state;
+        bool sendFullStatus = majorStateChange || fullStatusDue || heartbeatDue;
         
         if (hasChanged || heartbeatDue) {
-            mqttClient->publishStatus(machineState);
+            if (sendFullStatus) {
+                mqttClient->publishStatus(machineState);
+                if (fullStatusDue) {
+                    lastMQTTFullStatus = now;
+                }
+            } else {
+                // Send delta update for incremental changes
+                mqttClient->publishStatusDelta(machineState, changedFields);
+            }
+            
             if (heartbeatDue) {
                 lastMQTTHeartbeat = now;
             }

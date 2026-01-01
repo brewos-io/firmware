@@ -29,6 +29,8 @@
 
 // Include power meter types
 #include "power_meter/power_meter.h"
+// Include status change detector for delta updates
+#include "utils/status_change_detector.h"
 
 // =============================================================================
 // MQTT Configuration Structure
@@ -113,9 +115,14 @@ public:
     void setEnabled(bool enabled);
     
     /**
-     * Publish machine status
+     * Publish machine status (full status)
      */
     void publishStatus(const ui_state_t& state);
+    
+    /**
+     * Publish delta status (only changed fields)
+     */
+    void publishStatusDelta(const ui_state_t& state, const ChangedFields& changed);
     
     /**
      * Publish shot data
