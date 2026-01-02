@@ -1115,32 +1115,42 @@ void setup() {
         }
     }
     
-    // If machine type is still unknown, request boot info from Pico
+    // If machine type or pico version is still unknown, request boot info from Pico
     // This handles the case where MSG_BOOT was missed (Pico was already running before ESP32)
-    if (picoConnected && State.getMachineType() == 0) {
-        Serial.println("Machine type unknown - requesting boot info from Pico...");
+    const char* picoVersion = State.getPicoVersion();
+    bool picoVersionUnknown = !picoVersion || picoVersion[0] == '\0';
+    if (picoConnected && (State.getMachineType() == 0 || picoVersionUnknown)) {
+        Serial.println("Machine type or pico version unknown - requesting boot info from Pico...");
         // Serial.flush(); // Removed - can block on USB CDC
         
         // Try multiple times since Pico might be busy
-        for (int attempt = 0; attempt < 5 && State.getMachineType() == 0; attempt++) {
+        for (int attempt = 0; attempt < 5 && (State.getMachineType() == 0 || picoVersionUnknown); attempt++) {
             if (picoUart->requestBootInfo()) {
                 // Wait up to 500ms for response, processing packets
-                for (int i = 0; i < 50 && State.getMachineType() == 0; i++) {
+                for (int i = 0; i < 50 && (State.getMachineType() == 0 || picoVersionUnknown); i++) {
                     delay(10);
                     picoUart->loop();
+                    // Re-check version after processing packets
+                    picoVersion = State.getPicoVersion();
+                    picoVersionUnknown = !picoVersion || picoVersion[0] == '\0';
                 }
             }
-            if (State.getMachineType() == 0) {
+            if (State.getMachineType() == 0 || picoVersionUnknown) {
                 Serial.printf("Attempt %d: No boot info received\n", attempt + 1);
                 // Serial.flush(); // Removed - can block on USB CDC
             }
         }
         
-        if (State.getMachineType() != 0) {
-            Serial.printf("Machine type received: %d\n", State.getMachineType());
+        if (State.getMachineType() != 0 && !picoVersionUnknown) {
+            Serial.printf("Machine type received: %d, Pico version: %s\n", State.getMachineType(), State.getPicoVersion());
         } else {
-            Serial.println("WARNING: Could not get machine type from Pico");
-            Serial.println("OTA updates will wait for Pico to report its type");
+            Serial.println("WARNING: Could not get complete boot info from Pico");
+            if (State.getMachineType() == 0) {
+                Serial.println("OTA updates will wait for Pico to report its type");
+            }
+            if (picoVersionUnknown) {
+                Serial.println("Pico version will remain unknown");
+            }
         }
         // Serial.flush(); // Removed - can block on USB CDC
     }
@@ -1641,35 +1651,59 @@ void loop() {
     // Update Pico connection status (no automatic demo mode - demo is web UI only)
     stateRef.pico_connected = picoConnected;
     
-    // If Pico is connected but machine type is unknown, request boot info
+    // If Pico is connected but machine type or version is unknown, request boot info
     // This handles the case where MSG_BOOT was missed (e.g., ESP32 rebooted while Pico was running)
     if (picoConnected) {
         static unsigned long lastBootInfoRequest = 0;
         static uint8_t bootInfoRequestCount = 0;
         const uint8_t MAX_BOOT_INFO_REQUESTS = 12;  // Try for 1 minute (12 * 5s = 60s)
         
-        if (State.getMachineType() == 0 && (millis() - lastBootInfoRequest > 5000)) {
+        const char* picoVersion = State.getPicoVersion();
+        bool picoVersionUnknown = !picoVersion || picoVersion[0] == '\0';
+        bool needsBootInfo = (State.getMachineType() == 0 || picoVersionUnknown);
+        
+        if (needsBootInfo && (millis() - lastBootInfoRequest > 5000)) {
             if (bootInfoRequestCount < MAX_BOOT_INFO_REQUESTS) {
                 bootInfoRequestCount++;
                 lastBootInfoRequest = millis();
-                LOG_W("Pico connected but machine type unknown - requesting boot info (%u/%u)...", 
-                      bootInfoRequestCount, MAX_BOOT_INFO_REQUESTS);
+                if (State.getMachineType() == 0 && picoVersionUnknown) {
+                    LOG_W("Pico connected but machine type and version unknown - requesting boot info (%u/%u)...", 
+                          bootInfoRequestCount, MAX_BOOT_INFO_REQUESTS);
+                } else if (State.getMachineType() == 0) {
+                    LOG_W("Pico connected but machine type unknown - requesting boot info (%u/%u)...", 
+                          bootInfoRequestCount, MAX_BOOT_INFO_REQUESTS);
+                } else {
+                    LOG_W("Pico connected but version unknown - requesting boot info (%u/%u)...", 
+                          bootInfoRequestCount, MAX_BOOT_INFO_REQUESTS);
+                }
                 if (picoUart->requestBootInfo()) {
                     delay(100);
                     picoUart->loop();
-                    if (State.getMachineType() != 0) {
-                        LOG_I("Machine type received: %d", State.getMachineType());
+                    // Re-check after processing
+                    picoVersion = State.getPicoVersion();
+                    picoVersionUnknown = !picoVersion || picoVersion[0] == '\0';
+                    if (State.getMachineType() != 0 && !picoVersionUnknown) {
+                        LOG_I("Boot info received: machine type=%d, version=%s", 
+                              State.getMachineType(), State.getPicoVersion());
                         bootInfoRequestCount = 0;  // Reset on success
                     }
                 }
             } else if (bootInfoRequestCount == MAX_BOOT_INFO_REQUESTS) {
                 // Only log once when we give up
                 bootInfoRequestCount++;  // Increment to prevent repeated warnings
-                LOG_E("Failed to get machine type from Pico after %u attempts. Giving up.", MAX_BOOT_INFO_REQUESTS);
-                LOG_W("Machine type will remain unknown. Some features may be limited.");
+                if (State.getMachineType() == 0 && picoVersionUnknown) {
+                    LOG_E("Failed to get machine type and version from Pico after %u attempts. Giving up.", MAX_BOOT_INFO_REQUESTS);
+                    LOG_W("Machine type and version will remain unknown. Some features may be limited.");
+                } else if (State.getMachineType() == 0) {
+                    LOG_E("Failed to get machine type from Pico after %u attempts. Giving up.", MAX_BOOT_INFO_REQUESTS);
+                    LOG_W("Machine type will remain unknown. Some features may be limited.");
+                } else {
+                    LOG_E("Failed to get pico version after %u attempts. Giving up.", MAX_BOOT_INFO_REQUESTS);
+                    LOG_W("Pico version will remain unknown.");
+                }
             }
-        } else if (State.getMachineType() != 0 && bootInfoRequestCount > 0) {
-            // Machine type was set (maybe from a spontaneous MSG_BOOT), reset counter
+        } else if (!needsBootInfo && bootInfoRequestCount > 0) {
+            // Boot info was received (maybe from a spontaneous MSG_BOOT), reset counter
             bootInfoRequestCount = 0;
         }
     }
