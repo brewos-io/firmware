@@ -26,10 +26,11 @@ extern BrewByWeight* brewByWeight;
 static SpiRamJsonDocument* g_statusDoc = nullptr;
 static uint8_t* g_statusBuffer = nullptr;  // Changed to uint8_t for binary MessagePack
 static const size_t STATUS_BUFFER_SIZE = 2048;  // Reduced - MessagePack is smaller
+static const size_t STATUS_DOC_SIZE = 8192;  // Increased to 8KB to prevent heap overflow
 
 void initBroadcastBuffers() {
     if (!g_statusDoc) {
-        g_statusDoc = new SpiRamJsonDocument(4096);  // JSON doc still needs 4KB
+        g_statusDoc = new SpiRamJsonDocument(STATUS_DOC_SIZE);  // 8KB to prevent heap overflow
     }
     if (!g_statusBuffer) {
         g_statusBuffer = (uint8_t*)psram_malloc(STATUS_BUFFER_SIZE);
@@ -921,6 +922,18 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
         if (fullStatusSyncDue) {
             lastFullStatusSync = now;
         }
+    }
+    
+    // Check for JSON overflow before serialization
+    size_t jsonSize = measureJson(doc);
+    size_t memoryUsed = doc.memoryUsage();
+    if (memoryUsed > STATUS_DOC_SIZE * 0.9) {  // Warn if using >90% of capacity
+        LOG_W("JSON document near capacity: %zu/%zu bytes (%.1f%%)", 
+              memoryUsed, (size_t)STATUS_DOC_SIZE, (memoryUsed * 100.0f) / STATUS_DOC_SIZE);
+    }
+    if (memoryUsed > STATUS_DOC_SIZE) {
+        LOG_E("JSON document overflow: %zu > %zu bytes - heap allocation likely!", 
+              memoryUsed, (size_t)STATUS_DOC_SIZE);
     }
     
     // Serialize to MessagePack binary format (much smaller than JSON)
