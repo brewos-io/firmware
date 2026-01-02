@@ -542,6 +542,13 @@ void CloudConnection::handleEvent(WStype_t type, uint8_t* payload, size_t length
                     LOG_W("Connection failed (reason: %s, length: %zu)", reason.c_str(), length);
                 }
                 
+                // CRITICAL: Explicitly disconnect to ensure SSL resources are cleaned up
+                // When server disconnects us (e.g., during deployment), the WebSocket client
+                // may not automatically free SSL buffers, causing memory leaks
+                // Note: This event handler is called from _ws.loop() which is already mutex-protected,
+                // so we can safely call disconnect() without taking the mutex again
+                _ws.disconnect();
+                
                 _connected = false;
                 _connecting = false;
                 _lastDisconnectTime = now;
