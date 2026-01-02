@@ -115,6 +115,31 @@ private:
     // WebSocket message handler (processes JSON commands)
     void handleWsMessage(uint32_t clientNum, uint8_t* payload, size_t length);
     
+    // WebSocket event helpers
+    void handleWsConnect(AsyncWebSocket* server, AsyncWebSocketClient* client);
+    void handleWsDisconnect(AsyncWebSocket* server, AsyncWebSocketClient* client);
+    void handleWsError(AsyncWebSocketClient* client, uint8_t* data, size_t len);
+    
+    // Command handlers - organized by category
+    void handleTemperatureCommand(JsonDocument& doc, const String& cmd);
+    void handleModeCommand(JsonDocument& doc, const String& cmd);
+    void handleMqttCommand(JsonDocument& doc, const String& cmd);
+    void handleCloudCommand(JsonDocument& doc, const String& cmd);
+    void handleScheduleCommand(JsonDocument& doc, const String& cmd);
+    void handleScaleCommand(JsonDocument& doc, const String& cmd);
+    void handleBrewByWeightCommand(JsonDocument& doc, const String& cmd);
+    void handlePreinfusionCommand(JsonDocument& doc, const String& cmd);
+    void handlePowerCommand(JsonDocument& doc, const String& cmd);
+    void handlePowerMeterCommand(JsonDocument& doc, const String& cmd);
+    void handleWiFiCommand(JsonDocument& doc, const String& cmd);
+    void handleSystemCommand(JsonDocument& doc, const String& cmd);
+    void handleOtaCommand(JsonDocument& doc, const String& cmd);
+    void handleMachineInfoCommand(JsonDocument& doc, const String& cmd);
+    void handlePreferencesCommand(JsonDocument& doc, const String& cmd);
+    void handleTimeCommand(JsonDocument& doc, const String& cmd);
+    void handleMaintenanceCommand(JsonDocument& doc, const String& cmd);
+    void handleDiagnosticsCommand(JsonDocument& doc, const String& cmd);
+    
     // Helpers
     String getContentType(const String& filename);
     bool streamFirmwareToPico(File& firmwareFile, size_t firmwareSize);
