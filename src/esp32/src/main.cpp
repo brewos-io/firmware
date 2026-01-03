@@ -405,9 +405,6 @@ static void onScheduleTriggered(const BrewOS::ScheduleEntry& schedule) {
 // =============================================================================
 
 static void onPicoPacket(const PicoPacket& packet) {
-    LOG_D("Pico packet: type=0x%02X, len=%d, seq=%d", 
-          packet.type, packet.length, packet.seq);
-    
     // NOTE: Raw Pico messages are NOT forwarded to WebSocket clients
     // The UI should use processed "status" messages instead, not low-level ESP32-Pico protocol
     // These messages are for ESP32-Pico communication only, not for the web UI
@@ -427,6 +424,27 @@ static void onPicoPacket(const PicoPacket& packet) {
     // Handle message types that are tightly coupled to main.cpp state
     // These remain in main.cpp for now but could be moved to handler in future refactoring
     switch (packet.type) {
+        
+        case MSG_ACK: {
+            // Command acknowledgment from Pico
+            if (packet.length >= 1) {
+                uint8_t resultCode = packet.payload[0];
+                // Only log non-success acknowledgments to reduce noise
+                if (resultCode != ACK_SUCCESS) {
+                    const char* errorMsg = "Unknown error";
+                    switch (resultCode) {
+                        case ACK_ERROR_INVALID:    errorMsg = "Invalid command"; break;
+                        case ACK_ERROR_REJECTED:   errorMsg = "Command rejected"; break;
+                        case ACK_ERROR_FAILED:    errorMsg = "Command failed"; break;
+                        case ACK_ERROR_TIMEOUT:   errorMsg = "Timeout"; break;
+                        case ACK_ERROR_BUSY:      errorMsg = "System busy"; break;
+                        case ACK_ERROR_NOT_READY: errorMsg = "Not ready"; break;
+                    }
+                    LOG_W("Pico ACK error: %s (code=0x%02X)", errorMsg, resultCode);
+                }
+            }
+            break;
+        }
         
         
         case MSG_ALARM: {
@@ -617,7 +635,9 @@ static void onPicoPacket(const PicoPacket& packet) {
         }
             
         default:
-            LOG_D("Unknown packet type: 0x%02X", packet.type);
+            // Only log unknown packet types (not every packet)
+            LOG_W("Unknown packet type: 0x%02X, len=%d, seq=%d", 
+                  packet.type, packet.length, packet.seq);
     }
 }
 
