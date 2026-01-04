@@ -15,7 +15,7 @@ Binary protocol for communication between the Pico (RP2350) and ESP32 display mo
 ## Design Principles
 
 1. **Simple** - Single unified status message with all data
-2. **Compact** - ~44 bytes per status update (vs ~250 for JSON)
+2. **Compact** - ~38 bytes per status update (vs ~250 for JSON)
 3. **Fast** - 921600 baud, sub-millisecond packet transmission
 4. **Reliable** - CRC16 integrity check, sequence numbers, automatic retry
 5. **Atomic** - Complete machine state in every packet
@@ -30,7 +30,7 @@ All packets follow this format:
 ```
 ┌───────┬──────────┬────────┬─────┬─────────────────┬───────────┐
 │ START │ MSG_TYPE │ LENGTH │ SEQ │     PAYLOAD     │   CRC16   │
-│ 1byte │  1byte   │ 1byte  │1byte│   0-56 bytes    │  2bytes   │
+│ 1byte │  1byte   │ 1byte  │1byte│   0-32 bytes    │  2bytes   │
 │ 0xAA  │          │        │     │                 │           │
 └───────┴──────────┴────────┴─────┴─────────────────┴───────────┘
 ```
@@ -39,12 +39,14 @@ All packets follow this format:
 | -------- | ---- | ----------------------------------------- |
 | START    | 1    | Sync byte, always `0xAA`                  |
 | MSG_TYPE | 1    | Message type identifier                   |
-| LENGTH   | 1    | Payload length in bytes (0-56)            |
+| LENGTH   | 1    | Payload length in bytes (0-32)            |
 | SEQ      | 1    | Sequence number (0-255, wraps)            |
-| PAYLOAD  | 0-56 | Message-specific data                     |
+| PAYLOAD  | 0-32 | Message-specific data                     |
 | CRC16    | 2    | CRC-16-CCITT over TYPE+LENGTH+SEQ+PAYLOAD |
 
-**Maximum packet size:** 62 bytes (4 header + 56 payload + 2 CRC)
+**Maximum packet size:** 38 bytes (4 header + 32 payload + 2 CRC)
+
+**Note:** Payload size was reduced from 56 to 32 bytes to save RAM. All payload structures must fit within this limit.
 
 ---
 
@@ -139,10 +141,14 @@ typedef struct __attribute__((packed)) {
     uint8_t water_level;        // 0-100%
     uint16_t power_watts;       // Current power draw (estimated)
     uint32_t uptime_ms;         // Milliseconds since boot
-} status_payload_t;  // 22 bytes
+    uint32_t shot_start_timestamp_ms;  // Brew start timestamp (milliseconds since boot, 0 if not brewing)
+    uint8_t heating_strategy;   // Current heating strategy (see HEAT_STRATEGY_* in protocol_defs.h)
+    uint8_t cleaning_reminder;  // 1 if cleaning reminder is due (brew_count >= threshold), 0 otherwise
+    uint16_t brew_count;        // Number of brews since last cleaning (for cleaning reminder)
+} status_payload_t;  // 32 bytes
 
-// Full packet: 4 (header) + 22 (payload) + 2 (CRC) = 28 bytes
-// TX time @ 921600 baud: 0.30ms
+// Full packet: 4 (header) + 32 (payload) + 2 (CRC) = 38 bytes
+// TX time @ 921600 baud: 0.41ms
 ```
 
 **flags bitmask:**
@@ -217,20 +223,31 @@ typedef struct __attribute__((packed)) {
 
 ### MSG_BOOT (0x03) - Pico → ESP32
 
-Sent once after successful initialization.
+Sent once after successful initialization. Contains firmware version, machine type, and PCB information.
 
 ```c
 typedef struct __attribute__((packed)) {
     uint8_t  version_major;      // Firmware version major
     uint8_t  version_minor;      // Firmware version minor
     uint8_t  version_patch;      // Firmware version patch
-    uint8_t  machine_type;      // Machine config enum (see MACHINE_TYPE_*)
-    uint8_t  pcb_type;          // PCB type (see PCB_TYPE_* in pcb_config.h)
+    uint8_t  machine_type;       // Machine config enum (see MACHINE_TYPE_*)
+    uint8_t  pcb_type;           // PCB type (see PCB_TYPE_* in pcb_config.h)
     uint8_t  pcb_version_major;  // PCB version major
-    uint8_t  pcb_version_minor;   // PCB version minor
+    uint8_t  pcb_version_minor;  // PCB version minor
     uint32_t reset_reason;       // Reset reason (future use)
 } boot_payload_t;  // 10 bytes
 ```
+
+**Machine Type Values:**
+| Value | Name | Description |
+|-------|------|-------------|
+| 0x00 | `MACHINE_TYPE_UNKNOWN` | Unknown/not configured |
+| 0x01 | `MACHINE_TYPE_DUAL_BOILER` | Dual boiler machine (e.g., ECM Synchronika, Profitec Pro 700) |
+| 0x02 | `MACHINE_TYPE_SINGLE_BOILER` | Single boiler machine (e.g., Rancilio Silvia, Gaggia Classic) |
+| 0x03 | `MACHINE_TYPE_HEAT_EXCHANGER` | Heat exchanger machine (e.g., E61 HX machines) |
+| 0x04 | `MACHINE_TYPE_THERMOBLOCK` | Thermoblock machine (future) |
+
+**Note:** Machine type is persisted on the Pico flash and survives firmware flashes. The value sent in `MSG_BOOT` comes from the persisted configuration (source of truth on Pico).
 
 **PCB Type Values:**
 | Value | Name | Description |
@@ -419,6 +436,7 @@ typedef struct __attribute__((packed)) {
 #define CONFIG_HEATING_STRATEGY  0x01   // Heating strategy (0-3)
 #define CONFIG_PREINFUSION       0x02   // Pre-infusion settings
 #define CONFIG_ENVIRONMENTAL     0x05   // Environmental electrical config (voltage, current limits)
+#define CONFIG_MACHINE_INFO      0x07   // Machine brand and model (source of truth on Pico)
 ```
 
 #### CONFIG_HEATING_STRATEGY (0x01)
@@ -482,6 +500,48 @@ cmd_config_t cmd = {
 ```
 
 **Note:** Environmental configuration is separate from machine configuration. Machine electrical specs (heater power ratings) are fixed per machine model and cannot be changed via protocol.
+
+#### CONFIG_MACHINE_INFO (0x07)
+
+Set machine brand and model identification. This information is persisted on the Pico as the source of truth and survives firmware flashes.
+
+```c
+typedef struct __attribute__((packed)) {
+    char brand[15];               // Machine brand (null-terminated, max 14 chars)
+    char model[16];               // Machine model (null-terminated, max 15 chars)
+} config_machine_info_t;  // 31 bytes
+```
+
+**Payload Structure:**
+
+- Total payload: 32 bytes (1 byte `config_type` + 31 bytes data)
+- `brand`: Up to 14 characters (15 bytes including null terminator)
+- `model`: Up to 15 characters (16 bytes including null terminator)
+
+**Usage:**
+
+- ESP32 sends `MSG_CMD_CONFIG` with `config_type = CONFIG_MACHINE_INFO`
+- Pico saves machine brand/model to flash (persisted across firmware flashes)
+- Pico responds with `MSG_ACK` (ACK_SUCCESS on success, ACK_ERROR_INVALID on failure)
+
+**Example:**
+
+```c
+// ESP32 → Pico: Set machine brand and model
+uint8_t payload[32];
+payload[0] = CONFIG_MACHINE_INFO;  // 0x07
+// Copy brand (max 14 chars) to payload[1-15]
+strncpy((char*)&payload[1], "ECM", 14);
+// Copy model (max 15 chars) to payload[16-31]
+strncpy((char*)&payload[16], "Synchronika", 15);
+```
+
+**Notes:**
+
+- Machine brand/model are persisted on the Pico flash and survive firmware updates
+- Pico is the source of truth for machine identification
+- ESP32 stores a backup copy but defers to Pico's values
+- Used for display purposes and device identification in cloud services
 
 ---
 
@@ -1013,7 +1073,7 @@ On Pico with dual-core:
 Hex dump of a typical MSG_STATUS packet:
 
 ```
-AA 01 26 2F                     # Header: START, TYPE=0x01, LEN=38, SEQ=47
+AA 01 20 2F                     # Header: START, TYPE=0x01, LEN=32, SEQ=47
 
 # Temperatures (6 bytes)
 A4 03                           # temp_brew = 932 (93.2°C)
@@ -1048,15 +1108,21 @@ D2 04 00 00                     # energy_wh = 1234 Wh
 32                              # frequency = 50 Hz
 62                              # power_factor = 98 (0.98)
 
-# System (4 bytes)
+# System & Additional Fields (18 bytes)
 40 42 0F 00                     # uptime_ms = 1000000
+00 00 00 00                     # shot_start_timestamp_ms = 0 (not brewing)
+01                              # heating_strategy = HEAT_SEQUENTIAL
+00                              # cleaning_reminder = 0 (not due)
+64 00                           # brew_count = 100
 
 # CRC (2 bytes)
 XX XX                           # CRC16
 ```
 
-**Total: 44 bytes** (4 header + 38 payload + 2 CRC)
-**TX time @ 921600 baud: 0.48ms**
+**Total: 38 bytes** (4 header + 32 payload + 2 CRC)
+**TX time @ 921600 baud: 0.41ms**
+
+**Note:** The example hex dump above is simplified. The actual `status_payload_t` structure is 32 bytes and includes all fields listed in the structure definition.
 
 ---
 

@@ -319,6 +319,7 @@ void handle_cmd_config(const packet_t* packet) {
         protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_SUCCESS);
         
     } else if (config_type == CONFIG_MACHINE_INFO) {
+        // Payload: 1 byte config_type + 31 bytes data (brand[15] + model[16])
         if (packet->length < sizeof(config_machine_info_t) + 1) {
             protocol_send_ack(MSG_CMD_CONFIG, packet->seq, ACK_ERROR_INVALID);
             return;

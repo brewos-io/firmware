@@ -1044,11 +1044,13 @@ void BrewWebServer::handleMachineInfoCommand(JsonDocument& doc, const String& cm
         currentModel[sizeof(currentModel) - 1] = '\0';
         
         // Prepare payload for CONFIG_MACHINE_INFO
-        uint8_t payload[33];  // 1 byte config_type + 32 bytes (16+16 for brand+model)
+        // Payload: 1 byte config_type + 31 bytes data (15+16 for brand+model)
+        // Total: 32 bytes (within PROTOCOL_MAX_PAYLOAD limit)
+        uint8_t payload[32];
         payload[0] = CONFIG_MACHINE_INFO;  // Machine brand and model
-        memset(&payload[1], 0, 32);  // Zero out string fields
-        strncpy((char*)&payload[1], currentBrand, 15);  // Brand (max 15 chars)
-        strncpy((char*)&payload[17], currentModel, 15);  // Model (max 15 chars)
+        memset(&payload[1], 0, 31);  // Zero out string fields
+        strncpy((char*)&payload[1], currentBrand, 14);  // Brand (max 14 chars, 15 bytes including null)
+        strncpy((char*)&payload[16], currentModel, 15);  // Model (max 15 chars, 16 bytes including null)
         
         if (_picoUart.sendCommand(MSG_CMD_CONFIG, payload, sizeof(payload))) {
             LOG_I("Sent machine info to Pico: %s %s", currentBrand, currentModel);

@@ -1059,7 +1059,11 @@ void BrewWebServer::broadcastDeviceInfo() {
     doc["deviceName"] = machineInfo.deviceName;
     doc["machineBrand"] = machineInfo.machineBrand;
     doc["machineModel"] = machineInfo.machineModel;
-    doc["machineType"] = machineInfo.machineType;
+    // Ensure machineType is never empty (default to "dual_boiler" if empty)
+    const char* machineTypeStr = (machineInfo.machineType[0] != '\0') 
+        ? machineInfo.machineType 
+        : "dual_boiler";
+    doc["machineType"] = machineTypeStr;
     doc["firmwareVersion"] = ESP32_VERSION;
     
     // Include power settings (from Pico via MSG_ENV_CONFIG - Pico is source of truth)

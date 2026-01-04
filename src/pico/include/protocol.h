@@ -189,10 +189,12 @@ typedef struct __attribute__((packed)) {
 } config_preinfusion_t;  // 5 bytes
 
 // CONFIG_MACHINE_INFO (0x07) payload (for MSG_CMD_CONFIG)
+// Note: config_type byte (0x07) is sent separately, so this struct is 31 bytes
+// to fit within 32-byte payload limit (1 byte config_type + 31 bytes data)
 typedef struct __attribute__((packed)) {
-    char brand[16];               // Machine brand (null-terminated, max 15 chars)
+    char brand[15];               // Machine brand (null-terminated, max 14 chars)
     char model[16];               // Machine model (null-terminated, max 15 chars)
-} config_machine_info_t;  // 32 bytes
+} config_machine_info_t;  // 31 bytes
 
 // MSG_ENV_CONFIG (0x08) payload - Environmental config response
 typedef struct __attribute__((packed)) {
@@ -329,6 +331,8 @@ _Static_assert(sizeof(config_environmental_t) <= PROTOCOL_MAX_PAYLOAD,
                "config_environmental_t exceeds PROTOCOL_MAX_PAYLOAD");
 _Static_assert(sizeof(config_preinfusion_t) <= PROTOCOL_MAX_PAYLOAD,
                "config_preinfusion_t exceeds PROTOCOL_MAX_PAYLOAD");
+_Static_assert(sizeof(config_machine_info_t) + 1 <= PROTOCOL_MAX_PAYLOAD,
+               "config_machine_info_t + config_type byte exceeds PROTOCOL_MAX_PAYLOAD");
 _Static_assert(sizeof(boot_payload_t) <= PROTOCOL_MAX_PAYLOAD,
                "boot_payload_t exceeds PROTOCOL_MAX_PAYLOAD");
 
