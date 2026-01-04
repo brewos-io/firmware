@@ -11,6 +11,7 @@
 #include "state/state_manager.h"
 #include "power_meter/power_meter_manager.h"
 #include "ui/ui.h"
+#include "esp32_diagnostics.h"
 #include <ArduinoJson.h>
 #include <stdarg.h>
 
@@ -1189,12 +1190,47 @@ void BrewWebServer::handleMaintenanceCommand(JsonDocument& doc, const String& cm
 
 void BrewWebServer::handleDiagnosticsCommand(JsonDocument& doc, const String& cmd) {
     if (cmd == "run_diagnostics") {
-        // Run all diagnostic tests
+        broadcastLogLevel("info", "Running hardware diagnostics...");
+        
+        // Run ESP32-side diagnostic tests first (GPIO19 and GPIO20)
+        LOG_I("Starting ESP32-side diagnostic tests: WEIGHT_STOP=0x%02X, PICO_RUN=0x%02X", 
+              DIAG_TEST_WEIGHT_STOP_OUTPUT, DIAG_TEST_PICO_RUN_OUTPUT);
+        uint8_t esp32Tests[] = { DIAG_TEST_WEIGHT_STOP_OUTPUT, DIAG_TEST_PICO_RUN_OUTPUT };
+        LOG_I("ESP32 tests array size: %zu", sizeof(esp32Tests) / sizeof(esp32Tests[0]));
+        for (size_t i = 0; i < sizeof(esp32Tests) / sizeof(esp32Tests[0]); i++) {
+            LOG_I("Running ESP32 test %zu: test_id=0x%02X (%d)", i, esp32Tests[i], esp32Tests[i]);
+            diag_result_t result;
+            uint8_t status = esp32_diagnostics_run_test(esp32Tests[i], &result, &_picoUart);
+            
+            LOG_I("ESP32 diagnostic test %d (0x%02X): status=%d, message=%s", 
+                  result.test_id, result.test_id, result.status, result.message);
+            
+            // Broadcast result in same format as Pico results
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            StaticJsonDocument<384> resultDoc;
+            #pragma GCC diagnostic pop
+            resultDoc["type"] = "diagnostics_result";
+            resultDoc["testId"] = result.test_id;
+            resultDoc["status"] = result.status;
+            resultDoc["rawValue"] = result.raw_value;
+            resultDoc["expectedMin"] = 0;
+            resultDoc["expectedMax"] = 0;
+            resultDoc["message"] = result.message;
+            
+            String jsonStr;
+            serializeJson(resultDoc, jsonStr);
+            LOG_I("Broadcasting ESP32 diagnostic result: %s", jsonStr.c_str());
+            broadcastRaw(jsonStr.c_str());
+            
+            delay(100);  // Delay to ensure WebSocket message is sent before next test
+        }
+        
+        // Then send command to Pico to run all diagnostics
         uint8_t payload[1] = { 0x00 };  // DIAG_TEST_ALL
         if (_picoUart.sendCommand(MSG_CMD_DIAGNOSTICS, payload, 1)) {
             // Send immediate ping to help with ping-pong test
             _picoUart.sendPing();
-            broadcastLogLevel("info", "Running hardware diagnostics...");
         } else {
             broadcastLogLevel("error", "Failed to start diagnostics");
         }

@@ -2005,10 +2005,14 @@ void BrewWebServer::setupRoutes() {
         broadcastLogLevel("info", "Running hardware diagnostics...");
         
         // Run ESP32-side diagnostic tests first (GPIO19 and GPIO20)
+        LOG_I("Starting ESP32-side diagnostic tests: WEIGHT_STOP=0x%02X, PICO_RUN=0x%02X", 
+              DIAG_TEST_WEIGHT_STOP_OUTPUT, DIAG_TEST_PICO_RUN_OUTPUT);
         uint8_t esp32Tests[] = { DIAG_TEST_WEIGHT_STOP_OUTPUT, DIAG_TEST_PICO_RUN_OUTPUT };
+        LOG_I("ESP32 tests array size: %zu", sizeof(esp32Tests) / sizeof(esp32Tests[0]));
         for (size_t i = 0; i < sizeof(esp32Tests) / sizeof(esp32Tests[0]); i++) {
+            LOG_I("Running ESP32 test %zu: test_id=0x%02X (%d)", i, esp32Tests[i], esp32Tests[i]);
             diag_result_t result;
-            uint8_t status = esp32_diagnostics_run_test(esp32Tests[i], &result);
+            uint8_t status = esp32_diagnostics_run_test(esp32Tests[i], &result, &_picoUart);
             
             LOG_I("ESP32 diagnostic test %d (0x%02X): status=%d, message=%s", 
                   result.test_id, result.test_id, result.status, result.message);
@@ -2064,7 +2068,7 @@ void BrewWebServer::setupRoutes() {
             if (esp32_diagnostics_is_esp32_test(testId)) {
                 // Run ESP32-side test locally
                 diag_result_t result;
-                uint8_t status = esp32_diagnostics_run_test(testId, &result);
+                uint8_t status = esp32_diagnostics_run_test(testId, &result, &_picoUart);
                 
                 // Return result as JSON
                 #pragma GCC diagnostic push

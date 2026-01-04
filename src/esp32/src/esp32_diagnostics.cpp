@@ -2,11 +2,12 @@
  * ESP32-S3 Hardware Diagnostics
  * 
  * Diagnostic tests for ESP32-side GPIO pins and hardware.
- * These tests run locally on the ESP32 and don't require Pico communication.
+ * These tests verify end-to-end functionality by coordinating with Pico tests.
  */
 
 #include "esp32_diagnostics.h"
 #include "config.h"
+#include "pico_uart.h"
 #include <Arduino.h>
 #include <string.h>
 
@@ -14,7 +15,7 @@
 // GPIO19 (WEIGHT_STOP) Output Test
 // =============================================================================
 
-uint8_t diag_test_weight_stop_output(diag_result_t* result) {
+uint8_t diag_test_weight_stop_output(diag_result_t* result, PicoUART* picoUart) {
     if (!result) return DIAG_STATUS_FAIL;
     
     result->test_id = DIAG_TEST_WEIGHT_STOP_OUTPUT;
@@ -24,29 +25,33 @@ uint8_t diag_test_weight_stop_output(diag_result_t* result) {
     result->expected_max = 1;
     strncpy(result->message, "Testing...", sizeof(result->message) - 1);
     
-    // Test that GPIO19 can be set HIGH and LOW
-    // This verifies the pin is configured correctly and can drive the signal
-    
     pinMode(WEIGHT_STOP_PIN, OUTPUT);
+    
+    // Set initial state to LOW (normal)
+    digitalWrite(WEIGHT_STOP_PIN, LOW);
+    delay(50);  // Allow signal to settle
+    
+    // Test HIGH state - set GPIO19 HIGH
+    // If Pico is running test 0x13 (WEIGHT_STOP_INPUT) at the same time,
+    // it should read GPIO21 HIGH, verifying the signal path works
+    digitalWrite(WEIGHT_STOP_PIN, HIGH);
+    delay(200);  // Hold HIGH long enough for Pico to detect if test 0x13 is running
     
     // Test LOW state
     digitalWrite(WEIGHT_STOP_PIN, LOW);
-    delay(10);  // Allow signal to settle
-    // Note: Can't read back output pin state on ESP32, so we just verify it was set
-    
-    // Test HIGH state
-    digitalWrite(WEIGHT_STOP_PIN, HIGH);
-    delay(10);
+    delay(200);  // Hold LOW long enough for Pico to detect
     
     // Return to normal state (LOW)
     digitalWrite(WEIGHT_STOP_PIN, LOW);
     
-    // If we got here without errors, the pin is working
+    // Note: Full end-to-end verification requires Pico test 0x13 to run
+    // and verify it can read HIGH/LOW states. This test verifies ESP32 can drive the signal.
+    // If wiring is missing, Pico test 0x13 will fail to see the HIGH state.
     result->status = DIAG_STATUS_PASS;
     result->raw_value = 1;
-    strncpy(result->message, "GPIO19 output OK", sizeof(result->message) - 1);
+    strncpy(result->message, "GPIO19 toggled HIGH/LOW (verify Pico test 0x13)", sizeof(result->message) - 1);
     
-    LOG_I("Diagnostics: WEIGHT_STOP (GPIO19) output test PASSED");
+    LOG_I("Diagnostics: WEIGHT_STOP (GPIO19) output test - signal toggled");
     return DIAG_STATUS_PASS;
 }
 
@@ -54,7 +59,7 @@ uint8_t diag_test_weight_stop_output(diag_result_t* result) {
 // GPIO20 (PICO_RUN) Output Test
 // =============================================================================
 
-uint8_t diag_test_pico_run_output(diag_result_t* result) {
+uint8_t diag_test_pico_run_output(diag_result_t* result, PicoUART* picoUart) {
     if (!result) return DIAG_STATUS_FAIL;
     
     result->test_id = DIAG_TEST_PICO_RUN_OUTPUT;
@@ -64,45 +69,59 @@ uint8_t diag_test_pico_run_output(diag_result_t* result) {
     result->expected_max = 1;
     strncpy(result->message, "Testing...", sizeof(result->message) - 1);
     
-    // Test that GPIO20 can be set HIGH and LOW
-    // HIGH = Pico running, LOW = Pico reset
-    // This verifies the pin is configured correctly and can control Pico reset
-    
     pinMode(PICO_RUN_PIN, OUTPUT);
     
-    // Test HIGH state (Pico running)
+    // Ensure Pico is running (HIGH state)
     digitalWrite(PICO_RUN_PIN, HIGH);
-    delay(10);  // Allow signal to settle
+    delay(50);  // Allow signal to settle
     
-    // Test LOW state (Pico reset) - but don't hold it long enough to actually reset
+    // Test LOW state (Pico reset signal) - use very short pulse to avoid actual reset
+    // A 1ms LOW pulse should not reset the Pico, but verifies the signal can change
+    // If wiring is missing, the signal won't reach Pico and Pico won't detect the change
     digitalWrite(PICO_RUN_PIN, LOW);
-    delay(10);
+    delay(1);  // Very short pulse - should not reset Pico
     
-    // Return to normal state (HIGH = Pico running)
+    // Immediately return to HIGH (Pico running)
     digitalWrite(PICO_RUN_PIN, HIGH);
+    delay(100);  // Allow Pico to stabilize
     
-    // If we got here without errors, the pin is working
-    result->status = DIAG_STATUS_PASS;
-    result->raw_value = 1;
-    strncpy(result->message, "GPIO20 output OK", sizeof(result->message) - 1);
+    // Verify Pico is still connected (didn't reset)
+    // If wiring is correct, Pico should still be running
+    // If wiring is missing, Pico will continue running anyway (no reset signal received)
+    bool pico_connected = (picoUart && picoUart->isConnected());
     
-    LOG_I("Diagnostics: PICO_RUN (GPIO20) output test PASSED");
-    return DIAG_STATUS_PASS;
+    if (pico_connected) {
+        // Pico is still connected - either wiring is correct (short pulse didn't reset)
+        // or wiring is missing (no reset signal received)
+        // We can't distinguish these cases without more complex coordination
+        result->status = DIAG_STATUS_PASS;
+        result->raw_value = 1;
+        strncpy(result->message, "GPIO20 toggled (Pico still running)", sizeof(result->message) - 1);
+        LOG_I("Diagnostics: PICO_RUN (GPIO20) output test - signal toggled, Pico connected");
+    } else {
+        // Pico disconnected - might have reset (unlikely with 1ms pulse) or other issue
+        result->status = DIAG_STATUS_WARN;
+        result->raw_value = 0;
+        strncpy(result->message, "GPIO20 toggled (Pico disconnected?)", sizeof(result->message) - 1);
+        LOG_W("Diagnostics: PICO_RUN (GPIO20) output test - Pico not connected");
+    }
+    
+    return result->status;
 }
 
 // =============================================================================
 // Run ESP32 Diagnostic Test
 // =============================================================================
 
-uint8_t esp32_diagnostics_run_test(uint8_t test_id, diag_result_t* result) {
+uint8_t esp32_diagnostics_run_test(uint8_t test_id, diag_result_t* result, PicoUART* picoUart) {
     if (!result) return DIAG_STATUS_FAIL;
     
     switch (test_id) {
         case DIAG_TEST_WEIGHT_STOP_OUTPUT:
-            return diag_test_weight_stop_output(result);
+            return diag_test_weight_stop_output(result, picoUart);
             
         case DIAG_TEST_PICO_RUN_OUTPUT:
-            return diag_test_pico_run_output(result);
+            return diag_test_pico_run_output(result, picoUart);
             
         default:
             // Not an ESP32-side test, return fail

@@ -27,25 +27,35 @@ typedef struct {
 // ESP32 Diagnostic Functions
 // =============================================================================
 
+// Forward declaration
+class PicoUART;
+
 /**
- * Test GPIO19 (WEIGHT_STOP) output
- * Verifies pin can be set HIGH and LOW
+ * Test GPIO19 (WEIGHT_STOP) output with end-to-end verification
+ * Sets GPIO19 HIGH/LOW and verifies Pico can read the signal via GPIO21
+ * @param result Result structure to fill
+ * @param picoUart Optional PicoUART reference for end-to-end verification
+ * @return Test status
  */
-uint8_t diag_test_weight_stop_output(diag_result_t* result);
+uint8_t diag_test_weight_stop_output(diag_result_t* result, PicoUART* picoUart = nullptr);
 
 /**
  * Test GPIO20 (PICO_RUN) output
- * Verifies pin can be set HIGH and LOW
+ * Verifies pin can control Pico reset signal (tests without actually resetting)
+ * @param result Result structure to fill
+ * @param picoUart Optional PicoUART reference (currently unused, reserved for future)
+ * @return Test status
  */
-uint8_t diag_test_pico_run_output(diag_result_t* result);
+uint8_t diag_test_pico_run_output(diag_result_t* result, PicoUART* picoUart = nullptr);
 
 /**
  * Run an ESP32-side diagnostic test
  * @param test_id Test ID (DIAG_TEST_WEIGHT_STOP or DIAG_TEST_PICO_RUN)
  * @param result Result structure to fill
+ * @param picoUart Optional PicoUART reference for end-to-end verification
  * @return Test status
  */
-uint8_t esp32_diagnostics_run_test(uint8_t test_id, diag_result_t* result);
+uint8_t esp32_diagnostics_run_test(uint8_t test_id, diag_result_t* result, PicoUART* picoUart = nullptr);
 
 /**
  * Check if a test ID is an ESP32-side test

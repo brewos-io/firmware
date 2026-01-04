@@ -727,29 +727,59 @@ uint8_t diag_test_weight_stop_input(diag_result_t* result) {
         return result->status;
     }
     
-    // Read current state of GPIO21 (WEIGHT_STOP input)
-    // This pin should normally be LOW (pull-down on Pico side)
-    // ESP32 GPIO19 drives this signal HIGH when weight target is reached
-    bool current_state = hw_read_gpio(pcb->pins.input_weight_stop);
+    // Read GPIO21 (WEIGHT_STOP input) multiple times to detect signal changes
+    // ESP32 GPIO19 drives this signal - if ESP32 test 0x11 is running,
+    // it will toggle GPIO19 HIGH/LOW, and we should detect the changes
     
-    // Test that we can read the pin (basic functionality test)
-    // For full end-to-end test, ESP32 would need to toggle GPIO19
-    // This test verifies the pin is configured and readable
-    if (current_state) {
-        // Pin is HIGH - could be ESP32 is signaling, or wiring issue
-        set_result(result, DIAG_STATUS_WARN, "Pin reads HIGH (check ESP32 signal)");
-        result->raw_value = 1;
-    } else {
-        // Pin is LOW - normal state (ESP32 GPIO19 should be LOW)
-        set_result(result, DIAG_STATUS_PASS, "Pin reads LOW (normal)");
-        result->raw_value = 0;
+    // Sample the pin multiple times over ~400ms to catch ESP32 test signal
+    // ESP32 test holds HIGH for 200ms, then LOW for 200ms
+    bool saw_low = false;
+    bool saw_high = false;
+    uint32_t start_time = to_ms_since_boot(get_absolute_time());
+    uint32_t sample_duration_ms = 500;  // Sample for 500ms to catch ESP32 test
+    
+    for (uint32_t elapsed = 0; elapsed < sample_duration_ms; elapsed = to_ms_since_boot(get_absolute_time()) - start_time) {
+        bool current_state = hw_read_gpio(pcb->pins.input_weight_stop);
+        if (current_state) {
+            saw_high = true;
+        } else {
+            saw_low = true;
+        }
+        sleep_ms(10);  // Sample every 10ms
     }
     
     result->expected_min = 0;
     result->expected_max = 1;
     
-    DEBUG_PRINT("WEIGHT_STOP input (GPIO%d): state=%d\n", 
-                pcb->pins.input_weight_stop, current_state);
+    // Evaluate results
+    if (saw_high && saw_low) {
+        // Detected both HIGH and LOW states - wiring is correct!
+        // ESP32 successfully drove the signal and Pico can read it
+        set_result(result, DIAG_STATUS_PASS, "Signal detected HIGH and LOW");
+        result->raw_value = 1;
+        DEBUG_PRINT("WEIGHT_STOP input (GPIO%d): PASS - detected signal changes\n", 
+                    pcb->pins.input_weight_stop);
+    } else if (saw_high && !saw_low) {
+        // Only saw HIGH - might be stuck HIGH or ESP32 is holding it HIGH
+        set_result(result, DIAG_STATUS_WARN, "Pin stuck HIGH (check wiring)");
+        result->raw_value = 1;
+        DEBUG_PRINT("WEIGHT_STOP input (GPIO%d): WARN - only HIGH detected\n", 
+                    pcb->pins.input_weight_stop);
+    } else if (!saw_high && saw_low) {
+        // Only saw LOW - normal state, but didn't detect ESP32 test signal
+        // This could mean: wiring missing, ESP32 test didn't run, or timing mismatch
+        set_result(result, DIAG_STATUS_WARN, "No HIGH detected (check wiring/ESP32 test)");
+        result->raw_value = 0;
+        DEBUG_PRINT("WEIGHT_STOP input (GPIO%d): WARN - only LOW detected\n", 
+                    pcb->pins.input_weight_stop);
+    } else {
+        // Shouldn't happen, but handle it
+        set_result(result, DIAG_STATUS_FAIL, "Pin unreadable");
+        result->raw_value = -1;
+        DEBUG_PRINT("WEIGHT_STOP input (GPIO%d): FAIL - pin unreadable\n", 
+                    pcb->pins.input_weight_stop);
+    }
+    
     return result->status;
 }
 
