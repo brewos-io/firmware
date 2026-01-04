@@ -2010,6 +2010,9 @@ void BrewWebServer::setupRoutes() {
             diag_result_t result;
             uint8_t status = esp32_diagnostics_run_test(esp32Tests[i], &result);
             
+            LOG_I("ESP32 diagnostic test %d (0x%02X): status=%d, message=%s", 
+                  result.test_id, result.test_id, result.status, result.message);
+            
             // Broadcast result in same format as Pico results
             #pragma GCC diagnostic push
             #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -2025,9 +2028,10 @@ void BrewWebServer::setupRoutes() {
             
             String jsonStr;
             serializeJson(doc, jsonStr);
+            LOG_I("Broadcasting ESP32 diagnostic result: %s", jsonStr.c_str());
             broadcastRaw(jsonStr.c_str());
             
-            delay(50);  // Small delay between tests
+            delay(100);  // Delay to ensure WebSocket message is sent before next test
         }
         
         // Then send command to Pico to run all diagnostics
@@ -2986,6 +2990,22 @@ void BrewWebServer::handleSetMQTTConfig(AsyncWebServerRequest* request, uint8_t*
     if (!doc["ha_device_id"].isNull()) strncpy(config.ha_device_id, doc["ha_device_id"].as<const char*>(), sizeof(config.ha_device_id) - 1);
     
     if (_mqttClient.setConfig(config)) {
+        // Also update StateManager to keep both storage locations in sync
+        // This prevents settings from being lost on reboot (StateManager loads first and overwrites MQTTClient)
+        auto& mqttSettings = State.settings().mqtt;
+        mqttSettings.enabled = config.enabled;
+        strncpy(mqttSettings.broker, config.broker, sizeof(mqttSettings.broker) - 1);
+        mqttSettings.broker[sizeof(mqttSettings.broker) - 1] = '\0';
+        mqttSettings.port = config.port;
+        strncpy(mqttSettings.username, config.username, sizeof(mqttSettings.username) - 1);
+        mqttSettings.username[sizeof(mqttSettings.username) - 1] = '\0';
+        strncpy(mqttSettings.password, config.password, sizeof(mqttSettings.password) - 1);
+        mqttSettings.password[sizeof(mqttSettings.password) - 1] = '\0';
+        strncpy(mqttSettings.baseTopic, config.topic_prefix, sizeof(mqttSettings.baseTopic) - 1);
+        mqttSettings.baseTopic[sizeof(mqttSettings.baseTopic) - 1] = '\0';
+        mqttSettings.discovery = config.ha_discovery;
+        State.saveMQTTSettings();  // Persist to NVS "settings" namespace
+        
         request->send(200, "application/json", "{\"status\":\"ok\"}");
         broadcastLogLevel("info", "MQTT configuration updated");
     } else {

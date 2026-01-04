@@ -564,6 +564,22 @@ void BrewWebServer::handleMqttCommand(JsonDocument& doc, const String& cmd) {
         if (!doc["discovery"].isNull()) config.ha_discovery = doc["discovery"].as<bool>();
         
         if (_mqttClient.setConfig(config)) {
+            // Also update StateManager to keep both storage locations in sync
+            // This prevents settings from being lost on reboot (StateManager loads first and overwrites MQTTClient)
+            auto& mqttSettings = State.settings().mqtt;
+            mqttSettings.enabled = config.enabled;
+            strncpy(mqttSettings.broker, config.broker, sizeof(mqttSettings.broker) - 1);
+            mqttSettings.broker[sizeof(mqttSettings.broker) - 1] = '\0';
+            mqttSettings.port = config.port;
+            strncpy(mqttSettings.username, config.username, sizeof(mqttSettings.username) - 1);
+            mqttSettings.username[sizeof(mqttSettings.username) - 1] = '\0';
+            strncpy(mqttSettings.password, config.password, sizeof(mqttSettings.password) - 1);
+            mqttSettings.password[sizeof(mqttSettings.password) - 1] = '\0';
+            strncpy(mqttSettings.baseTopic, config.topic_prefix, sizeof(mqttSettings.baseTopic) - 1);
+            mqttSettings.baseTopic[sizeof(mqttSettings.baseTopic) - 1] = '\0';
+            mqttSettings.discovery = config.ha_discovery;
+            State.saveMQTTSettings();  // Persist to NVS "settings" namespace
+            
             broadcastLogLevel("info", "MQTT configuration updated");
             
             // Broadcast updated MQTT status to all clients
