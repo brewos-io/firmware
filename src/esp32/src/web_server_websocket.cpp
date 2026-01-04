@@ -1176,6 +1176,8 @@ void BrewWebServer::handleDiagnosticsCommand(JsonDocument& doc, const String& cm
         // Run all diagnostic tests
         uint8_t payload[1] = { 0x00 };  // DIAG_TEST_ALL
         if (_picoUart.sendCommand(MSG_CMD_DIAGNOSTICS, payload, 1)) {
+            // Send immediate ping to help with ping-pong test
+            _picoUart.sendPing();
             broadcastLogLevel("info", "Running hardware diagnostics...");
         } else {
             broadcastLogLevel("error", "Failed to start diagnostics");
@@ -1186,6 +1188,8 @@ void BrewWebServer::handleDiagnosticsCommand(JsonDocument& doc, const String& cm
         uint8_t testId = doc["testId"] | 0;
         uint8_t payload[1] = { testId };
         if (_picoUart.sendCommand(MSG_CMD_DIAGNOSTICS, payload, 1)) {
+            // Send immediate ping to help with ping-pong test (especially for ESP32 comm test)
+            _picoUart.sendPing();
             broadcastLog("Running diagnostic test %d", testId);
         } else {
             broadcastLogLevel("error", "Failed to start diagnostic test");

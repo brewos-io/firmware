@@ -667,6 +667,10 @@ bool safety_esp32_connected(void) {
     return (now - g_last_esp32_heartbeat) < SAFETY_HEARTBEAT_TIMEOUT_MS;
 }
 
+uint32_t safety_get_last_heartbeat_time(void) {
+    return g_last_esp32_heartbeat;
+}
+
 bool safety_is_defensive_mode(void) {
     return g_defensive_mode;
 }

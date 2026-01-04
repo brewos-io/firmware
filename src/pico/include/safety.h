@@ -64,6 +64,9 @@ void safety_esp32_heartbeat(void);
 // Check if ESP32 is connected
 bool safety_esp32_connected(void);
 
+// Get last heartbeat timestamp (for diagnostics)
+uint32_t safety_get_last_heartbeat_time(void);
+
 // Check if in defensive mode (ESP32 not connected, machine forced to IDLE)
 bool safety_is_defensive_mode(void);
 
