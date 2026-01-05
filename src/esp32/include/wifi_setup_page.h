@@ -51,7 +51,7 @@ const char WIFI_SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
           0 0 0 1px rgba(186, 132, 86, 0.1);
         max-width: 420px;
         width: 100%;
-        padding: 40px 32px;
+        padding: 40px 24px;
         position: relative;
         overflow: hidden;
       }
@@ -126,7 +126,6 @@ const char WIFI_SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s;
-        text-transform: uppercase;
         letter-spacing: 0.5px;
       }
       .btn:hover {
@@ -262,6 +261,50 @@ const char WIFI_SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
         background: linear-gradient(90deg, transparent, #3d2e24, transparent);
         margin: 24px 0;
       }
+      .button-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .button-row .btn {
+        flex: 1;
+        width: auto;
+      }
+      .btn-icon {
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        padding: 0;
+        background: #2d241e;
+        color: #c4b5a9;
+        border: 1px solid #3d2e24;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .btn-icon:hover:not(:disabled) {
+        background: #3d2e24;
+        border-color: #ba8456;
+        color: #ba8456;
+      }
+      .btn-icon:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-icon svg {
+        width: 20px;
+        height: 20px;
+        transform-origin: center;
+      }
+      .btn-icon.scanning svg {
+        animation: spin 1s linear infinite;
+      }
+      .btn-icon:disabled svg {
+        opacity: 0.6;
+      }
     </style>
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
@@ -329,27 +372,46 @@ const char WIFI_SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
                 d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"
               />
             </svg>
-            <p>Tap "Scan" to find networks</p>
+            <p>Tap the scan icon to find networks</p>
           </div>
         </div>
       </div>
-
-      <button id="scanBtn" class="btn btn-secondary" onclick="scanNetworks()">
-        <span id="scanSpinner" class="spinner" style="display: none"></span>
-        <span id="scanText">Scan for Networks</span>
-      </button>
-
-      <div class="divider"></div>
 
       <div class="form-group" id="passwordGroup" style="display: none">
         <label>WiFi Password</label>
         <input type="password" id="password" placeholder="Enter password" />
       </div>
 
-      <button id="connectBtn" class="btn" onclick="connectWiFi()" disabled>
-        <span id="connectSpinner" class="spinner" style="display: none"></span>
-        <span id="connectText">Connect to Network</span>
-      </button>
+      <div class="button-row">
+        <button
+          id="scanBtn"
+          class="btn-icon"
+          onclick="scanNetworks()"
+          title="Scan for networks"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+            <path d="M3 21v-5h5" />
+          </svg>
+        </button>
+        <button id="connectBtn" class="btn" onclick="connectWiFi()" disabled>
+          <span
+            id="connectSpinner"
+            class="spinner"
+            style="display: none"
+          ></span>
+          <span id="connectText">Connect</span>
+        </button>
+      </div>
 
       <div id="status" class="status"></div>
     </div>
@@ -385,13 +447,10 @@ const char WIFI_SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
 
       async function scanNetworks() {
         const btn = document.getElementById("scanBtn");
-        const spinner = document.getElementById("scanSpinner");
-        const text = document.getElementById("scanText");
         const list = document.getElementById("networkList");
 
         btn.disabled = true;
-        spinner.style.display = "inline-block";
-        text.textContent = "Scanning...";
+        btn.classList.add("scanning");
         hideStatus();
 
         try {
@@ -435,8 +494,7 @@ const char WIFI_SETUP_PAGE_HTML[] PROGMEM = R"rawliteral(
         }
 
         btn.disabled = false;
-        spinner.style.display = "none";
-        text.textContent = "Scan for Networks";
+        btn.classList.remove("scanning");
       }
 
       function selectNetwork(ssid, secure, element) {
