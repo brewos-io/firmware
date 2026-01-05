@@ -688,6 +688,39 @@ void WiFiManager::syncNTP() {
     xQueueSend(_commandQueue, &cmd, pdMS_TO_TICKS(1000));
 }
 
+// Static task function to check NTP sync completion
+static void checkNtpSyncTask(void* parameter) {
+    WiFiManager* manager = static_cast<WiFiManager*>(parameter);
+    
+    // Check after 5 seconds
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    bool synced = manager->isTimeSynced();
+    
+    if (synced) {
+        TimeStatus status = manager->getTimeStatus();
+        LOG_I("NTP sync completed successfully. Current time: %s, Timezone: %s", 
+              status.currentTime.c_str(), status.timezone.c_str());
+        vTaskDelete(nullptr);
+        return;
+    }
+    
+    // If not synced after 5s, wait another 5s and check again
+    LOG_D("NTP sync still in progress, checking again in 5 seconds...");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    synced = manager->isTimeSynced();
+    
+    if (synced) {
+        TimeStatus status = manager->getTimeStatus();
+        LOG_I("NTP sync completed successfully (after 10s). Current time: %s, Timezone: %s", 
+              status.currentTime.c_str(), status.timezone.c_str());
+    } else {
+        LOG_W("NTP sync failed or timed out. Time not synchronized. Check WiFi connection and NTP server.");
+    }
+    
+    // Task completes and cleans up
+    vTaskDelete(nullptr);
+}
+
 void WiFiManager::doSyncNTP() {
     if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
         return;
@@ -726,6 +759,18 @@ void WiFiManager::doSyncNTP() {
     configTzTime(tzStr, serverCopy);
     
     LOG_I("NTP sync started, timezone: %s", tzStr);
+    
+    // Create a task to check sync completion after delay
+    // This task will self-delete after checking
+    xTaskCreatePinnedToCore(
+        checkNtpSyncTask,
+        "checkNtpSync",
+        2048,  // Stack size
+        this,  // Pass WiFiManager instance
+        1,     // Low priority
+        nullptr, // Don't store handle (task self-deletes)
+        WIFI_TASK_CORE
+    );
 }
 
 bool WiFiManager::isTimeSynced() {
