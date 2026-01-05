@@ -171,6 +171,12 @@ private:
     void writeToBuffer(const char* data, size_t len);
     const char* levelToString(BrewOSLogLevel level);
     const char* sourceToString(LogSource source);
+    
+    /**
+     * Get logs without acquiring mutex (assumes caller already has mutex)
+     * Internal helper for saveToFlash() to avoid deadlock
+     */
+    String getLogsUnsafe();
 };
 
 // Global instance access (may be nullptr if never enabled)

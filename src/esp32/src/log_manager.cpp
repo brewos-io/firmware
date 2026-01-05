@@ -229,12 +229,9 @@ void LogManager::addLogf(BrewOSLogLevel level, LogSource source, const char* for
     addLog(level, source, message);
 }
 
-String LogManager::getLogs() {
+String LogManager::getLogsUnsafe() {
+    // Internal helper - assumes mutex is already held by caller
     if (!_enabled || !_buffer) return String();
-    
-    if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
-        return String("ERROR: Could not acquire log mutex");
-    }
     
     String result;
     result.reserve(_size + 1);
@@ -254,6 +251,19 @@ String LogManager::getLogs() {
             result += _buffer[i];
         }
     }
+    
+    return result;
+}
+
+String LogManager::getLogs() {
+    if (!_enabled || !_buffer) return String();
+    
+    // Use longer timeout (5 seconds) to handle cases where mutex is held during save operations
+    if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        return String("ERROR: Could not acquire log mutex");
+    }
+    
+    String result = getLogsUnsafe();
     
     xSemaphoreGive(_mutex);
     return result;
@@ -408,9 +418,19 @@ bool LogManager::saveToFlash() {
     
     bool success = false;
     
-    // Get current RAM buffer as text
-    String ramLogs = getLogs();
+    // Get current RAM buffer as text (use unsafe version since we already have mutex)
+    String ramLogs;
+    if (hasMutex) {
+        ramLogs = getLogsUnsafe();  // Use unsafe version to avoid deadlock
+    } else {
+        // If we don't have mutex, try to get logs normally (will try to acquire mutex)
+        ramLogs = getLogs();
+    }
+    
     if (ramLogs.length() == 0 && _size == 0) {
+        if (hasMutex) {
+            xSemaphoreGive(_mutex);
+        }
         return false;  // Nothing to save
     }
     
