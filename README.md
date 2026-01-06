@@ -31,6 +31,10 @@
 
 BrewOS is an open-source control system designed to replace factory controllers in espresso machines. It provides enhanced temperature control, real-time monitoring, and modern features while maintaining safety as the top priority.
 
+<p align="center">
+  <a href="https://cloud.brewos.io/?demo=true">🚀 Try the Live Demo</a>
+</p>
+
 **Why BrewOS?**
 
 - 🎯 **Precise PID Control** - Sub-degree temperature stability for consistent shots
