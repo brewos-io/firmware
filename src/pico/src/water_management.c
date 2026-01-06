@@ -343,14 +343,22 @@ static void update_steam_fill_cycle(void) {
                 // Stop filling
                 control_set_pump(0);
                 set_steam_fill_solenoid(false);
-                g_fill_state = STEAM_FILL_IDLE;
+                
                 // Reset monitoring state
                 g_fill_level_check_time = 0;
                 g_fill_level_last_state = false;
-                // Restore heater if it was on
+                
+                // Restore heater if it was on (preserve state across fault transitions)
+                // Move to COMPLETE state to ensure proper heater restoration
                 if (g_steam_heater_was_on) {
-                    // Heater will be restored by PID control
-                    g_steam_heater_was_on = false;
+                    // Transition to COMPLETE state to trigger heater restoration logic
+                    // This ensures heater is restored even if machine enters fault state
+                    g_fill_state = STEAM_FILL_COMPLETE;
+                    // Reset fill start time for COMPLETE state delay
+                    g_fill_start_time = now;
+                } else {
+                    // No heater to restore, go directly to IDLE
+                    g_fill_state = STEAM_FILL_IDLE;
                 }
                 return;
             }

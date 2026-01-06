@@ -139,6 +139,44 @@ static void remove_pending_command(uint8_t seq) {
     }
 }
 
+/**
+ * Non-blocking UART write with timeout
+ * Returns true if all bytes were written, false if timeout or UART unavailable
+ * 
+ * Uses uart_putc which is non-blocking when FIFO has space, but will block
+ * if FIFO is full. We check uart_is_writable() before each byte and implement
+ * a timeout to prevent Core 1 from hanging.
+ */
+static bool uart_write_nonblocking(uart_inst_t* uart, const uint8_t* data, size_t len) {
+    if (!uart || !data || len == 0) {
+        return false;
+    }
+    
+    uint32_t start_time = to_ms_since_boot(get_absolute_time());
+    size_t written = 0;
+    
+    while (written < len) {
+        // Check timeout
+        uint32_t now = to_ms_since_boot(get_absolute_time());
+        if (now - start_time > PROTOCOL_UART_WRITE_TIMEOUT_MS) {
+            // Timeout - UART unavailable for too long, drop remaining bytes
+            return false;
+        }
+        
+        // Check if UART FIFO has space (non-blocking check)
+        if (uart_is_writable(uart)) {
+            // Write one byte (uart_putc is non-blocking when FIFO has space)
+            uart_putc(uart, data[written]);
+            written++;
+        } else {
+            // FIFO full, small delay before retry
+            sleep_us(100);
+        }
+    }
+    
+    return true;
+}
+
 // Check for ACK timeouts and retry commands
 static void process_pending_commands(void) {
     uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -173,7 +211,15 @@ static void process_pending_commands(void) {
                 uint16_t crc = protocol_crc16(&buffer[1], 3 + cmd->length);
                 buffer[idx++] = crc & 0xFF;
                 buffer[idx++] = (crc >> 8) & 0xFF;
-                uart_write_blocking(ESP32_UART_ID, buffer, idx);
+                
+                // Retry with non-blocking write
+                if (!uart_write_nonblocking(ESP32_UART_ID, buffer, idx)) {
+                    // UART unavailable - will retry on next cycle
+                    g_stats.packets_dropped++;
+                    LOG_WARN("Protocol: UART unavailable during retry, will retry later\n");
+                    // Don't update sent_time_ms so it will retry again soon
+                    continue;
+                }
                 g_stats.bytes_sent += idx;
             } else {
                 // Max retries exceeded
@@ -245,6 +291,7 @@ void protocol_init(void) {
     
     // Initialize statistics
     memset(&g_stats, 0, sizeof(protocol_stats_t));
+    g_stats.packets_dropped = 0;  // Explicitly initialize new field
     g_handshake_complete = false;
     g_handshake_request_time = 0;
     g_rx_last_byte_time = 0;
@@ -305,8 +352,14 @@ static bool send_packet(uint8_t type, const uint8_t* payload, uint8_t length) {
     buffer[idx++] = crc & 0xFF;
     buffer[idx++] = (crc >> 8) & 0xFF;
     
-    // Send
-    uart_write_blocking(ESP32_UART_ID, buffer, idx);
+    // Send (non-blocking with timeout)
+    if (!uart_write_nonblocking(ESP32_UART_ID, buffer, idx)) {
+        // UART unavailable - drop packet to prevent Core 1 from blocking
+        g_stats.packets_dropped++;
+        LOG_WARN("Protocol: UART unavailable, dropping packet 0x%02X (dropped: %lu)\n", 
+                 type, g_stats.packets_dropped);
+        return false;
+    }
     
     // Update statistics
     g_stats.packets_sent++;
@@ -684,6 +737,7 @@ void protocol_get_stats(protocol_stats_t* stats) {
 
 void protocol_reset_stats(void) {
     memset(&g_stats, 0, sizeof(protocol_stats_t));
+    g_stats.packets_dropped = 0;  // Explicitly initialize new field
     g_handshake_complete = false;
 }
 

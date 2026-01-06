@@ -5,6 +5,84 @@
 #include "sensor_utils.h"
 #include "config.h"
 #include <string.h>
+#include <stdlib.h>  // For qsort
+
+// =============================================================================
+// Median Filter Implementation
+// =============================================================================
+
+/**
+ * Compare function for qsort (ascending order)
+ */
+static int compare_float(const void* a, const void* b) {
+    float fa = *(const float*)a;
+    float fb = *(const float*)b;
+    if (fa < fb) return -1;
+    if (fa > fb) return 1;
+    return 0;
+}
+
+void filter_median_init(median_filter_t* filter, float* buffer, uint8_t size) {
+    if (!filter || !buffer || size == 0) {
+        return;
+    }
+    
+    filter->buffer = buffer;
+    filter->size = size;
+    filter->index = 0;
+    filter->count = 0;
+    
+    // Initialize buffer to zero
+    memset(buffer, 0, size * sizeof(float));
+}
+
+float filter_median_update(median_filter_t* filter, float value) {
+    if (!filter || !filter->buffer || filter->size == 0) {
+        return value;  // Return unfiltered if invalid
+    }
+    
+    // Add new value to buffer
+    filter->buffer[filter->index] = value;
+    filter->index = (filter->index + 1) % filter->size;
+    
+    // Update count
+    if (filter->count < filter->size) {
+        filter->count++;
+    }
+    
+    // Calculate median: sort buffer and return middle value
+    // Create temporary sorted array for median calculation
+    float sorted[16];  // Max reasonable filter size
+    if (filter->count > sizeof(sorted) / sizeof(sorted[0])) {
+        // Filter too large, return current value
+        return value;
+    }
+    
+    // Copy valid samples to temp array
+    for (uint8_t i = 0; i < filter->count; i++) {
+        sorted[i] = filter->buffer[i];
+    }
+    
+    // Sort to find median
+    qsort(sorted, filter->count, sizeof(float), compare_float);
+    
+    // Return median (middle value)
+    uint8_t median_idx = filter->count / 2;
+    return sorted[median_idx];
+}
+
+void filter_median_reset(median_filter_t* filter) {
+    if (!filter) {
+        return;
+    }
+    
+    filter->index = 0;
+    filter->count = 0;
+    
+    if (filter->buffer) {
+        memset(filter->buffer, 0, filter->size * sizeof(float));
+    }
+}
 
 // =============================================================================
 // Moving Average Filter Implementation

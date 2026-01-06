@@ -45,14 +45,24 @@ void gpio_init_adc(void) {
     adc_init();
     
     // Configure ADC pins
+    // Note: adc_gpio_init() sets pin function but doesn't configure pull resistors
+    // For sensors with external pull-up (NTC thermistors), no pull needed
+    // For pressure transducer: external voltage divider provides signal, no pull needed
+    // If sensor is disconnected, validation in sensors.c checks voltage < 0.2V
     if (PIN_VALID(pins->adc_brew_ntc)) {
         adc_gpio_init(pins->adc_brew_ntc);
+        // No pull resistor - NTC uses external pull-up in voltage divider
     }
     if (PIN_VALID(pins->adc_steam_ntc)) {
         adc_gpio_init(pins->adc_steam_ntc);
+        // No pull resistor - NTC uses external pull-up in voltage divider
     }
     if (PIN_VALID(pins->adc_pressure)) {
         adc_gpio_init(pins->adc_pressure);
+        // No pull resistor - pressure transducer uses external voltage divider
+        // Disconnected sensor detection: sensors.c validates voltage < 0.2V
+        // If hardware requires pull-down for disconnected detection, add:
+        // gpio_pull_down(pins->adc_pressure);
     }
     if (PIN_VALID(pins->adc_flow)) {
         adc_gpio_init(pins->adc_flow);

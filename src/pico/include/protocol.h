@@ -17,6 +17,7 @@
 #define PROTOCOL_HANDSHAKE_TIMEOUT_MS 5000 // Handshake completion timeout
 #define PROTOCOL_MAX_PENDING_CMDS   4     // Maximum pending commands awaiting ACK
 #define PROTOCOL_BACKPRESSURE_THRESHOLD 3 // Send NACK when pending >= threshold
+#define PROTOCOL_UART_WRITE_TIMEOUT_MS 100 // Max time to wait for UART to become writable
 
 // -----------------------------------------------------------------------------
 // Packet Structure
@@ -59,6 +60,7 @@ typedef struct {
     uint32_t nacks_received;        // Backpressure NACK received
     uint32_t bytes_received;        // Total bytes received
     uint32_t bytes_sent;            // Total bytes sent
+    uint32_t packets_dropped;        // Packets dropped due to UART unavailability
     uint8_t last_seq_received;      // Last sequence number received
     uint8_t last_seq_sent;          // Last sequence number sent
     uint8_t pending_cmd_count;      // Current pending commands

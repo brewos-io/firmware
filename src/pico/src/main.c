@@ -5,6 +5,13 @@
  * 
  * Core 0: Real-time control loop (safety, sensors, PID, outputs)
  * Core 1: Communication with ESP32
+ * 
+ * FLOATING POINT COMPATIBILITY NOTE:
+ * This firmware uses float extensively in the control loop (PID, temperature calculations).
+ * The RP2350 (Pico 2) has a hardware floating-point unit (FPU), so this is efficient.
+ * If porting to RP2040 (original Pico), note that it uses Cortex-M0+ without FPU,
+ * which would require software floating-point emulation (slower, higher CPU usage).
+ * For RP2040 compatibility, consider using fixed-point math (e.g., millidegrees as int32_t).
  */
 
 #include <stdio.h>

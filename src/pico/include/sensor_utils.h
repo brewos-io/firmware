@@ -25,6 +25,46 @@
 #define NTC_T25_KELVIN      298.15f      // 25°C in Kelvin
 
 // =============================================================================
+// Median Filter
+// =============================================================================
+
+/**
+ * Median filter structure
+ * Used as first-stage filter to reject noise spikes before moving average
+ */
+typedef struct {
+    float* buffer;          // Buffer for samples
+    uint8_t size;           // Buffer size (should be odd for true median)
+    uint8_t index;          // Current write index
+    uint8_t count;          // Number of samples collected
+} median_filter_t;
+
+/**
+ * Initialize median filter
+ * 
+ * @param filter Filter structure to initialize
+ * @param buffer Buffer array (must be allocated externally)
+ * @param size Buffer size (number of samples, should be odd)
+ */
+void filter_median_init(median_filter_t* filter, float* buffer, uint8_t size);
+
+/**
+ * Add sample to filter and get median value
+ * 
+ * @param filter Filter structure
+ * @param value New sample value
+ * @return Median value from buffer
+ */
+float filter_median_update(median_filter_t* filter, float value);
+
+/**
+ * Reset filter (clear all samples)
+ * 
+ * @param filter Filter structure
+ */
+void filter_median_reset(median_filter_t* filter);
+
+// =============================================================================
 // Moving Average Filter
 // =============================================================================
 

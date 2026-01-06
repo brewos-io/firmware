@@ -593,10 +593,19 @@ void state_update(void) {
             // Brew switch pressed - start brew/pump
             // Allow this in IDLE, HEATING, READY states (for purging when cold)
             // BUT: Block if in safe state (e.g., reservoir empty in water tank mode)
+            // Also add defensive water level check (redundant to safety system)
             if (brew_switch && (g_state == STATE_IDLE || g_state == STATE_HEATING || g_state == STATE_READY)) {
                 if (!safety_is_safe_state()) {
-                    state_start_brew();
-                    new_state = STATE_BREWING;
+                    // Defensive check: verify water level before starting pump
+                    // This provides redundant protection in case safety check interval
+                    // aligns unluckily with user press
+                    uint8_t water_level = sensors_get_water_level();
+                    if (water_level > 0) {
+                        state_start_brew();
+                        new_state = STATE_BREWING;
+                    } else {
+                        DEBUG_PRINT("Brew: Switch pressed but blocked - water level is 0%%\n");
+                    }
                 } else {
                     DEBUG_PRINT("Brew: Switch pressed but blocked - machine in safe state\n");
                 }

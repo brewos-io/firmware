@@ -93,7 +93,13 @@ bool flash_safe_erase(uint32_t offset, size_t size) {
         .size = size
     };
     
-    // Use SDK's flash_safe_execute which handles multicore lockout and interrupt safety
+    // Use SDK's flash_safe_execute which handles:
+    // 1. Multicore lockout (pauses other core)
+    // 2. Interrupt disabling (prevents ISRs from executing flash code during write)
+    // 3. Running flash operations from RAM (not XIP flash)
+    // NOTE: The SDK's flash_safe_execute() disables interrupts before flash operations
+    // and re-enables them after. This prevents ISRs from crashing if they execute
+    // from flash during a write operation.
     int result = flash_safe_execute(do_flash_erase, &op, FLASH_SAFE_TIMEOUT_MS);
     if (result != PICO_OK) {
         LOG_PRINT("Flash: ERROR - Erase failed (error %d)\n", result);
@@ -134,7 +140,13 @@ bool flash_safe_program(uint32_t offset, const uint8_t* data, size_t size) {
         .size = size
     };
     
-    // Use SDK's flash_safe_execute which handles multicore lockout and interrupt safety
+    // Use SDK's flash_safe_execute which handles:
+    // 1. Multicore lockout (pauses other core)
+    // 2. Interrupt disabling (prevents ISRs from executing flash code during write)
+    // 3. Running flash operations from RAM (not XIP flash)
+    // NOTE: The SDK's flash_safe_execute() disables interrupts before flash operations
+    // and re-enables them after. This prevents ISRs from crashing if they execute
+    // from flash during a write operation.
     int result = flash_safe_execute(do_flash_program, &op, FLASH_SAFE_TIMEOUT_MS);
     if (result != PICO_OK) {
         DEBUG_PRINT("Flash safety: Program failed (error %d)\n", result);

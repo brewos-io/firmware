@@ -23,6 +23,12 @@
 // Filter Configuration
 // =============================================================================
 
+// Median filter sizes (first stage - rejects noise spikes)
+#define MEDIAN_FILTER_SIZE_BREW_NTC    5   // Median filter samples for brew NTC (odd number)
+#define MEDIAN_FILTER_SIZE_STEAM_NTC   5   // Median filter samples for steam NTC (odd number)
+#define MEDIAN_FILTER_SIZE_PRESSURE    3   // Median filter samples for pressure (odd number)
+
+// Moving average filter sizes (second stage - smooths median output)
 #define FILTER_SIZE_BREW_NTC    8   // Moving average samples for brew NTC
 #define FILTER_SIZE_STEAM_NTC   8   // Moving average samples for steam NTC
 #define FILTER_SIZE_PRESSURE    4   // Moving average samples for pressure
@@ -34,12 +40,22 @@
 static sensor_data_t g_sensor_data = {0};
 static bool g_use_hardware = false;  // Use hardware abstraction (sim or real)
 
-// Filter buffers
+// Median filter buffers (first stage - rejects noise spikes)
+static float g_median_buf_brew[MEDIAN_FILTER_SIZE_BREW_NTC];
+static float g_median_buf_steam[MEDIAN_FILTER_SIZE_STEAM_NTC];
+static float g_median_buf_pressure[MEDIAN_FILTER_SIZE_PRESSURE];
+
+// Moving average filter buffers (second stage - smooths median output)
 static float g_filter_buf_brew[FILTER_SIZE_BREW_NTC];
 static float g_filter_buf_steam[FILTER_SIZE_STEAM_NTC];
 static float g_filter_buf_pressure[FILTER_SIZE_PRESSURE];
 
-// Filter structures
+// Median filter structures
+static median_filter_t g_median_filter_brew;
+static median_filter_t g_median_filter_steam;
+static median_filter_t g_median_filter_pressure;
+
+// Moving average filter structures
 static moving_avg_filter_t g_filter_brew;
 static moving_avg_filter_t g_filter_steam;
 static moving_avg_filter_t g_filter_pressure;
@@ -302,7 +318,12 @@ static uint8_t read_water_level(void) {
 // =============================================================================
 
 void sensors_init(void) {
-    // Initialize filters
+    // Initialize median filters (first stage - rejects noise spikes)
+    filter_median_init(&g_median_filter_brew, g_median_buf_brew, MEDIAN_FILTER_SIZE_BREW_NTC);
+    filter_median_init(&g_median_filter_steam, g_median_buf_steam, MEDIAN_FILTER_SIZE_STEAM_NTC);
+    filter_median_init(&g_median_filter_pressure, g_median_buf_pressure, MEDIAN_FILTER_SIZE_PRESSURE);
+    
+    // Initialize moving average filters (second stage - smooths median output)
     filter_moving_avg_init(&g_filter_brew, g_filter_buf_brew, FILTER_SIZE_BREW_NTC);
     filter_moving_avg_init(&g_filter_steam, g_filter_buf_steam, FILTER_SIZE_STEAM_NTC);
     filter_moving_avg_init(&g_filter_pressure, g_filter_buf_pressure, FILTER_SIZE_PRESSURE);
@@ -345,20 +366,26 @@ void sensors_read(void) {
     if (g_use_hardware) {
         // Use hardware abstraction layer (works in both sim and real mode)
         
-        // Read and filter brew NTC
+        // Read and filter brew NTC (two-stage: median + moving average)
         float brew_temp_raw = read_brew_ntc();
         if (!isnan(brew_temp_raw)) {
-            float brew_temp_filtered = filter_moving_avg_update(&g_filter_brew, brew_temp_raw);
+            // First stage: median filter rejects noise spikes
+            float brew_temp_median = filter_median_update(&g_median_filter_brew, brew_temp_raw);
+            // Second stage: moving average smooths the median output
+            float brew_temp_filtered = filter_moving_avg_update(&g_filter_brew, brew_temp_median);
             g_sensor_data.brew_temp = (int16_t)(brew_temp_filtered * 10.0f);
         } else {
             // Sensor fault - keep last valid value (filter maintains it)
             // Safety system will detect NAN and handle appropriately
         }
         
-        // Read and filter steam NTC
+        // Read and filter steam NTC (two-stage: median + moving average)
         float steam_temp_raw = read_steam_ntc();
         if (!isnan(steam_temp_raw)) {
-            float steam_temp_filtered = filter_moving_avg_update(&g_filter_steam, steam_temp_raw);
+            // First stage: median filter rejects noise spikes
+            float steam_temp_median = filter_median_update(&g_median_filter_steam, steam_temp_raw);
+            // Second stage: moving average smooths the median output
+            float steam_temp_filtered = filter_moving_avg_update(&g_filter_steam, steam_temp_median);
             g_sensor_data.steam_temp = (int16_t)(steam_temp_filtered * 10.0f);
         } else {
             // Sensor fault - keep last valid value
@@ -367,11 +394,14 @@ void sensors_read(void) {
         // Note: Group head thermocouple support removed (v2.24.3)
         // g_sensor_data.group_temp remains at default/last value (NAN data)
         
-        // Read and filter pressure
+        // Read and filter pressure (two-stage: median + moving average)
         float pressure_raw = read_pressure();
         if (!g_pressure_sensor_fault) {
             // Only update filter if sensor is not in fault state
-            float pressure_filtered = filter_moving_avg_update(&g_filter_pressure, pressure_raw);
+            // First stage: median filter rejects noise spikes
+            float pressure_median = filter_median_update(&g_median_filter_pressure, pressure_raw);
+            // Second stage: moving average smooths the median output
+            float pressure_filtered = filter_moving_avg_update(&g_filter_pressure, pressure_median);
             g_sensor_data.pressure = (uint16_t)(pressure_filtered * 100.0f);  // Convert to 0.01 bar units
         } else {
             // Sensor fault - keep last valid value (filter maintains it)
