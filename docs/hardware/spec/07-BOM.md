@@ -62,21 +62,17 @@
 
 ### Communication
 
-| Qty   | Ref           | Value          | Tolerance | Package  | Notes                                          |
-| ----- | ------------- | -------------- | --------- | -------- | ---------------------------------------------- |
-| 4     | R40-R43       | **1kΩ**        | 5%        | 0805     | UART series (5V tolerance protection)          |
-| 1     | R44           | 33Ω            | 5%        | 0805     | I2C series                                     |
-| 1     | R45           | 2.2kΩ          | 1%        | 0805     | J17 RX level shift (upper)                     |
-| 1     | R45A          | 3.3kΩ          | 1%        | 0805     | J17 RX level shift (lower)                     |
-| 1     | R45B          | 33Ω            | 5%        | 0805     | J17 RX series                                  |
-| 2     | R46-R47       | 4.7kΩ          | 5%        | 0805     | I2C pull-ups                                   |
-| 2     | R93-R94       | 20kΩ           | 5%        | 0805     | RS485 failsafe bias                            |
-| **2** | **R_USB**     | **27Ω**        | **5%**    | **0805** | **USB D+/D- series termination**               |
-| **2** | **R_CC**      | **5.1kΩ**      | **5%**    | **0805** | **USB-C CC1/CC2 pull-downs**                   |
-| **2** | **R_SWD**     | **47Ω**        | **5%**    | **0805** | **SWD Series Protection (J15-6/8)**            |
-| **1** | **R_XTAL**    | **1kΩ**        | **5%**    | **0805** | **Crystal OUT serial termination (if needed)** |
-| **1** | **R_BOOTSEL** | **1kΩ**        | **5%**    | **0805** | **BOOTSEL button pull-up (CS to GND)**         |
-| **2** | **R_VBUS**    | **10kΩ, 20kΩ** | **5%**    | **0805** | **VBUS Detect divider (GPIO24)**               |
+| Qty   | Ref        | Value   | Tolerance | Package  | Notes                                          |
+| ----- | ---------- | ------- | --------- | -------- | ---------------------------------------------- |
+| 4     | R40-R43    | **1kΩ** | 5%        | 0805     | UART series (5V tolerance protection)          |
+| 1     | R44        | 33Ω     | 5%        | 0805     | I2C series                                     |
+| 1     | R45        | 2.2kΩ   | 1%        | 0805     | J17 RX level shift (upper)                     |
+| 1     | R45A       | 3.3kΩ   | 1%        | 0805     | J17 RX level shift (lower)                     |
+| 1     | R45B       | 33Ω     | 5%        | 0805     | J17 RX series                                  |
+| 2     | R46-R47    | 4.7kΩ   | 5%        | 0805     | I2C pull-ups                                   |
+| 2     | R93-R94    | 20kΩ    | 5%        | 0805     | RS485 failsafe bias                            |
+| **2** | **R_SWD**  | **47Ω** | **5%**    | **0805** | **SWD Series Protection (J15-6/8)**            |
+| **1** | **R_XTAL** | **1kΩ** | **5%**    | **0805** | **Crystal OUT serial termination (if needed)** |
 
 ### User Interface
 
@@ -147,18 +143,17 @@
 
 ## Electromechanical
 
-| Qty   | Ref     | Description        | Part Number          | Notes                   |
-| ----- | ------- | ------------------ | -------------------- | ----------------------- | --------------------- |
-| 2     | K1,K3   | Relay 5V 3A        | Panasonic APAN3105   | Slim 5mm                |
-| 1     | K2      | Relay 5V 16A       | Omron G5LE-1A4-E DC5 | **-E variant!**         |
-| 1     | F1      | **Fuse 10A SMD**   | **Littelfuse 463**   | **Nano² (10x3mm)**      |
-| 1     | F2      | **Fuse 2A SMD**    | **Littelfuse 463**   | **Nano² (10x3mm)**      |
-| 1     | RV1     | Varistor 275V      | S14K275              | 14mm, mains surge       |
-| 2     | RV2-RV3 | Varistor 275V      | S10K275              | 10mm, arc suppression   |
-| 1     | SW1     | Tactile Switch     | EVQP7A01P            | 6×6mm SMD (Reset)       |
-| **1** | **SW2** | **Tactile Switch** | **EVQP7A01P**        | **6×6mm SMD (BOOTSEL)** |
-| 1     | BZ1     | Passive Buzzer     | CEM-1203(42)         | 12mm                    |
-| **1** | **Y1**  | **Crystal**        | **12 MHz**           | **HC-49 or SMD**        | **Main clock source** |
+| Qty   | Ref     | Description      | Part Number          | Notes                 |
+| ----- | ------- | ---------------- | -------------------- | --------------------- | --------------------- |
+| 2     | K1,K3   | Relay 5V 3A      | Panasonic APAN3105   | Slim 5mm              |
+| 1     | K2      | Relay 5V 16A     | Omron G5LE-1A4-E DC5 | **-E variant!**       |
+| 1     | F1      | **Fuse 10A SMD** | **Littelfuse 463**   | **Nano² (10x3mm)**    |
+| 1     | F2      | **Fuse 2A SMD**  | **Littelfuse 463**   | **Nano² (10x3mm)**    |
+| 1     | RV1     | Varistor 275V    | S14K275              | 14mm, mains surge     |
+| 2     | RV2-RV3 | Varistor 275V    | S10K275              | 10mm, arc suppression |
+| 1     | SW1     | Tactile Switch   | EVQP7A01P            | 6×6mm SMD (Reset)     |
+| 1     | BZ1     | Passive Buzzer   | CEM-1203(42)         | 12mm                  |
+| **1** | **Y1**  | **Crystal**      | **12 MHz**           | **HC-49 or SMD**      | **Main clock source** |
 
 ## LEDs
 
@@ -179,7 +174,6 @@
 | 1     | J15     | JST-XH 8-pin          | JST B8B-XH-A           | ESP32 module (SWD support on Pins 6,8)                 |
 | 1     | J16     | Header 4-pin          | 2.54mm pitch           | Service/debug                                          |
 | 1     | J17     | JST-XH 6-pin          | JST B6B-XH-A           | Power meter                                            |
-| **1** | **J18** | **USB-C Connector**   | **16-pin SMD**         | **USB recovery & development**                         |
 | 1     | J23     | Header 4-pin          | 2.54mm pitch           | I2C accessory                                          |
 | 1     | J24     | Screw Terminal 2-pos  | 5.08mm pitch           | Power meter HV (L, N only - PE removed)                |
 

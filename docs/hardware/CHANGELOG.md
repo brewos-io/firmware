@@ -4,7 +4,7 @@
 
 | Rev      | Date         | Description                                                                               |
 | -------- | ------------ | ----------------------------------------------------------------------------------------- |
-| **2.31** | **Jan 2026** | **CURRENT** - RP2354 Discrete MCU Migration (Module → Chip, SWD Support, USB-C)           |
+| **2.31** | **Jan 2026** | **CURRENT** - RP2354 Discrete MCU Migration (Module → Chip, SWD Support)                  |
 | 2.30     | Jan 06 2026  | SMD Transition (SMD Fuses, V-Chip Caps) & SRif Grounding                                  |
 | 2.29     | Dec 22 2025  | SRif Grounding Architecture (Remove PE from PCB, Chassis Reference System)                |
 | 2.28     | Dec 14 2025  | RP2350 Engineering Verification ECOs (5V tolerance, bulk cap, safety docs)                |
@@ -49,16 +49,13 @@ This revision migrates from the Raspberry Pi Pico 2 module to the discrete RP235
 
 #### 2. New Components Required
 
-| Component         | Qty | Value              | Purpose                                           |
-| ----------------- | --- | ------------------ | ------------------------------------------------- |
-| **Crystal**       | 1   | **12 MHz**         | Main clock source (required for USB/timing)       |
-| **Load Caps**     | 2   | ~10-22pF           | Crystal load capacitors (check crystal datasheet) |
-| **Resistor**      | 1   | 1kΩ                | Serial termination for crystal OUT (if needed)    |
-| **Inductor**      | 1   | **2.2µH**          | For internal core voltage SMPS (VREG_OUT/DVDD)    |
-| **Capacitors**    | ~6  | 100nF, 1µF, 10µF   | Decoupling for 3.3V (IOVDD) and 1.1V (DVDD) rails |
-| **USB Connector** | 1   | **USB-C (16-pin)** | Essential for recovery and USB development        |
-| **Resistors**     | 2   | 27Ω                | USB D+/D- series termination                      |
-| **Resistors**     | 2   | 5.1kΩ              | USB-C CC1/CC2 pull-downs                          |
+| Component      | Qty | Value            | Purpose                                           |
+| -------------- | --- | ---------------- | ------------------------------------------------- |
+| **Crystal**    | 1   | **12 MHz**       | Main clock source (required for USB/timing)       |
+| **Load Caps**  | 2   | ~10-22pF         | Crystal load capacitors (check crystal datasheet) |
+| **Resistor**   | 1   | 1kΩ              | Serial termination for crystal OUT (if needed)    |
+| **Inductor**   | 1   | **2.2µH**        | For internal core voltage SMPS (VREG_OUT/DVDD)    |
+| **Capacitors** | ~6  | 100nF, 1µF, 10µF | Decoupling for 3.3V (IOVDD) and 1.1V (DVDD) rails |
 
 #### 3. Power Supply Changes
 
@@ -77,27 +74,13 @@ The RP2354 has an internal regulator that can run in LDO or SMPS mode. This desi
 
 **No GPIO allocation changes required.** The RP2354A (QFN-60) exposes GPIO 0-29 directly, and all existing netlist signals map directly to corresponding GPIO pins.
 
-**GPIO Availability:**
+**Bonus:** GPIO16, 22, 23, 24, 25, 29 are now available:
 
 - **GPIO16 & 22:** Now available (disconnected from J15, traces moved to dedicated SWD pins)
-- **GPIO23 & 25:** Now available (previously internal to Pico module)
-- **GPIO24:** Used for VBUS Detect (USB-C power detection via 10kΩ/20kΩ divider)
+- **GPIO23, 24, 25:** Now available (previously internal to Pico module)
 - **GPIO29:** Used for ADC3 - 5V_MONITOR (ratiometric pressure compensation, from v2.24)
 
-GPIO23 and 25 can be routed to test points or an expansion header.
-
-#### 5. USB & Boot Support
-
-**USB-C Connector:**
-
-- Route **USB_D+** and **USB_D-** to USB-C connector
-- Enables manual flashing via ROM bootloader (PicoBoot) if ESP32 is down
-- Essential for development and "Plan B" recovery
-
-**BOOTSEL Button:**
-
-- Add tactile button connecting **CS** pin (QSPI_SS) to Ground (via ~1k resistor)
-- Note: On RP2354 with stacked flash, BOOTSEL functionality is handled via QSPI_SS line - holding flash CS low on boot enters ROM bootloader
+GPIO23, 24, and 25 can be routed to test points or an expansion header.
 
 #### 6. SWD Interface for Factory Flash (CRITICAL)
 
@@ -124,7 +107,7 @@ The most robust approach is to wire the RP2354's **SWD (Serial Wire Debug)** int
 3. **Debugging:** Enables remote debugging (GDB) on RP2354 via ESP32 if needed
 
 **Software Implication:**
-ESP32 firmware will need to support SWD flashing (porting a DAP implementation). If not implemented immediately, USB-C connector provides "Plan B" recovery.
+ESP32 firmware MUST support SWD flashing (porting a DAP implementation) as this is the **only** method to program a blank chip.
 
 **Recommendation:** Implement SWD wiring on PCB **now**. It costs nothing and enables factory flash capability.
 
@@ -138,25 +121,25 @@ Keep `SW1` from BOM, but ensure it pulls the RP2354 `RUN` pin to ground (same as
 
 ### BOM Impact
 
-| Change Type                           | Count   | Est. Cost Impact                   |
-| ------------------------------------- | ------- | ---------------------------------- |
-| MCU change (module → chip)            | 1       | **-$2-3** (module premium removed) |
-| New components (crystal, caps, USB-C) | ~12     | **+$1.50**                         |
-| Removed (J20 socket)                  | 1       | **-$0.50**                         |
-| **Total BOM Δ**                       | **~13** | **~-$1.00 savings**                |
+| Change Type                    | Count   | Est. Cost Impact                   |
+| ------------------------------ | ------- | ---------------------------------- |
+| MCU change (module → chip)     | 1       | **-$2-3** (module premium removed) |
+| New components (crystal, caps) | ~10     | **+$1.00**                         |
+| Removed (J20 socket)           | 1       | **-$0.50**                         |
+| **Total BOM Δ**                | **~11** | **~-$1.50 savings**                |
 
 ### Files Modified
 
-| File                         | Changes                                                                             |
-| ---------------------------- | ----------------------------------------------------------------------------------- |
-| `spec/07-BOM.md`             | Replaced Pico 2 module with RP2354, added crystal, inductor, USB-C, decoupling caps |
-| `spec/02-GPIO-Allocation.md` | Updated MCU spec, noted GPIO23-29 now available                                     |
-| `spec/03-Power-Supply.md`    | Added RP2354 power architecture (VREG, DVDD, IOVDD)                                 |
-| `spec/06-Connectors.md`      | Updated J15 for SWD, added USB-C connector, removed J20                             |
-| `spec/08-PCB-Layout.md`      | Updated footprint requirements, USB-C placement                                     |
-| `spec/01-Overview.md`        | Updated MCU specification to RP2354                                                 |
-| `README.md`                  | Updated version and MCU reference                                                   |
-| `CHANGELOG.md`               | This entry                                                                          |
+| File                         | Changes                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `spec/07-BOM.md`             | Replaced Pico 2 module with RP2354, added crystal, inductor, decoupling caps |
+| `spec/02-GPIO-Allocation.md` | Updated MCU spec, noted GPIO23-29 now available                              |
+| `spec/03-Power-Supply.md`    | Added RP2354 power architecture (VREG, DVDD, IOVDD)                          |
+| `spec/06-Connectors.md`      | Updated J15 for SWD, removed J20                                             |
+| `spec/08-PCB-Layout.md`      | Updated footprint requirements                                               |
+| `spec/01-Overview.md`        | Updated MCU specification to RP2354                                          |
+| `README.md`                  | Updated version and MCU reference                                            |
+| `CHANGELOG.md`               | This entry                                                                   |
 
 ### Design Verdict
 
@@ -171,8 +154,6 @@ This migration from module to discrete chip provides cost savings, factory flash
 - Verify 2.2µH inductor on VREG_OUT/DVDD path
 - Place decoupling caps (100nF on all IOVDD, 1µF/10µF on DVDD)
 - Route SWDIO/SWCLK to J15 Pins 6/8
-- Include USB-C connector for recovery
-- Add BOOTSEL button (CS to GND via 1kΩ)
 
 ---
 

@@ -41,7 +41,7 @@
 │  │  ├── GPIO18 ─── SPARE (SPI0 SCK)                                        │  │
 │  │  ├── GPIO22 ─── **NOW AVAILABLE** (disconnected from J15, traces to SWD)│  │
 │  │  ├── GPIO23 ─── **NOW AVAILABLE** (was internal to Pico module)        │  │
-│  │  ├── GPIO24 ─── **VBUS Detect** (USB-C power detection)               │  │
+│  │  ├── GPIO24 ─── **NOW AVAILABLE** (was internal to Pico module)        │  │
 │  │  ├── GPIO25 ─── **NOW AVAILABLE** (was internal to Pico module)        │  │
 │  │  └── GPIO29 ─── **ADC3 - 5V_MONITOR** (ratiometric pressure compensation)│  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
@@ -114,10 +114,9 @@
 │  │  └── RUN Pin ─── Reset Button (SMD tactile, to GND)                    │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
-│  GPIO UTILIZATION: 27/30 used (GPIO16,22,23,25 available)                    │
+│  GPIO UTILIZATION: 26/30 used (GPIO16,22,23,24,25 available)                    │
 │  ✅ GPIO16,22: NOW AVAILABLE (disconnected from J15, traces to SWD)          │
-│  ✅ GPIO23,25: NOW AVAILABLE (previously internal to Pico module)            │
-│  ✅ GPIO24: VBUS Detect (USB-C power detection)                               │
+│  ✅ GPIO23-25: NOW AVAILABLE (previously internal to Pico module)            │
 │  ✅ GPIO29: ADC3 - 5V_MONITOR (ratiometric pressure compensation)            │
 │                                                                                 │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -151,7 +150,7 @@
 | 21     | WEIGHT_STOP (ESP32→RP2354)      | Input     | Digital     | Pull-down     | Brew-by-weight signal (J15 Pin 7)                  |
 | 22     | **Available**                   | **I/O**   | **Digital** | **None**      | **Disconnected from J15 (traces moved to SWD)**    |
 | **23** | **Available**                   | **I/O**   | **Digital** | **None**      | **Previously internal to Pico module**             |
-| **24** | **VBUS Detect**                 | **Input** | **Digital** | **None**      | **USB-C VBUS detection (10kΩ/20kΩ divider)**       |
+| **24** | **Available**                   | **I/O**   | **Digital** | **None**      | **Previously internal to Pico module**             |
 | **25** | **Available**                   | **I/O**   | **Digital** | **None**      | **Previously internal to Pico module**             |
 | 26     | ADC0 - Brew NTC                 | Input     | Analog      | None          | RC filter                                          |
 | 27     | ADC1 - Steam NTC                | Input     | Analog      | None          | RC filter                                          |
@@ -195,7 +194,7 @@ With the migration to discrete RP2354 chip, these GPIOs are now accessible:
 | GPIO   | Previous Function (Pico Module) | New Status (RP2354)                                       |
 | ------ | ------------------------------- | --------------------------------------------------------- |
 | GPIO23 | SMPS Power Save (internal)      | **Available** - Can be used for expansion                 |
-| GPIO24 | VBUS Detect (internal)          | **VBUS Detect** - USB-C power detection via divider       |
+| GPIO24 | VBUS Detect (internal)          | **Available** - Can be used for expansion                 |
 | GPIO25 | Onboard LED (internal)          | **Available** - Can be used for expansion                 |
 | GPIO29 | VSYS/3 ADC (internal)           | **ADC3 - 5V_MONITOR** - Ratiometric pressure compensation |
 
@@ -264,7 +263,7 @@ The RC filter capacitors (C8, C9, C11) suppress AC noise but do NOT mitigate DC 
 - **Unbrickable Recovery:** Hardware-level access even if firmware is corrupted
 - **Remote Debugging:** Enables GDB debugging via ESP32 if needed
 
-**Note:** ESP32 firmware will need to support SWD flashing (DAP implementation). USB-C connector provides "Plan B" recovery if SWD is not yet implemented.
+**Note:** ESP32 firmware MUST support SWD flashing (DAP implementation) as this is the **only** method to program a blank chip.
 
 ## ESP32 USB Pin Repurposing
 
