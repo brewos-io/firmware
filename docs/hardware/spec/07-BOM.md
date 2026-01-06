@@ -2,16 +2,16 @@
 
 ## Integrated Circuits
 
-| Qty | Ref | Description           | Part Number    | Package  | Notes                  |
-| --- | --- | --------------------- | -------------- | -------- | ---------------------- |
-| 1   | U1  | Raspberry Pi Pico 2   | SC0942         | Module   | Or Pico 2 W (SC1632)   |
-| 1   | U2  | AC/DC Converter 5V 3A | HLK-15M05C     | Module   | Isolated, 15W          |
-| 1   | U3  | 3.3V Sync Buck        | TPS563200DDCR  | SOT-23-6 | 3A, >90% efficiency    |
-| 1   | U5  | Precision Voltage Ref | LM4040DIM3-3.0 | SOT-23-3 | 3.0V shunt             |
-| 1   | U6  | Op-Amp                | OPA342UA       | SOIC-8   | Level probe oscillator |
-| 1   | U7  | Comparator            | TLV3201AIDBVR  | SOT-23-5 | Level probe detector   |
-| 1   | U8  | RS485 Transceiver     | MAX3485ESA+    | SOIC-8   | For industrial meters  |
-| 1   | U9  | Dual Op-Amp           | OPA2342UA      | SOIC-8   | VREF buffer + spare    |
+| Qty | Ref | Description                | Part Number    | Package    | Notes                                |
+| --- | --- | -------------------------- | -------------- | ---------- | ------------------------------------ |
+| 1   | U1  | **RP2354 Microcontroller** | **RP2354A**    | **QFN-60** | **Discrete chip, 2MB stacked flash** |
+| 1   | U2  | AC/DC Converter 5V 3A      | HLK-15M05C     | Module     | Isolated, 15W                        |
+| 1   | U3  | 3.3V Sync Buck             | TPS563200DDCR  | SOT-23-6   | 3A, >90% efficiency                  |
+| 1   | U5  | Precision Voltage Ref      | LM4040DIM3-3.0 | SOT-23-3   | 3.0V shunt                           |
+| 1   | U6  | Op-Amp                     | OPA342UA       | SOIC-8     | Level probe oscillator               |
+| 1   | U7  | Comparator                 | TLV3201AIDBVR  | SOT-23-5   | Level probe detector                 |
+| 1   | U8  | RS485 Transceiver          | MAX3485ESA+    | SOIC-8     | For industrial meters                |
+| 1   | U9  | Dual Op-Amp                | OPA2342UA      | SOIC-8     | VREF buffer + spare                  |
 
 ## Transistors and Diodes
 
@@ -62,15 +62,20 @@
 
 ### Communication
 
-| Qty | Ref     | Value   | Tolerance | Package | Notes                                 |
-| --- | ------- | ------- | --------- | ------- | ------------------------------------- |
-| 4   | R40-R43 | **1kΩ** | 5%        | 0805    | UART series (5V tolerance protection) |
-| 1   | R44     | 33Ω     | 5%        | 0805    | I2C series                            |
-| 1   | R45     | 2.2kΩ   | 1%        | 0805    | J17 RX level shift (upper)            |
-| 1   | R45A    | 3.3kΩ   | 1%        | 0805    | J17 RX level shift (lower)            |
-| 1   | R45B    | 33Ω     | 5%        | 0805    | J17 RX series                         |
-| 2   | R46-R47 | 4.7kΩ   | 5%        | 0805    | I2C pull-ups                          |
-| 2   | R93-R94 | 20kΩ    | 5%        | 0805    | RS485 failsafe bias                   |
+| Qty   | Ref           | Value     | Tolerance | Package  | Notes                                          |
+| ----- | ------------- | --------- | --------- | -------- | ---------------------------------------------- |
+| 4     | R40-R43       | **1kΩ**   | 5%        | 0805     | UART series (5V tolerance protection)          |
+| 1     | R44           | 33Ω       | 5%        | 0805     | I2C series                                     |
+| 1     | R45           | 2.2kΩ     | 1%        | 0805     | J17 RX level shift (upper)                     |
+| 1     | R45A          | 3.3kΩ     | 1%        | 0805     | J17 RX level shift (lower)                     |
+| 1     | R45B          | 33Ω       | 5%        | 0805     | J17 RX series                                  |
+| 2     | R46-R47       | 4.7kΩ     | 5%        | 0805     | I2C pull-ups                                   |
+| 2     | R93-R94       | 20kΩ      | 5%        | 0805     | RS485 failsafe bias                            |
+| **2** | **R_USB**     | **27Ω**   | **5%**    | **0805** | **USB D+/D- series termination**               |
+| **2** | **R_CC**      | **5.1kΩ** | **5%**    | **0805** | **USB-C CC1/CC2 pull-downs**                   |
+| **2** | **R_SWD**     | **47Ω**   | **5%**    | **0805** | **SWD Series Protection (J15-6/8)**            |
+| **1** | **R_XTAL**    | **1kΩ**   | **5%**    | **0805** | **Crystal OUT serial termination (if needed)** |
+| **1** | **R_BOOTSEL** | **1kΩ**   | **5%**    | **0805** | **BOOTSEL button pull-up (CS to GND)**         |
 
 ### User Interface
 
@@ -107,18 +112,22 @@
 
 ## Capacitors
 
-| Qty | Ref     | Value    | Voltage | Package  | Notes                                      |
-| --- | ------- | -------- | ------- | -------- | ------------------------------------------ |
-| 1   | C1      | 100nF X2 | 275V AC | Radial   | Mains EMI filter (**Compact 10mm pitch**)  |
-| 1   | C2      | 470µF    | 6.3V    | **SMD**  | 5V bulk (SMD V-Chip 6.3mm or 8mm)          |
-| 1   | C3      | 22µF     | 25V     | 1206     | Buck input (X5R)                           |
-| 2   | C4,C4A  | 22µF     | 10V     | 1206     | Buck output (X5R)                          |
-| 1   | **C5**  | **47µF** | **10V** | **1206** | **3.3V rail bulk (WiFi/relay transients)** |
-| 1   | C7      | 22µF     | 10V     | 1206     | ADC ref bulk                               |
-| 1   | C7A     | 100nF    | 25V     | 0805     | ADC ref HF decoupling                      |
-| ~15 | Various | 100nF    | 25V     | 0805     | Decoupling                                 |
-| 2   | C61-C62 | 10nF     | 50V     | 0805     | Wien bridge timing                         |
-| 1   | C64     | 1µF      | 25V     | 0805     | Level probe AC coupling                    |
+| Qty    | Ref         | Value       | Voltage | Package  | Notes                                            |
+| ------ | ----------- | ----------- | ------- | -------- | ------------------------------------------------ |
+| 1      | C1          | 100nF X2    | 275V AC | Radial   | Mains EMI filter (**Compact 10mm pitch**)        |
+| 1      | C2          | 470µF       | 6.3V    | **SMD**  | 5V bulk (SMD V-Chip 6.3mm or 8mm)                |
+| 1      | C3          | 22µF        | 25V     | 1206     | Buck input (X5R)                                 |
+| 2      | C4,C4A      | 22µF        | 10V     | 1206     | Buck output (X5R)                                |
+| 1      | **C5**      | **47µF**    | **10V** | **1206** | **3.3V rail bulk (WiFi/relay transients)**       |
+| 1      | C7          | 22µF        | 10V     | 1206     | ADC ref bulk                                     |
+| 1      | C7A         | 100nF       | 25V     | 0805     | ADC ref HF decoupling                            |
+| **~6** | **C_IOVDD** | **100nF**   | **25V** | **0805** | **RP2354 IOVDD decoupling (one per pin)**        |
+| **1**  | **C_DVDD**  | **1µF**     | **10V** | **0805** | **RP2354 DVDD bulk (core voltage)**              |
+| **1**  | **C_DVDD2** | **10µF**    | **10V** | **1206** | **RP2354 DVDD additional bulk**                  |
+| ~15    | Various     | 100nF       | 25V     | 0805     | Decoupling                                       |
+| 2      | C61-C62     | 10nF        | 50V     | 0805     | Wien bridge timing                               |
+| 1      | C64         | 1µF         | 25V     | 0805     | Level probe AC coupling                          |
+| **2**  | **C_XTAL**  | **10-22pF** | **50V** | **0603** | **Crystal load capacitors (check crystal spec)** |
 
 **⚠️ NOTE: Relay Snubber Capacitors (C25/C27) REMOVED**
 
@@ -129,23 +138,26 @@
 
 ## Inductors
 
-| Qty | Ref | Value       | Saturation | DCR    | Package | Notes                    |
-| --- | --- | ----------- | ---------- | ------ | ------- | ------------------------ |
-| 1   | L1  | 2.2µH       | 3A         | <100mΩ | 1210    | Buck inductor            |
-| 1   | FB1 | 600Ω@100MHz | -          | -      | 0603    | Analog section isolation |
+| Qty   | Ref    | Value       | Saturation | DCR        | Package  | Notes                                    |
+| ----- | ------ | ----------- | ---------- | ---------- | -------- | ---------------------------------------- |
+| 1     | L1     | 2.2µH       | 3A         | <100mΩ     | 1210     | Buck inductor                            |
+| **1** | **L2** | **2.2µH**   | **3A**     | **<100mΩ** | **1210** | **RP2354 VREG SMPS (DVDD core voltage)** |
+| 1     | FB1    | 600Ω@100MHz | -          | -          | 0603     | Analog section isolation                 |
 
 ## Electromechanical
 
-| Qty | Ref     | Description      | Part Number          | Notes                 |
-| --- | ------- | ---------------- | -------------------- | --------------------- |
-| 2   | K1,K3   | Relay 5V 3A      | Panasonic APAN3105   | Slim 5mm              |
-| 1   | K2      | Relay 5V 16A     | Omron G5LE-1A4-E DC5 | **-E variant!**       |
-| 1   | F1      | **Fuse 10A SMD** | **Littelfuse 463**   | **Nano² (10x3mm)**    |
-| 1   | F2      | **Fuse 2A SMD**  | **Littelfuse 463**   | **Nano² (10x3mm)**    |
-| 1   | RV1     | Varistor 275V    | S14K275              | 14mm, mains surge     |
-| 2   | RV2-RV3 | Varistor 275V    | S10K275              | 10mm, arc suppression |
-| 1   | SW1     | Tactile Switch   | EVQP7A01P            | 6×6mm SMD             |
-| 1   | BZ1     | Passive Buzzer   | CEM-1203(42)         | 12mm                  |
+| Qty   | Ref     | Description        | Part Number          | Notes                   |
+| ----- | ------- | ------------------ | -------------------- | ----------------------- | --------------------- |
+| 2     | K1,K3   | Relay 5V 3A        | Panasonic APAN3105   | Slim 5mm                |
+| 1     | K2      | Relay 5V 16A       | Omron G5LE-1A4-E DC5 | **-E variant!**         |
+| 1     | F1      | **Fuse 10A SMD**   | **Littelfuse 463**   | **Nano² (10x3mm)**      |
+| 1     | F2      | **Fuse 2A SMD**    | **Littelfuse 463**   | **Nano² (10x3mm)**      |
+| 1     | RV1     | Varistor 275V      | S14K275              | 14mm, mains surge       |
+| 2     | RV2-RV3 | Varistor 275V      | S10K275              | 10mm, arc suppression   |
+| 1     | SW1     | Tactile Switch     | EVQP7A01P            | 6×6mm SMD (Reset)       |
+| **1** | **SW2** | **Tactile Switch** | **EVQP7A01P**        | **6×6mm SMD (BOOTSEL)** |
+| 1     | BZ1     | Passive Buzzer     | CEM-1203(42)         | 12mm                    |
+| **1** | **Y1**  | **Crystal**        | **12 MHz**           | **HC-49 or SMD**        | **Main clock source** |
 
 ## LEDs
 
@@ -163,10 +175,10 @@
 | 3     | J2-J4   | 6.3mm Spade           | Keystone 1285          | Relay outputs                                          |
 | 1     | J5      | 6.3mm Spade           | Keystone 1285          | Chassis Reference (SRif)                               |
 | 1     | **J26** | Screw Terminal 18-pos | Phoenix MKDS 1/18-5.08 | All LV connections                                     |
-| 1     | J15     | JST-XH 8-pin          | JST B8B-XH-A           | ESP32 module                                           |
+| 1     | J15     | JST-XH 8-pin          | JST B8B-XH-A           | ESP32 module (SWD support on Pins 6,8)                 |
 | 1     | J16     | Header 4-pin          | 2.54mm pitch           | Service/debug                                          |
 | 1     | J17     | JST-XH 6-pin          | JST B6B-XH-A           | Power meter                                            |
-| 1     | J20     | Header 2×20           | 2.54mm pitch           | Pico socket                                            |
+| **1** | **J18** | **USB-C Connector**   | **16-pin SMD**         | **USB recovery & development**                         |
 | 1     | J23     | Header 4-pin          | 2.54mm pitch           | I2C accessory                                          |
 | 1     | J24     | Screw Terminal 2-pos  | 5.08mm pitch           | Power meter HV (L, N only - PE removed)                |
 

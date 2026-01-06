@@ -6,16 +6,17 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 
 ### Power Budget Analysis
 
-| Consumer            | Typical    | Peak       | Notes                      |
-| ------------------- | ---------- | ---------- | -------------------------- |
-| Raspberry Pi Pico 2 | 50mA       | 100mA      | Via VSYS                   |
-| Relay coils (×3)    | 80mA       | 150mA      | K2:70mA, K1/K3:40mA each   |
-| SSR drivers (×2)    | 10mA       | 20mA       | Transistor current         |
-| ESP32 module        | 150mA      | 500mA      | **WiFi TX spikes!**        |
-| Indicator LEDs (×6) | 30mA       | 60mA       | 3 relay + 2 SSR + 1 status |
-| Buzzer              | 5mA        | 30mA       | When active                |
-| 3.3V Buck load      | 30mA       | 100mA      | Sensors, margin            |
-| **TOTAL**           | **~355mA** | **~910mA** |                            |
+| Consumer            | Typical    | Peak       | Notes                        |
+| ------------------- | ---------- | ---------- | ---------------------------- |
+| RP2354 MCU          | 50mA       | 100mA      | Via VSYS (5V) → IOVDD (3.3V) |
+| RP2354 Core (DVDD)  | 30mA       | 60mA       | 1.1V via internal VREG       |
+| Relay coils (×3)    | 80mA       | 150mA      | K2:70mA, K1/K3:40mA each     |
+| SSR drivers (×2)    | 10mA       | 20mA       | Transistor current           |
+| ESP32 module        | 150mA      | 500mA      | **WiFi TX spikes!**          |
+| Indicator LEDs (×6) | 30mA       | 60mA       | 3 relay + 2 SSR + 1 status   |
+| Buzzer              | 5mA        | 30mA       | When active                  |
+| 3.3V Buck load      | 30mA       | 100mA      | Sensors, margin              |
+| **TOTAL**           | **~355mA** | **~910mA** |                              |
 
 **Minimum: 1.5A, Selected: Hi-Link HLK-15M05C (3A/15W)** - 3× headroom over 1A peak
 
@@ -143,11 +144,23 @@ V_OUT = 0.768V × (1 + R_FB1/R_FB2)
 V_OUT = 0.768V × (1 + 33kΩ/10kΩ) = 0.768V × 4.3 = 3.30V ✓
 ```
 
-### Pico Internal Regulator Configuration
+### RP2354 Internal Regulator Configuration
 
-The Pico 2's Pin 37 (3V3_EN) is connected to GND, which **DISABLES** the internal RT6150B buck-boost regulator. This allows the external TPS563200 to power the ENTIRE 3.3V domain via Pico Pin 36 (3V3).
+The RP2354 has an internal regulator that can run in LDO or SMPS (switching) mode. This design uses **SMPS mode** for efficiency, matching the Pico 2's approach.
 
-**WHY?** Connecting two regulator outputs in parallel ("hard parallel") causes feedback loop contention and potential reverse current damage.
+**Power Architecture:**
+
+- **VREG_IN:** Connect to +3.3V (from TPS563200 output)
+- **VREG_OUT:** Connect to **DVDD** (Core voltage pins, 1.1V)
+- **LX:** Connect **2.2µH inductor** (L2) to VREG_OUT/DVDD
+- **IOVDD:** All GPIO pins require 3.3V (from TPS563200)
+- **Decoupling:** Place 100nF caps close to every IOVDD pin; at least one 1µF/10µF on DVDD rail
+
+**Internal Regulator Benefits:**
+
+- Efficient SMPS mode reduces heat dissipation
+- Integrated design eliminates external 1.1V regulator
+- Matches Pico 2 power architecture for compatibility
 
 ## Precision ADC Voltage Reference (Buffered)
 
@@ -216,21 +229,24 @@ Without buffer, R7 provides only 0.3mA to share between LM4040 and NTC loads:
 
 ### Decoupling Capacitor Placement
 
-| Location                | Capacitor  | Type               | Notes                                  |
-| ----------------------- | ---------- | ------------------ | -------------------------------------- |
-| 5V rail main            | 470µF      | SMD V-Chip (6.3V)  | Near HLK-15M05C output                 |
-| 5V at Pico VSYS         | 100nF      | Ceramic (0805)     | Adjacent to pin                        |
-| 5V at each relay driver | 100nF      | Ceramic (0805)     | Suppress switching noise               |
-| 3.3V Buck output (U3)   | 2×22µF     | Ceramic (1206)     | For stability                          |
-| **3.3V Rail bulk (C5)** | **47µF**   | **Ceramic (1206)** | **WiFi/relay transient stabilization** |
-| 3.3V at each ADC input  | 100nF      | Ceramic (0603)     | Filter network                         |
-| ADC_VREF                | 22µF+100nF | Ceramic            | Reference stability                    |
+| Location                 | Capacitor  | Type               | Notes                                  |
+| ------------------------ | ---------- | ------------------ | -------------------------------------- |
+| 5V rail main             | 470µF      | SMD V-Chip (6.3V)  | Near HLK-15M05C output                 |
+| 5V at RP2354 VSYS        | 100nF      | Ceramic (0805)     | Adjacent to pin                        |
+| 5V at each relay driver  | 100nF      | Ceramic (0805)     | Suppress switching noise               |
+| 3.3V Buck output (U3)    | 2×22µF     | Ceramic (1206)     | For stability                          |
+| **3.3V Rail bulk (C5)**  | **47µF**   | **Ceramic (1206)** | **WiFi/relay transient stabilization** |
+| **3.3V at RP2354 IOVDD** | **100nF**  | **Ceramic (0805)** | **One per IOVDD pin (decoupling)**     |
+| 3.3V at each ADC input   | 100nF      | Ceramic (0603)     | Filter network                         |
+| ADC_VREF                 | 22µF+100nF | Ceramic            | Reference stability                    |
+| **RP2354 DVDD (1.1V)**   | **1µF**    | **Ceramic (0805)** | **Core voltage bulk**                  |
+| **RP2354 DVDD (1.1V)**   | **10µF**   | **Ceramic (1206)** | **Core voltage additional bulk**       |
 
 ### 3.3V Rail Bulk Capacitance (ECO-05)
 
-**⚠️ CRITICAL:** The Pico 2 module has limited onboard capacitance. When driving external loads (ESP32 logic, sensor buffers), additional bulk capacitance is required to prevent brownouts during:
+**⚠️ CRITICAL:** The RP2354 discrete chip requires proper decoupling. When driving external loads (ESP32 logic, sensor buffers), additional bulk capacitance is required to prevent brownouts during:
 
-- **WiFi transmission bursts** (if using Pico 2 W)
+- **WiFi transmission bursts** (ESP32 module)
 - **Relay switching transients** (back-EMF coupling)
 - **ESP32 current spikes** (up to 500mA during WiFi TX)
 
@@ -261,3 +277,27 @@ Without buffer, R7 provides only 0.3mA to share between LM4040 and NTC loads:
 ```
 
 **Total 3.3V Rail Capacitance:** 22µF + 22µF + 47µF = **91µF** (adequate for ~1A transient load)
+
+### RP2354 Power Requirements
+
+**Core Voltage (DVDD - 1.1V):**
+
+- Generated internally via VREG (SMPS mode)
+- Requires 2.2µH inductor (L2) on VREG_OUT/DVDD path
+- Decoupling: 1µF + 10µF capacitors on DVDD rail
+- Typical current: 30mA, Peak: 60mA
+
+**I/O Voltage (IOVDD - 3.3V):**
+
+- Supplied from TPS563200 buck converter output
+- Decoupling: 100nF ceramic capacitor at each IOVDD pin
+- Typical current: 50mA, Peak: 100mA
+
+**Power Sequencing:**
+
+1. 5V rail powers up (from HLK-15M05C)
+2. TPS563200 generates 3.3V (IOVDD)
+3. RP2354 VREG generates 1.1V (DVDD) from 3.3V input
+4. MCU boots and initializes
+
+**⚠️ IMPORTANT:** Ensure IOVDD is present before applying signals to GPIO pins. The RP2354 GPIOs are NOT 5V tolerant and require IOVDD to be powered for safe operation.

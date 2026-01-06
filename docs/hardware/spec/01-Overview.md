@@ -35,9 +35,9 @@ This specification defines a custom control PCB to replace the factory GICAR con
 │   │                 │     │  │  POWER SUPPLY    ║      SECTION         │   │    │
 │   └─────────────────┘     │  │  (HLK-15M05C)    ║                      │   │    │
 │                           │  │       │          ║   ┌──────────────┐   │   │    │
-│   ┌─────────────────┐     │  │       ▼          ║   │ Raspberry Pi │   │   │    │
-│   │  POWER METER    │     │  │    5V Rail ──────╫──►│    Pico      │   │   │    │
-│   │  (External)     │◄────│  │       │          ║   │   RP2350     │   │   │    │
+│   ┌─────────────────┐     │  │       ▼          ║   │   RP2354     │   │   │    │
+│   │  POWER METER    │     │  │    5V Rail ──────╫──►│  Microcontroller │   │    │
+│   │  (External)     │◄────│  │       │          ║   │   (QFN-60)   │   │   │    │
 │   │  + CT Clamp     │     │  │       ▼          ║   └──────┬───────┘   │   │    │
 │   └─────────────────┘     │  │   3.3V Rail ─────╫──────────┘           │   │    │
 │                           │  │                  ║                      │   │    │
@@ -90,8 +90,9 @@ This specification defines a custom control PCB to replace the factory GICAR con
 
 | Rail    | Voltage  | Current Capacity | Source                | Purpose                          |
 | ------- | -------- | ---------------- | --------------------- | -------------------------------- |
-| 5V DC   | 5.0V ±5% | **3A minimum**   | Isolated AC/DC module | Pico, relays, ESP32, SSR drivers |
-| 3.3V DC | 3.3V ±3% | 500mA minimum    | LDO from 5V           | Sensors, logic                   |
+| 5V DC   | 5.0V ±5% | **3A minimum**   | Isolated AC/DC module | RP2354 VSYS, relays, ESP32, SSR drivers |
+| 3.3V DC | 3.3V ±3% | 500mA minimum    | Buck from 5V          | RP2354 IOVDD, sensors, logic     |
+| 1.1V DC | 1.1V ±3% | 100mA minimum    | RP2354 internal VREG  | RP2354 DVDD (core voltage)       |
 
 ### Isolation Requirements
 

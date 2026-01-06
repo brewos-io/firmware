@@ -2,7 +2,7 @@
 
 Custom control PCB for ECM Synchronika dual-boiler espresso machine.
 
-**Current Version:** 2.28 (December 2025)
+**Current Version:** 2.31 (January 2026)
 
 ---
 
@@ -43,7 +43,7 @@ All 9 schematic sheets are embedded in the [Schematic Reference](schematics/Sche
 | Sheet                                                                                                                      | Description                                    |
 | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | 1 - [Power Supply](schematics/SCH_Schematic1_1-Power%20Supply_2025-12-22.png)                                              | AC/DC isolation, buck converter, ADC reference |
-| 2 - [Microcontroller](schematics/SCH_Schematic1_2-Microcontroller%20%28Raspberry%20Pi%20Pico%202%29_2025-12-22.png)        | Pico 2 GPIO connections                        |
+| 2 - [Microcontroller](schematics/SCH_Schematic1_2-Microcontroller%20%28Raspberry%20Pi%20Pico%202%29_2025-12-22.png)        | RP2354 GPIO connections                        |
 | 3 - [Relay Drivers](schematics/SCH_Schematic1_3-Relay%20Drivers_2025-12-22.png)                                            | K1-K3 driver circuits                          |
 | 4 - [SSR Drivers](schematics/SCH_Schematic1_4-SSR%20Drivers_2025-12-22.png)                                                | Heater SSR triggers                            |
 | 5 - [Sensor Inputs](schematics/SCH_Schematic1_5-Sensor%20Inputs_2025-12-22.png)                                            | NTC, pressure, level probe                     |

@@ -6,10 +6,10 @@ High-current connections to original machine wiring use 6.3mm (0.25") spade term
 
 ### Mains Input (J1)
 
-| Pin   | Function         | Terminal   | Wire Gauge | Notes                |
-| ----- | ---------------- | ---------- | ---------- | -------------------- |
-| J1-L  | Mains Live       | 6.3mm male | 14 AWG     | Fused, to relay COMs |
-| J1-N  | Mains Neutral    | 6.3mm male | 14 AWG     | Common neutral bus   |
+| Pin  | Function      | Terminal   | Wire Gauge | Notes                |
+| ---- | ------------- | ---------- | ---------- | -------------------- |
+| J1-L | Mains Live    | 6.3mm male | 14 AWG     | Fused, to relay COMs |
+| J1-N | Mains Neutral | 6.3mm male | 14 AWG     | Common neutral bus   |
 
 **⚠️ NOTE: PE (Protective Earth) pin REMOVED from J1.**
 HV section is now floating - no Earth connection on PCB to prevent L-to-Earth shorts.
@@ -78,18 +78,27 @@ HV section is now floating - no Earth connection on PCB to prevent L-to-Earth sh
 
 ## ESP32 Display Module (J15)
 
-8-pin JST-XH connector for external ESP32 display module.
+8-pin JST-XH connector for external ESP32 display module. **Updated in v2.31 for SWD support.**
 
-| Pin | Signal      | Direction  | Notes                                        |
-| --- | ----------- | ---------- | -------------------------------------------- |
-| 1   | +5V         | Power      | ESP32 power                                  |
-| 2   | GND         | Power      | Ground                                       |
-| 3   | PICO_TX     | Pico→ESP32 | GPIO0 via 1kΩ (R40, 5V tolerance - ECO-03)   |
-| 4   | PICO_RX     | ESP32→Pico | GPIO1 via 1kΩ (R41, 5V tolerance - ECO-03)   |
-| 5   | PICO_RUN    | ESP32→Pico | Reset control (ESP32 GPIO8)                  |
-| 6   | SPARE1      | ESP32↔Pico | GPIO16 ↔ ESP32 GPIO9, 4.7kΩ pull-down (R74)  |
-| 7   | WEIGHT_STOP | ESP32→Pico | GPIO21, 4.7kΩ pull-down (R73)                |
-| 8   | SPARE2      | ESP32↔Pico | GPIO22 ↔ ESP32 GPIO22, 4.7kΩ pull-down (R75) |
+| Pin | Signal      | Direction        | Notes                                                |
+| --- | ----------- | ---------------- | ---------------------------------------------------- |
+| 1   | +5V         | Power            | ESP32 power                                          |
+| 2   | GND         | Power            | Ground                                               |
+| 3   | RP2354_TX   | RP2354→ESP32     | GPIO0 via 1kΩ (R40, 5V tolerance - ECO-03)           |
+| 4   | RP2354_RX   | ESP32→RP2354     | GPIO1 via 1kΩ (R41, 5V tolerance - ECO-03)           |
+| 5   | RP2354_RUN  | ESP32→RP2354     | Reset control                                        |
+| 6   | **SWDIO**   | **ESP32↔RP2354** | **RP2354 SWDIO Pin ↔ ESP32 TX2, 47Ω series (R_SWD)** |
+| 7   | WEIGHT_STOP | ESP32→RP2354     | GPIO21, 4.7kΩ pull-down (R73)                        |
+| 8   | **SWCLK**   | **ESP32↔RP2354** | **RP2354 SWCLK Pin ↔ ESP32 RX2, 47Ω series (R_SWD)** |
+
+**SWD Interface (v2.31):**
+Pins 6 and 8 connect to the **dedicated SWDIO and SWCLK physical pins** on the RP2354 (NOT GPIO 16/22). This enables:
+
+- Factory flash of blank RP2354 chips via ESP32
+- Hardware-level recovery if firmware is corrupted
+- Remote debugging capability (GDB via ESP32)
+
+**Important:** GPIO 16 and 22 are now available for other uses since J15 traces connect to the dedicated SWD pins instead.
 
 **Part Number:** JST B8B-XH-A (8-pin, 2.54mm pitch)
 
@@ -168,9 +177,9 @@ HV section is now floating - no Earth connection on PCB to prevent L-to-Earth sh
 
 Single 6.3mm male spade terminal for chassis reference connection.
 
-| Pin | Function         | Terminal   | Wire Gauge | Notes                                    |
-| --- | ---------------- | ---------- | ---------- | ---------------------------------------- |
-| J5  | Chassis Reference (SRif) | 6.3mm male | 18 AWG | Connect to PCB GND (Logic Ground) |
+| Pin | Function                 | Terminal   | Wire Gauge | Notes                             |
+| --- | ------------------------ | ---------- | ---------- | --------------------------------- |
+| J5  | Chassis Reference (SRif) | 6.3mm male | 18 AWG     | Connect to PCB GND (Logic Ground) |
 
 **Wiring Instructions:**
 
@@ -180,13 +189,49 @@ Single 6.3mm male spade terminal for chassis reference connection.
 
 ---
 
-## Pico Socket (J20)
+## BOOTSEL Button (SW2) - NEW in v2.31
 
-2×20 female header (2.54mm pitch) for Raspberry Pi Pico 2 module.
+Tactile switch for entering USB bootloader mode.
 
-**Mounting Options:**
+**Connection:**
 
-- Direct solder (production)
-- Socket for easy replacement (prototype/debug)
+- Connect RP2354 **CS** pin (QSPI_SS) to Ground via ~1kΩ resistor (R_BOOTSEL)
+- When held low during boot, RP2354 enters ROM bootloader (USB mass-storage mode)
 
-After final testing, apply small dab of RTV silicone at module corners to prevent vibration-induced creep.
+**Usage:**
+
+1. Hold SW2 button
+2. Press and release SW1 (Reset)
+3. Release SW2
+4. RP2354 appears as USB mass-storage device
+5. Drag & drop `.uf2` firmware file to flash
+
+**Note:** On RP2354 with stacked flash, BOOTSEL functionality is handled via the QSPI_SS line. Holding flash CS low on boot enters ROM bootloader.
+
+---
+
+## USB-C Connector (J18) - NEW in v2.31
+
+16-pin SMD USB-C connector for recovery and development.
+
+| Pin            | Signal         | Notes                                    |
+| -------------- | -------------- | ---------------------------------------- |
+| A1-A12, B1-B12 | USB-C standard | See USB-C pinout                         |
+| D+             | USB_D+         | Connect to RP2354 USB_D+ via 27Ω (R_USB) |
+| D-             | USB_D-         | Connect to RP2354 USB_D- via 27Ω (R_USB) |
+| CC1            | CC1            | Connect to 5.1kΩ pull-down (R_CC)        |
+| CC2            | CC2            | Connect to 5.1kΩ pull-down (R_CC)        |
+
+**Purpose:**
+
+- Manual firmware flashing via USB ROM Bootloader (PicoBoot)
+- Development and debugging
+- "Plan B" recovery if ESP32 SWD is not yet implemented
+
+**Usage:**
+
+1. Hold BOOTSEL button (SW2) while resetting
+2. RP2354 enters USB mass-storage mode
+3. Drag & drop `.uf2` file to flash firmware
+
+**Part Number:** Standard USB-C 16-pin SMD connector (e.g., USB-C-016 or equivalent)

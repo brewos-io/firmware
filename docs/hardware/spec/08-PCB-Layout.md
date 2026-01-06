@@ -217,8 +217,8 @@ and ensure controlled current paths.
 │    │  │  HV SECTION    │ ║ │           LV SECTION                     │   │   │
 │    │  │                │ ║ │                                          │   │   │
 │    │  │  • HLK-15M05C  │ ║ │  ┌─────────────────┐  ┌──────────────┐  │   │   │
-│    │  │  • F1, F2      │ ║ │  │    PICO 2       │  │   ANALOG     │  │   │   │
-│    │  │  • RV1 (MOV)   │ ║ │  │    (U1)         │  │  U5,U6,U7,U9 │  │   │   │
+│    │  │  • F1, F2      │ ║ │  │    RP2354       │  │   ANALOG     │  │   │   │
+│    │  │  • RV1 (MOV)   │ ║ │  │    (U1) QFN-60  │  │  U5,U6,U7,U9 │  │   │   │
 │    │  │  • K1,K2,K3    │ ║ │  └─────────────────┘  └──────────────┘  │   │   │
 │    │  │  • RV2,RV3     │ ║ │                                          │   │   │
 │    │  │                │ ║ │  ┌─────────────────────────────────────┐ │   │   │
@@ -229,11 +229,11 @@ and ensure controlled current paths.
 │    │        SLOT         ║                                                │   │
 │    ════════════════════════════════════════════════════════════════════════    │
 │    BOTTOM EDGE - ALL CONNECTORS (enclosure opening)                             │
-│    ┌───┬───┬───┬───┬─────┬──────────────────┬────────┬────────┬──────┬────┐   │
-│    │J1 │J2 │J3 │J4 │ J24 │       J26        │  J15   │  J17   │ J16  │ J5 │   │
-│    │L/N│LED│PMP│SOL│MTR  │    SENSORS       │ ESP32  │ METER  │DEBUG │SRif│   │
-│    │   │   │   │   │ HV  │    (18-pos)      │(8-pin) │(6-pin) │(4pin)│    │   │
-│    └───┴───┴───┴───┴─────┴──────────────────┴────────┴────────┴──────┴────┘   │
+│    ┌───┬───┬───┬───┬─────┬──────────────────┬────────┬────────┬──────┬────┬────┐ │
+│    │J1 │J2 │J3 │J4 │ J24 │       J26        │  J15   │  J17   │ J16  │ J5 │J18 │ │
+│    │L/N│LED│PMP│SOL│MTR  │    SENSORS       │ ESP32  │ METER  │DEBUG │SRif│USB │ │
+│    │   │   │   │   │ HV  │    (18-pos)      │(8-pin) │(6-pin) │(4pin)│    │-C  │ │
+│    └───┴───┴───┴───┴─────┴──────────────────┴────────┴────────┴──────┴────┴────┘ │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -246,7 +246,9 @@ and ensure controlled current paths.
 | -------------------------- | ----------------------------------------------- |
 | **Vertical HLK placement** | Stand HLK-15M05C upright if needed (48×28×18mm) |
 | **Relay clustering**       | K1, K3 (slim 5mm) flanking K2 (standard)        |
-| **Pico orientation**       | Long axis parallel to isolation slot            |
+| **RP2354 placement**       | QFN-60 package, keep crystal close to XIN/XOUT  |
+| **Crystal placement**      | 12MHz crystal + load caps within 5mm of RP2354  |
+| **USB-C placement**        | J18 on bottom edge, accessible for recovery     |
 | **Bottom-edge connectors** | All connectors aligned, vertical entry          |
 | **Component density**      | 0603/0805 passives, tight but DFM-compliant     |
 | **Edge rail compliance**   | All components ≥5mm from board edges            |
@@ -269,7 +271,7 @@ J17─┤            │
      BOTTOM (HV + Sensors)
 ```
 
-**Rule:** HV connectors (J1-J4, J24) MUST be on bottom edge. LV connectors (J15, J17) may move to left edge if required.
+**Rule:** HV connectors (J1-J4, J24) MUST be on bottom edge. LV connectors (J15, J17, J18) may move to left edge if required, but J18 (USB-C) should be accessible for recovery.
 
 ---
 
@@ -300,6 +302,16 @@ J17─┤            │
 3. **Ferrite bead** (FB1): Place between digital and analog 3.3V
 4. **Reference capacitors** (C7, C7A): Place directly at U9 output
 5. **NTC filter caps** (C8, C9): Place close to ADC pins
+
+### RP2354 MCU Section (v2.31)
+
+1. **Crystal placement**: 12MHz crystal (Y1) + load caps (C_XTAL) within 5mm of XIN/XOUT pins
+2. **Decoupling**: 100nF ceramic cap at each IOVDD pin, placed as close as possible
+3. **Core voltage**: 1µF + 10µF on DVDD rail, place near VREG_OUT connection
+4. **VREG inductor**: 2.2µH inductor (L2) on VREG_OUT/DVDD path, keep loop area small
+5. **SWD routing**: SWDIO/SWCLK (dedicated pins) traces to J15 Pins 6/8 via 47Ω series resistors (R_SWD), keep short and away from noisy signals
+6. **USB routing**: USB D+/D- to J18 (USB-C), use 27Ω series resistors, differential pair routing
+7. **BOOTSEL routing**: CS pin to SW2 button via 1kΩ resistor, keep trace short
 
 ### Power Section
 

@@ -2,25 +2,175 @@
 
 ## Revision History
 
-| Rev      | Date            | Description                                                                               |
-| -------- | --------------- | ----------------------------------------------------------------------------------------- |
-| **2.30** | **Jan 06 2026** | **CURRENT** - SMD Transition (SMD Fuses, V-Chip Caps) & SRif Grounding                    |
-| 2.29     | Dec 22 2025     | SRif Grounding Architecture (Remove PE from PCB, Chassis Reference System)                |
-| 2.28     | Dec 14 2025     | RP2350 Engineering Verification ECOs (5V tolerance, bulk cap, safety docs)                |
-| 2.27     | Dec 14 2025     | Schematic diagram clarifications (VREF, Level Probe, 5V Protection), Netlist cleanup      |
-| 2.26.1   | Dec 11 2025     | Improved SSR wiring diagrams, fixed J26 pin number inconsistencies                        |
-| 2.25     | Dec 9 2025      | J15 Pin 6 SPARE1, removed SW2/R72 (BOOTSEL not available on Pico header)                  |
-| 2.24.2   | Dec 7 2025      | 🔴 SAFETY FIXES: Wien gain corrected, MOV relocated, JP5 added                            |
-| 2.24.1   | Dec 7 2025      | CRITICAL FIXES: Buck feedback, Wien gain (wrong value), VREF isolation (DO NOT FABRICATE) |
-| 2.24     | Dec 2025        | Critical VREF buffer, TC protection, ratiometric ADC (DO NOT FABRICATE)                   |
-| 2.23     | Dec 2025        | Design review action items (warnings, coating)                                            |
-| 2.22     | Dec 2025        | Engineering review fixes (thermal, GPIO protection)                                       |
-| 2.21.1   | Dec 2025        | Pico 2 compatibility fixes, power supply                                                  |
-| 2.21     | Dec 2025        | External power metering, multi-machine NTC support                                        |
-| 2.20     | Dec 2025        | Unified 22-pos screw terminal (J26)                                                       |
-| 2.19     | Dec 2025        | Removed spare relay K4                                                                    |
-| 2.17     | Nov 2025        | Brew-by-weight support (J15 8-pin)                                                        |
-| 2.16     | Nov 2025        | Production-ready specification                                                            |
+| Rev      | Date         | Description                                                                               |
+| -------- | ------------ | ----------------------------------------------------------------------------------------- |
+| **2.31** | **Jan 2026** | **CURRENT** - RP2354 Discrete MCU Migration (Module → Chip, SWD Support, USB-C)           |
+| 2.30     | Jan 06 2026  | SMD Transition (SMD Fuses, V-Chip Caps) & SRif Grounding                                  |
+| 2.29     | Dec 22 2025  | SRif Grounding Architecture (Remove PE from PCB, Chassis Reference System)                |
+| 2.28     | Dec 14 2025  | RP2350 Engineering Verification ECOs (5V tolerance, bulk cap, safety docs)                |
+| 2.27     | Dec 14 2025  | Schematic diagram clarifications (VREF, Level Probe, 5V Protection), Netlist cleanup      |
+| 2.26.1   | Dec 11 2025  | Improved SSR wiring diagrams, fixed J26 pin number inconsistencies                        |
+| 2.25     | Dec 9 2025   | J15 Pin 6 SPARE1, removed SW2/R72 (BOOTSEL not available on Pico header)                  |
+| 2.24.2   | Dec 7 2025   | 🔴 SAFETY FIXES: Wien gain corrected, MOV relocated, JP5 added                            |
+| 2.24.1   | Dec 7 2025   | CRITICAL FIXES: Buck feedback, Wien gain (wrong value), VREF isolation (DO NOT FABRICATE) |
+| 2.24     | Dec 2025     | Critical VREF buffer, TC protection, ratiometric ADC (DO NOT FABRICATE)                   |
+| 2.23     | Dec 2025     | Design review action items (warnings, coating)                                            |
+| 2.22     | Dec 2025     | Engineering review fixes (thermal, GPIO protection)                                       |
+| 2.21.1   | Dec 2025     | Pico 2 compatibility fixes, power supply                                                  |
+| 2.21     | Dec 2025     | External power metering, multi-machine NTC support                                        |
+| 2.20     | Dec 2025     | Unified 22-pos screw terminal (J26)                                                       |
+| 2.19     | Dec 2025     | Removed spare relay K4                                                                    |
+| 2.17     | Nov 2025     | Brew-by-weight support (J15 8-pin)                                                        |
+| 2.16     | Nov 2025     | Production-ready specification                                                            |
+
+---
+
+## v2.31 (January 2026) - RP2354 Discrete MCU Migration
+
+**Architecture Shift: Module to Discrete Chip**
+
+This revision migrates from the Raspberry Pi Pico 2 module to the discrete RP2354 microcontroller chip. This change eliminates the external flash requirement (2MB stacked flash included) and enables factory flash capability via SWD interface.
+
+### 🔴 Critical Architecture Changes
+
+#### 1. MCU Replacement: Pico 2 Module → RP2354 Discrete
+
+| Component | Old (v2.30)                  | New (v2.31)          | Reason                               |
+| --------- | ---------------------------- | -------------------- | ------------------------------------ |
+| **U1**    | Raspberry Pi Pico 2 (SC0942) | **RP2354A (QFN-60)** | Discrete chip with 2MB stacked flash |
+| **J20**   | 2×20 Header (Pico socket)    | **REMOVED**          | No longer needed (direct chip mount) |
+
+**Benefits:**
+
+- **2MB stacked flash** eliminates external QSPI flash chip
+- **Lower BOM cost** (no module premium)
+- **Factory flash capability** via SWD interface
+- **Access to GPIO23, 24, 25, 29** previously internal to module
+
+#### 2. New Components Required
+
+| Component         | Qty | Value              | Purpose                                           |
+| ----------------- | --- | ------------------ | ------------------------------------------------- |
+| **Crystal**       | 1   | **12 MHz**         | Main clock source (required for USB/timing)       |
+| **Load Caps**     | 2   | ~10-22pF           | Crystal load capacitors (check crystal datasheet) |
+| **Resistor**      | 1   | 1kΩ                | Serial termination for crystal OUT (if needed)    |
+| **Inductor**      | 1   | **2.2µH**          | For internal core voltage SMPS (VREG_OUT/DVDD)    |
+| **Capacitors**    | ~6  | 100nF, 1µF, 10µF   | Decoupling for 3.3V (IOVDD) and 1.1V (DVDD) rails |
+| **USB Connector** | 1   | **USB-C (16-pin)** | Essential for recovery and USB development        |
+| **Resistors**     | 2   | 27Ω                | USB D+/D- series termination                      |
+| **Resistors**     | 2   | 5.1kΩ              | USB-C CC1/CC2 pull-downs                          |
+
+#### 3. Power Supply Changes
+
+**RP2354 Power Architecture:**
+
+- **VREG_IN:** Connect to +3.3V (from TPS563200)
+- **VREG_OUT:** Connect to **DVDD** (Core voltage pins, 1.1V)
+- **LX:** Connect **2.2µH inductor** to VREG_OUT/DVDD
+- **IOVDD:** All GPIO pins require 3.3V (from TPS563200)
+- **Decoupling:** Place 100nF caps close to every IOVDD pin; at least one 1µF/10µF on DVDD rail
+
+**Internal Regulator:**
+The RP2354 has an internal regulator that can run in LDO or SMPS mode. This design uses SMPS mode (via 2.2µH inductor) for efficiency, matching the Pico 2's approach.
+
+#### 4. GPIO Mapping (Compatible)
+
+**No GPIO allocation changes required.** The RP2354A (QFN-60) exposes GPIO 0-29 directly, and all existing netlist signals map directly to corresponding GPIO pins.
+
+**Bonus:** GPIO16, 22, 23, 24, 25, 29 are now available:
+
+- GPIO16 & 22: Disconnected from J15 (traces moved to dedicated SWD pins)
+- GPIO23, 24, 25, 29: Previously internal to Pico module
+
+These can be routed to test points or an expansion header.
+
+#### 5. USB & Boot Support
+
+**USB-C Connector:**
+
+- Route **USB_D+** and **USB_D-** to USB-C connector
+- Enables manual flashing via ROM bootloader (PicoBoot) if ESP32 is down
+- Essential for development and "Plan B" recovery
+
+**BOOTSEL Button:**
+
+- Add tactile button connecting **CS** pin (QSPI_SS) to Ground (via ~1k resistor)
+- Note: On RP2354 with stacked flash, BOOTSEL functionality is handled via QSPI_SS line - holding flash CS low on boot enters ROM bootloader
+
+#### 6. SWD Interface for Factory Flash (CRITICAL)
+
+**Problem:** A fresh RP2354 has no firmware. It will boot into USB ROM Bootloader. The UART bootloader described in OTA updates relies on _application firmware_ being present. **UART OTA cannot flash a blank chip.**
+
+**Solution: Implement SWD via ESP32**
+
+The most robust approach is to wire the RP2354's **SWD (Serial Wire Debug)** interface to the ESP32. This allows the ESP32 to act as a hardware programmer (like a Picoprobe).
+
+**J15 Connector Changes:**
+
+| Pin | Old (v2.30)      | New (v2.31)    | Notes                                    |
+| --- | ---------------- | -------------- | ---------------------------------------- |
+| 5   | PICO_RUN (Reset) | **RP2354 RUN** | Unchanged                                |
+| 6   | SPARE1 (GPIO16)  | **SWDIO**      | RP2354 SWDIO (dedicated pin) → J15 Pin 6 |
+| 8   | SPARE2 (GPIO22)  | **SWCLK**      | RP2354 SWCLK (dedicated pin) → J15 Pin 8 |
+
+**Important:** SWDIO and SWCLK are **dedicated physical pins** on the RP2354, NOT multiplexed on GPIO 16/22. GPIO 16 and 22 are now available for other uses since J15 traces connect to the dedicated SWD pins.
+
+**Why SWD is Better:**
+
+1. **Factory Flash:** ESP32 can bit-bang SWD protocol to flash blank RP2354
+2. **Unbrickable:** If bad OTA corrupts software bootloader, UART OTA is dead. SWD works at hardware level and can recover anytime
+3. **Debugging:** Enables remote debugging (GDB) on RP2354 via ESP32 if needed
+
+**Software Implication:**
+ESP32 firmware will need to support SWD flashing (porting a DAP implementation). If not implemented immediately, USB-C connector provides "Plan B" recovery.
+
+**Recommendation:** Implement SWD wiring on PCB **now**. It costs nothing and enables factory flash capability.
+
+#### 7. Reset Button
+
+Keep `SW1` from BOM, but ensure it pulls the RP2354 `RUN` pin to ground (same as Pico 2).
+
+#### 8. 5V Tolerance Protection
+
+**CRITICAL:** The RP2354 GPIOs are **NOT 5V tolerant** (and fail safely only if IOVDD is powered). Ensure current limiting resistors (`R40`, `R41`, etc.) are kept in the new layout to protect the chip from 5V peripherals (relay drivers, external sensors).
+
+### BOM Impact
+
+| Change Type                           | Count   | Est. Cost Impact                   |
+| ------------------------------------- | ------- | ---------------------------------- |
+| MCU change (module → chip)            | 1       | **-$2-3** (module premium removed) |
+| New components (crystal, caps, USB-C) | ~12     | **+$1.50**                         |
+| Removed (J20 socket)                  | 1       | **-$0.50**                         |
+| **Total BOM Δ**                       | **~13** | **~-$1.00 savings**                |
+
+### Files Modified
+
+| File                         | Changes                                                                             |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| `spec/07-BOM.md`             | Replaced Pico 2 module with RP2354, added crystal, inductor, USB-C, decoupling caps |
+| `spec/02-GPIO-Allocation.md` | Updated MCU spec, noted GPIO23-29 now available                                     |
+| `spec/03-Power-Supply.md`    | Added RP2354 power architecture (VREG, DVDD, IOVDD)                                 |
+| `spec/06-Connectors.md`      | Updated J15 for SWD, added USB-C connector, removed J20                             |
+| `spec/08-PCB-Layout.md`      | Updated footprint requirements, USB-C placement                                     |
+| `spec/01-Overview.md`        | Updated MCU specification to RP2354                                                 |
+| `README.md`                  | Updated version and MCU reference                                                   |
+| `CHANGELOG.md`               | This entry                                                                          |
+
+### Design Verdict
+
+**Status:** Production Ready - Architecture Migration
+
+This migration from module to discrete chip provides cost savings, factory flash capability, and access to previously internal GPIOs. The SWD interface enables robust recovery and factory programming. All existing GPIO allocations remain compatible.
+
+**⚠️ IMPORTANT:** When fabricating boards with this revision:
+
+- Verify U1 footprint is QFN-60 (RP2354A) or QFN-80 (RP2354B)
+- Ensure 12MHz crystal + load caps are placed close to XIN/XOUT
+- Verify 2.2µH inductor on VREG_OUT/DVDD path
+- Place decoupling caps (100nF on all IOVDD, 1µF/10µF on DVDD)
+- Route SWDIO/SWCLK to J15 Pins 6/8
+- Include USB-C connector for recovery
+- Add BOOTSEL button (CS to GND via 1kΩ)
 
 ---
 
