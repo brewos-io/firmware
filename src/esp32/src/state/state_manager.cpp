@@ -1104,7 +1104,10 @@ void StateManager::checkSchedules() {
         return;
     }
     
-    // Check each enabled schedule
+    // Collect all matching schedules first to resolve conflicts
+    const ScheduleEntry* matchingSchedules[MAX_SCHEDULES];
+    size_t matchCount = 0;
+    
     for (size_t i = 0; i < MAX_SCHEDULES; i++) {
         const ScheduleEntry& sched = _settings.schedule.schedules[i];
         
@@ -1115,12 +1118,63 @@ void StateManager::checkSchedules() {
         // Check if schedule matches current time and day
         if (sched.matchesTime(currentHour, currentMinute) && 
             sched.isValidForDay(currentDay)) {
+            matchingSchedules[matchCount++] = &sched;
+        }
+    }
+    
+    // Resolve conflicts if multiple schedules match
+    if (matchCount > 0) {
+        const ScheduleEntry* scheduleToTrigger = nullptr;
+        
+        if (matchCount == 1) {
+            // Single schedule - no conflict
+            scheduleToTrigger = matchingSchedules[0];
+        } else {
+            // Multiple schedules at same time - resolve conflict
+            // Priority: OFF actions take precedence over ON (safety first)
+            // If multiple ON or multiple OFF, use the one with highest ID (last in list)
+            bool hasOff = false;
+            bool hasOn = false;
+            const ScheduleEntry* lastOff = nullptr;
+            const ScheduleEntry* lastOn = nullptr;
             
+            for (size_t i = 0; i < matchCount; i++) {
+                const ScheduleEntry* sched = matchingSchedules[i];
+                if (sched->action == ACTION_TURN_OFF) {
+                    hasOff = true;
+                    if (!lastOff || sched->id > lastOff->id) {
+                        lastOff = sched;
+                    }
+                } else {
+                    hasOn = true;
+                    if (!lastOn || sched->id > lastOn->id) {
+                        lastOn = sched;
+                    }
+                }
+            }
+            
+            if (hasOff && hasOn) {
+                // Conflict: both ON and OFF scheduled - prioritize OFF for safety
+                scheduleToTrigger = lastOff;
+                Serial.printf("[Schedule] Conflict detected: %zu schedules at %02d:%02d, prioritizing OFF (safety first)\n",
+                    matchCount, currentHour, currentMinute);
+            } else if (hasOff) {
+                // Multiple OFF schedules - use highest ID
+                scheduleToTrigger = lastOff;
+            } else {
+                // Multiple ON schedules - use highest ID
+                scheduleToTrigger = lastOn;
+            }
+        }
+        
+        if (scheduleToTrigger) {
             Serial.printf("[Schedule] Triggered: %s (action=%s, strategy=%d)\n",
-                sched.name, sched.action == ACTION_TURN_ON ? "on" : "off", sched.strategy);
+                scheduleToTrigger->name, 
+                scheduleToTrigger->action == ACTION_TURN_ON ? "on" : "off", 
+                scheduleToTrigger->strategy);
             
             if (_onScheduleTriggered) {
-                _onScheduleTriggered(sched);
+                _onScheduleTriggered(*scheduleToTrigger);
             }
         }
     }

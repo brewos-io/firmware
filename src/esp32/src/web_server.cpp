@@ -1194,6 +1194,22 @@ void BrewWebServer::setupRoutes() {
                 return;
             }
             
+            // Validate hour and minute ranges before parsing
+            if (doc["hour"].is<uint8_t>()) {
+                uint8_t h = doc["hour"];
+                if (h > 23) {
+                    request->send(400, "application/json", "{\"error\":\"Invalid hour (must be 0-23)\"}");
+                    return;
+                }
+            }
+            if (doc["minute"].is<uint8_t>()) {
+                uint8_t m = doc["minute"];
+                if (m > 59) {
+                    request->send(400, "application/json", "{\"error\":\"Invalid minute (must be 0-59)\"}");
+                    return;
+                }
+            }
+            
             BrewOS::ScheduleEntry entry;
             entry.fromJson(doc.as<JsonObjectConst>());
             
@@ -1231,6 +1247,22 @@ void BrewWebServer::setupRoutes() {
             if (id == 0) {
                 request->send(400, "application/json", "{\"error\":\"Missing schedule ID\"}");
                 return;
+            }
+            
+            // Validate hour and minute ranges before parsing
+            if (doc["hour"].is<uint8_t>()) {
+                uint8_t h = doc["hour"];
+                if (h > 23) {
+                    request->send(400, "application/json", "{\"error\":\"Invalid hour (must be 0-23)\"}");
+                    return;
+                }
+            }
+            if (doc["minute"].is<uint8_t>()) {
+                uint8_t m = doc["minute"];
+                if (m > 59) {
+                    request->send(400, "application/json", "{\"error\":\"Invalid minute (must be 0-59)\"}");
+                    return;
+                }
             }
             
             BrewOS::ScheduleEntry entry;

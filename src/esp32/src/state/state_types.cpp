@@ -663,8 +663,28 @@ bool ScheduleEntry::fromJson(JsonObjectConst obj) {
     if (obj["id"].is<uint8_t>()) id = obj["id"];
     if (obj["enabled"].is<bool>()) enabled = obj["enabled"];
     if (obj["days"].is<uint8_t>()) days = obj["days"];
-    if (obj["hour"].is<uint8_t>()) hour = obj["hour"];
-    if (obj["minute"].is<uint8_t>()) minute = obj["minute"];
+    
+    // Validate and set hour (0-23)
+    if (obj["hour"].is<uint8_t>()) {
+        uint8_t h = obj["hour"];
+        if (h <= 23) {
+            hour = h;
+        } else {
+            // Invalid hour - clamp to valid range
+            hour = 23;
+        }
+    }
+    
+    // Validate and set minute (0-59)
+    if (obj["minute"].is<uint8_t>()) {
+        uint8_t m = obj["minute"];
+        if (m <= 59) {
+            minute = m;
+        } else {
+            // Invalid minute - clamp to valid range
+            minute = 59;
+        }
+    }
     
     if (obj["action"].is<const char*>()) {
         const char* actionStr = obj["action"];
