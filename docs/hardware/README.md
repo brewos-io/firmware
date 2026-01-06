@@ -19,7 +19,7 @@ Custom control PCB for ECM Synchronika dual-boiler espresso machine.
 | Document                                      | Description                                         |
 | --------------------------------------------- | --------------------------------------------------- |
 | [Overview](spec/01-Overview.md)               | System architecture, design goals, electrical specs |
-| [GPIO Allocation](spec/02-GPIO-Allocation.md) | Complete Pico 2 pin mapping, RP2350 errata          |
+| [GPIO Allocation](spec/02-GPIO-Allocation.md) | Complete RP2354 pin mapping, GPIO errata          |
 | [Power Supply](spec/03-Power-Supply.md)       | AC/DC isolation, buck converter, ADC reference      |
 | [Outputs](spec/04-Outputs.md)                 | Relay drivers, SSR triggers, indicator LEDs         |
 | [Analog Inputs](spec/05-Analog-Inputs.md)     | NTC thermistors, pressure transducer                |

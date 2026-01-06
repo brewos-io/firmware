@@ -2,10 +2,10 @@
 
 ## Detailed Circuit Schematics for PCB Design
 
-**Board Size:** 130mm × 80mm (2-layer, 2oz copper)  
-**Enclosure:** 150mm × 100mm mounting area  
-**Revision:** v2.28  
-**Date:** December 2025
+**Board Size:** 80mm × 80mm (2-layer, 2oz copper)  
+**Enclosure:** Bottom-opening design  
+**Revision:** v2.31  
+**Date:** January 2026
 
 ---
 
@@ -25,11 +25,13 @@ Mains input, AC/DC isolation, buck converter, ADC reference
 
 ---
 
-### Sheet 2: Microcontroller (Raspberry Pi Pico 2)
+### Sheet 2: Microcontroller (RP2354)
 
-GPIO allocation and connections
+RP2354 discrete chip, GPIO allocation, crystal, and power connections
 
 ![Microcontroller Schematic](SCH_Schematic1_2-Microcontroller%20%28Raspberry%20Pi%20Pico%202%29_2025-12-22.png)
+
+**Note:** Schematic image may still show Pico 2 module - actual implementation uses RP2354A (QFN-60) discrete chip with 12MHz crystal and SWD interface.
 
 ---
 
@@ -249,11 +251,11 @@ critical for reliable operation inside hot espresso machine enclosures.
     Output Voltage Setting:
     V_OUT = 0.768V × (1 + R_FB1/R_FB2) = 0.768V × (1 + 33k/10k) = 3.30V ✓
 
-    Pico Internal Regulator Configuration:
+    RP2354 Internal Regulator Configuration:
     ─────────────────────────────────────────────
-    Pico 2 Pin 37 (3V3_EN) is connected to GND, disabling the internal RT6150B
-    regulator. The TPS563200 powers the ENTIRE 3.3V domain via Pico Pin 36 (3V3).
-    This avoids "hard parallel" regulator contention and potential reverse current.
+    The RP2354 has an internal VREG that generates DVDD (1.1V core voltage) from IOVDD (3.3V).
+    VREG_IN connects to +3.3V (from TPS563200), and VREG_OUT connects to DVDD via a 2.2µH inductor (L2).
+    This uses SMPS mode for efficiency. IOVDD (3.3V) is supplied directly from TPS563200.
 ```
 
 ## 1.4 Precision ADC Voltage Reference (Buffered)
@@ -415,15 +417,16 @@ pull-up resistors. An op-amp buffer (U9A) provides the current drive capability.
 
 ---
 
-# Sheet 2: Microcontroller (Raspberry Pi Pico 2)
+# Sheet 2: Microcontroller (RP2354)
 
-## 2.1 Pico 2 Module & Decoupling
+## 2.1 RP2354 Discrete Chip & Decoupling
 
 ```
-                           RASPBERRY PI PICO 2 MODULE
+                           RP2354 MICROCONTROLLER (QFN-60)
     ════════════════════════════════════════════════════════════════════════════
 
-                               U1: Raspberry Pi Pico 2
+                               U1: RP2354A (QFN-60)
+                               Discrete chip with 2MB stacked flash
 
          +3.3V ◄────────────────┐           ┌────────────────► (Internal 3.3V)
                                 │           │
@@ -2445,9 +2448,10 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     Connect via 18AWG Green/Yellow wire to boiler/chassis mounting bolt.
     This provides the return path for level probe operation.
 
-    NOTE: GPIO23-25 and GPIO29 are used internally by Pico 2 module
-          and are NOT available on the 40-pin header.
-          For expansion, use GPIO22 via J15 Pin 8 (SPARE).
+    NOTE: With RP2354 discrete chip, GPIO23-25 are NOW AVAILABLE (previously internal to Pico module).
+          GPIO29 is used for ADC3 (5V_MONITOR) - ratiometric pressure compensation.
+          GPIO16 and GPIO22 are also available (disconnected from J15, traces moved to SWD pins).
+          For expansion, use GPIO16, 22, 23, 24, or 25.
 
     J26 UNIFIED LOW-VOLTAGE TERMINAL BLOCK (18-pos):
     ─────────────────────────────────────────────────

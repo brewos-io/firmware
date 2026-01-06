@@ -146,7 +146,7 @@ V_OUT = 0.768V × (1 + 33kΩ/10kΩ) = 0.768V × 4.3 = 3.30V ✓
 
 ### RP2354 Internal Regulator Configuration
 
-The RP2354 has an internal regulator that can run in LDO or SMPS (switching) mode. This design uses **SMPS mode** for efficiency, matching the Pico 2's approach.
+The RP2354 has an internal regulator that can run in LDO or SMPS (switching) mode. This design uses **SMPS mode** for efficiency, matching the original Pico 2 module's approach.
 
 **Power Architecture:**
 

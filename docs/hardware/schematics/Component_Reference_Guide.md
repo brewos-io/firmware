@@ -1,8 +1,8 @@
 # BrewOS Control Board - Component Reference Guide
 
 **Document Purpose:** Standardized component numbering scheme and cross-reference  
-**Revision:** 2.28  
-**Date:** December 2025
+**Revision:** 2.31  
+**Date:** January 2026
 
 ---
 
@@ -10,16 +10,16 @@
 
 ### Integrated Circuits (U1-U9)
 
-| Ref | Part Number    | Function                           | Package  |
-| --- | -------------- | ---------------------------------- | -------- |
-| U1  | RP2350         | Raspberry Pi Pico 2 (MCU module)   | Module   |
-| U2  | HLK-15M05C     | AC/DC isolated power supply (5V)   | Module   |
-| U3  | TPS563200DDCR  | Synchronous buck converter (3.3V)  | SOT-23-6 |
-| U5  | LM4040DIM3-3.0 | Precision 3.0V voltage reference   | SOT-23-3 |
-| U6  | OPA342UA       | Level probe oscillator (op-amp)    | SOIC-8   |
-| U7  | TLV3201AIDBVR  | Level probe comparator             | SOT-23-5 |
-| U8  | MAX3485ESA+    | RS485 transceiver                  | SOIC-8   |
-| U9  | OPA2342UA      | ADC reference buffer (dual op-amp) | SOIC-8   |
+| Ref | Part Number    | Function                                       | Package  |
+| --- | -------------- | ---------------------------------------------- | -------- |
+| U1  | RP2354A        | RP2354 Microcontroller (Discrete chip, QFN-60) | QFN-60   |
+| U2  | HLK-15M05C     | AC/DC isolated power supply (5V)               | Module   |
+| U3  | TPS563200DDCR  | Synchronous buck converter (3.3V)              | SOT-23-6 |
+| U5  | LM4040DIM3-3.0 | Precision 3.0V voltage reference               | SOT-23-3 |
+| U6  | OPA342UA       | Level probe oscillator (op-amp)                | SOIC-8   |
+| U7  | TLV3201AIDBVR  | Level probe comparator                         | SOT-23-5 |
+| U8  | MAX3485ESA+    | RS485 transceiver                              | SOIC-8   |
+| U9  | OPA2342UA      | ADC reference buffer (dual op-amp)             | SOIC-8   |
 
 ---
 
@@ -138,24 +138,24 @@
 
 #### Communication Interface Protection (R40-R47)
 
-| Ref  | Value | Tolerance | Function                     |
-| ---- | ----- | --------- | ---------------------------- |
-| R40  | 33Ω   | 5%        | ESP32 UART TX series         |
-| R41  | 33Ω   | 5%        | ESP32 UART RX series         |
-| R42  | 33Ω   | 5%        | Service port TX series       |
-| R43  | 33Ω   | 5%        | Service port RX series       |
-| R44  | 33Ω   | 5%        | Power meter TX series        |
-| R45  | 2.2kΩ | 1%        | J17 RX level shift (upper)   |
-| R45A | 3.3kΩ | 1%        | J17 RX level shift (lower)   |
-| R45B | 33Ω   | 5%        | J17 RX series (post-divider) |
-| R46  | 4.7kΩ | 5%        | I2C SDA pull-up              |
-| R47  | 4.7kΩ | 5%        | I2C SCL pull-up              |
+| Ref  | Value | Tolerance | Function                                                  |
+| ---- | ----- | --------- | --------------------------------------------------------- |
+| R40  | 1kΩ   | 5%        | ESP32 UART TX series (5V tolerance protection - ECO-03)   |
+| R41  | 1kΩ   | 5%        | ESP32 UART RX series (5V tolerance protection - ECO-03)   |
+| R42  | 1kΩ   | 5%        | Service port TX series (5V tolerance protection - ECO-03) |
+| R43  | 1kΩ   | 5%        | Service port RX series (5V tolerance protection - ECO-03) |
+| R44  | 33Ω   | 5%        | Power meter TX series                                     |
+| R45  | 2.2kΩ | 1%        | J17 RX level shift (upper)                                |
+| R45A | 3.3kΩ | 1%        | J17 RX level shift (lower)                                |
+| R45B | 33Ω   | 5%        | J17 RX series (post-divider)                              |
+| R46  | 4.7kΩ | 5%        | I2C SDA pull-up                                           |
+| R47  | 4.7kΩ | 5%        | I2C SCL pull-up                                           |
 
 #### Control Signal Pull-ups (R71, R73)
 
 | Ref | Value | Tolerance | Function              |
 | --- | ----- | --------- | --------------------- |
-| R71 | 10kΩ  | 5%        | Pico RUN pull-up      |
+| R71 | 10kΩ  | 5%        | RP2354 RUN pull-up    |
 | R73 | 4.7kΩ | 5%        | WEIGHT_STOP pull-down |
 | R74 | 4.7kΩ | 5%        | SPARE1 pull-down      |
 | R75 | 4.7kΩ | 5%        | SPARE2 pull-down      |
@@ -176,12 +176,14 @@
 
 #### Ratiometric Compensation & RS485 Biasing (R91-R94)
 
-| Ref | Value | Tolerance | Function                        |
-| --- | ----- | --------- | ------------------------------- |
-| R91 | 10kΩ  | 1%        | 5V monitor divider (upper)      |
-| R92 | 5.6kΩ | 1%        | 5V monitor divider (lower)      |
-| R93 | 20kΩ  | 5%        | RS485 A line failsafe pull-up   |
-| R94 | 20kΩ  | 5%        | RS485 B line failsafe pull-down |
+| Ref    | Value | Tolerance | Function                                   |
+| ------ | ----- | --------- | ------------------------------------------ |
+| R91    | 10kΩ  | 1%        | 5V monitor divider (upper)                 |
+| R92    | 5.6kΩ | 1%        | 5V monitor divider (lower)                 |
+| R93    | 20kΩ  | 5%        | RS485 A line failsafe pull-up              |
+| R94    | 20kΩ  | 5%        | RS485 B line failsafe pull-down            |
+| R_SWD  | 47Ω   | 5%        | SWDIO/SWCLK series protection (J15-6/8)    |
+| R_XTAL | 1kΩ   | 5%        | Crystal OUT serial termination (if needed) |
 
 ---
 
@@ -189,15 +191,15 @@
 
 #### Power Supply Filtering (C1-C6)
 
-| Ref | Value    | Voltage | Type       | Function                |
-| --- | -------- | ------- | ---------- | ----------------------- |
-| C1  | 100nF X2 | 275V AC | Radial     | Mains EMI filter        |
-| C2  | 470µF    | 6.3V    | SMD V-Chip | 5V bulk capacitor       |
-| C3  | 22µF     | 25V     | Ceramic    | Buck converter input    |
-| C4  | 22µF     | 10V     | Ceramic    | Buck converter output   |
-| C4A | 22µF     | 10V     | Ceramic    | Buck output (parallel)  |
-| C5  | 100nF    | 25V     | Ceramic    | 3.3V general decoupling |
-| C6  | 100nF    | 25V     | Ceramic    | 3.3V digital decoupling |
+| Ref | Value    | Voltage | Type        | Function                                        |
+| --- | -------- | ------- | ----------- | ----------------------------------------------- |
+| C1  | 100nF X2 | 275V AC | Radial      | Mains EMI filter                                |
+| C2  | 470µF    | 6.3V    | SMD V-Chip  | 5V bulk capacitor                               |
+| C3  | 22µF     | 25V     | Ceramic     | Buck converter input                            |
+| C4  | 22µF     | 10V     | Ceramic     | Buck converter output                           |
+| C4A | 22µF     | 10V     | Ceramic     | Buck output (parallel)                          |
+| C5  | 47µF     | 10V     | Ceramic X5R | 3.3V rail bulk (WiFi/relay transients - ECO-05) |
+| C6  | 100nF    | 25V     | Ceramic     | 3.3V digital decoupling                         |
 
 #### ADC Reference & Sensor Filters (C7-C13)
 
@@ -223,11 +225,15 @@
 
 #### Communication & Monitoring (C70, C80, C81)
 
-| Ref | Value | Voltage | Type    | Function               |
-| --- | ----- | ------- | ------- | ---------------------- |
-| C70 | 100nF | 25V     | Ceramic | MAX3485 VCC decoupling |
-| C80 | 100nF | 25V     | Ceramic | OPA2342 VCC decoupling |
-| C81 | 100nF | 25V     | Ceramic | 5V monitor filter      |
+| Ref     | Value   | Voltage | Type    | Function                                  |
+| ------- | ------- | ------- | ------- | ----------------------------------------- |
+| C70     | 100nF   | 25V     | Ceramic | MAX3485 VCC decoupling                    |
+| C80     | 100nF   | 25V     | Ceramic | OPA2342 VCC decoupling                    |
+| C81     | 100nF   | 25V     | Ceramic | 5V monitor filter                         |
+| C_XTAL  | 10-22pF | 50V     | Ceramic | Crystal load capacitors (×2)              |
+| C_IOVDD | 100nF   | 25V     | Ceramic | RP2354 IOVDD decoupling (×6, one per pin) |
+| C_DVDD  | 1µF     | 10V     | Ceramic | RP2354 DVDD bulk (core voltage)           |
+| C_DVDD2 | 10µF    | 10V     | Ceramic | RP2354 DVDD additional bulk               |
 
 ---
 
@@ -246,24 +252,23 @@
 
 #### High Voltage Connectors (6.3mm Spade Terminals)
 
-| Ref | Type        | Function                   |
-| --- | ----------- | -------------------------- |
-| J1  | 3-pos spade | Mains input (L, N, PE)     |
-| J2  | 2-pos spade | K1 output (indicator lamp) |
-| J3  | 2-pos spade | K2 output (pump)           |
-| J4  | 2-pos spade | K3 output (solenoid)       |
+| Ref | Type        | Function                             |
+| --- | ----------- | ------------------------------------ |
+| J1  | 2-pos spade | Mains input (L, N only - PE removed) |
+| J2  | 2-pos spade | K1 output (indicator lamp)           |
+| J3  | 2-pos spade | K2 output (pump)                     |
+| J4  | 2-pos spade | K3 output (solenoid)                 |
 
 #### Low Voltage Connectors
 
-| Ref | Type              | Pins | Function                            |
-| --- | ----------------- | ---- | ----------------------------------- |
-| J15 | JST-XH 2.54mm     | 8    | ESP32 display + brew-by-weight      |
-| J16 | Pin header 2.54mm | 4    | Service/debug port (UART)           |
-| J17 | JST-XH 2.54mm     | 6    | Power meter interface (LV)          |
-| J20 | Pin header 2.54mm | 2×20 | Raspberry Pi Pico 2 socket          |
-| J23 | Pin header 2.54mm | 4    | I2C accessory port                  |
-| J24 | Screw terminal    | 3    | Power meter HV input (L, N, PE)     |
-| J26 | Screw terminal    | 18   | Unified LV terminal (sensors, SSRs) |
+| Ref | Type              | Pins | Function                                      |
+| --- | ----------------- | ---- | --------------------------------------------- |
+| J15 | JST-XH 2.54mm     | 8    | ESP32 display + brew-by-weight                |
+| J16 | Pin header 2.54mm | 4    | Service/debug port (UART)                     |
+| J17 | JST-XH 2.54mm     | 6    | Power meter interface (LV)                    |
+| J23 | Pin header 2.54mm | 4    | I2C accessory port                            |
+| J24 | Screw terminal    | 2    | Power meter HV input (L, N only - PE removed) |
+| J26 | Screw terminal    | 18   | Unified LV terminal (sensors, SSRs)           |
 
 ---
 
@@ -271,10 +276,10 @@
 
 #### Fuses (F1-F2)
 
-| Ref | Rating   | Type   | Function              |
-| --- | -------- | ------ | --------------------- |
-| F1  | 10A 250V | 5×20mm | Main mains protection |
-| F2  | 2A 250V  | 5×20mm | HLK module protection |
+| Ref | Rating   | Type                       | Function              |
+| --- | -------- | -------------------------- | --------------------- |
+| F1  | 10A 250V | 5×20mm                     | Main mains protection |
+| F2  | 2A 250V  | SMD Nano² (Littelfuse 463) | HLK module protection |
 
 #### Varistors / MOVs (RV1-RV3)
 
@@ -292,11 +297,13 @@
 
 #### Other Components
 
-| Ref | Part          | Function                |
-| --- | ------------- | ----------------------- |
-| BZ1 | Passive 12mm  | Piezo buzzer            |
-| FB1 | 600Ω @ 100MHz | ADC reference isolation |
-| L1  | 2.2µH 3A      | Buck converter inductor |
+| Ref | Part          | Function                             |
+| --- | ------------- | ------------------------------------ | ---------------------------- |
+| BZ1 | Passive 12mm  | Piezo buzzer                         |
+| FB1 | 600Ω @ 100MHz | ADC reference isolation              |
+| L1  | 2.2µH 3A      | Buck converter inductor              |
+| L2  | 2.2µH 3A      | RP2354 VREG SMPS (DVDD core voltage) |
+| Y1  | 12 MHz        | Crystal (HC-49 or SMD)               | Main clock source for RP2354 |
 
 ---
 
@@ -312,12 +319,12 @@
 
 ### Mounting Holes (MH1-MH4)
 
-| Ref | Size | Type | Connection | Function             |
-| --- | ---- | ---- | ---------- | -------------------- |
-| MH1 | M3   | PTH  | GND        | PE star ground point |
-| MH2 | M3   | NPTH | Isolated   | Mechanical only      |
-| MH3 | M3   | NPTH | Isolated   | Mechanical only      |
-| MH4 | M3   | NPTH | Isolated   | Mechanical only      |
+| Ref | Size | Type | Connection | Function                             |
+| --- | ---- | ---- | ---------- | ------------------------------------ |
+| MH1 | M3   | NPTH | Isolated   | No PE connection (SRif architecture) |
+| MH2 | M3   | NPTH | Isolated   | Mechanical only                      |
+| MH3 | M3   | NPTH | Isolated   | Mechanical only                      |
+| MH4 | M3   | NPTH | Isolated   | Mechanical only                      |
 
 ---
 
@@ -347,5 +354,5 @@ The following reference designators are intentionally skipped or reserved:
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** December 7, 2025
+**Document Version:** 1.1  
+**Last Updated:** January 2026 (v2.31 - RP2354 migration)
