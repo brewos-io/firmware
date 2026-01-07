@@ -10,6 +10,7 @@
 
 #include <Arduino.h>
 #include <lvgl.h>
+#include "config.h"
 #include "display_config.h"
 
 // Forward declarations for library classes
@@ -130,7 +131,9 @@ private:
     static void readCallback(lv_indev_drv_t* drv, lv_indev_data_t* data);
 };
 
-// Global encoder instance
+// Global encoder instance (only when screen is enabled)
+#if ENABLE_SCREEN
 extern Encoder encoder;
+#endif
 
 #endif // ENCODER_H

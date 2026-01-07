@@ -7,7 +7,9 @@
 #include "power_meter/power_meter_manager.h"
 #include "notifications/notification_manager.h"
 #include "state/state_manager.h"
+#if ENABLE_SCREEN
 #include "display/display.h"
+#endif
 #include <LittleFS.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -142,6 +144,36 @@ void clearPendingOTA() {
     }
 }
 
+/**
+ * @brief Get firmware variant from NVS (for OTA binary selection)
+ * @return Variant string ("screen" or "noscreen"), defaults to build-time variant if not found
+ */
+String getFirmwareVariant() {
+    Preferences prefs;
+    if (prefs.begin("firmware", true)) {  // Read-only
+        String variant = prefs.getString("variant", "");
+        prefs.end();
+        if (variant.length() > 0) {
+            return variant;
+        }
+    }
+    // Fallback to build-time variant if NVS not available
+    return FIRMWARE_VARIANT;
+}
+
+/**
+ * @brief Get ESP32 firmware asset name based on variant
+ * @return Asset name string
+ */
+String getESP32AssetName() {
+    String variant = getFirmwareVariant();
+    if (variant == "noscreen") {
+        return GITHUB_ESP32_NOSCREEN_ASSET;
+    }
+    // Default to screen variant (backward compatibility)
+    return GITHUB_ESP32_ASSET;
+}
+
 // =============================================================================
 // Forward Declarations
 // =============================================================================
@@ -174,7 +206,10 @@ static void resumeBackgroundServices() {
     LOG_I("Resuming background services after OTA...");
     
     // Turn display back on
+#if ENABLE_SCREEN
+    extern Display display;
     display.backlightOn();
+#endif
     
     // Re-enable MQTT client after OTA
     if (mqttClient) {
@@ -283,8 +318,11 @@ static void pauseServicesForOTA(CloudConnection* cloudConnection, AsyncWebSocket
     
     // 6. Turn off display to free memory and reduce interference
     // Display uses PSRAM for buffers but turning it off reduces DMA activity
+#if ENABLE_SCREEN
+    extern Display display;
     LOG_I("  - Turning off display...");
     display.backlightOff();
+#endif
     
     // Give all services time to cleanly shut down and memory to be freed
     // Wait 3 seconds total for tasks to terminate and memory to be freed
@@ -971,10 +1009,15 @@ void BrewWebServer::startGitHubOTA(const String& version) {
         tag[sizeof(tag) - 1] = '\0';
     }
     
+    // Get variant-specific asset name
+    String esp32AssetName = getESP32AssetName();
+    String firmwareVariant = getFirmwareVariant();
+    LOG_I("Firmware variant: %s, asset: %s", firmwareVariant.c_str(), esp32AssetName.c_str());
+    
     char downloadUrl[256];
     snprintf(downloadUrl, sizeof(downloadUrl), 
-             "https://github.com/" GITHUB_OWNER "/" GITHUB_REPO "/releases/download/%s/" GITHUB_ESP32_ASSET, 
-             tag);
+             "https://github.com/" GITHUB_OWNER "/" GITHUB_REPO "/releases/download/%s/%s", 
+             tag, esp32AssetName.c_str());
     LOG_I("ESP32 download URL: %s", downloadUrl);
     
     broadcastOtaProgress(&_ws, "download", 65, "Downloading ESP32 firmware...");
@@ -1607,10 +1650,14 @@ void BrewWebServer::checkForUpdates() {
     uint8_t machineType = State.getMachineType();
     const char* picoAssetName = getPicoAssetName(machineType);
     
+    // Get variant-specific ESP32 asset name
+    String esp32AssetName = getESP32AssetName();
+    String firmwareVariant = getFirmwareVariant();
+    
     JsonArray assets = doc["assets"].as<JsonArray>();
     for (JsonObject asset : assets) {
         String name = asset["name"] | "";
-        if (name == GITHUB_ESP32_ASSET) {
+        if (name == esp32AssetName) {
             esp32AssetSize = asset["size"] | 0;
             esp32AssetFound = true;
         }
@@ -1635,6 +1682,8 @@ void BrewWebServer::checkForUpdates() {
     result["publishedAt"] = publishedAt;
     result["esp32AssetSize"] = esp32AssetSize;
     result["esp32AssetFound"] = esp32AssetFound;
+    result["esp32AssetName"] = esp32AssetName;
+    result["firmwareVariant"] = firmwareVariant;
     result["picoAssetSize"] = picoAssetSize;
     result["picoAssetFound"] = picoAssetFound;
     result["picoAssetName"] = picoAssetName ? picoAssetName : "unknown";

@@ -157,9 +157,17 @@ build_web() {
 
 # Build ESP32 firmware
 build_esp32() {
-    print_header "Building BrewOS ESP32 Firmware"
+    local variant="${1:-screen}"  # Default to "screen" variant
+    local env_name="esp32s3"
     
-    # Build web UI first
+    if [ "$variant" = "noscreen" ]; then
+        env_name="esp32s3-noscreen"
+        print_header "Building BrewOS ESP32 Firmware (Headless - No Screen)"
+    else
+        print_header "Building BrewOS ESP32 Firmware (With Screen)"
+    fi
+    
+    # Build web UI first (only needed for screen variant, but build for both for consistency)
     build_web
     echo ""
     
@@ -172,30 +180,32 @@ build_esp32() {
         exit 1
     fi
     
-    # Build only ESP32-S3 environment (skip simulator which has different requirements)
-    print_info "Building with PlatformIO..."
-    pio run -e esp32s3 || {
+    # Build ESP32 environment
+    print_info "Building with PlatformIO (environment: $env_name)..."
+    pio run -e "$env_name" || {
         print_error "Build failed"
         exit 1
     }
     
-    # Build LittleFS image (only for esp32s3, not simulator)
-    print_info "Building LittleFS image..."
-    pio run -e esp32s3 -t buildfs || {
-        print_error "LittleFS build failed"
-        exit 1
-    }
+    # Build LittleFS image (only for screen variant)
+    if [ "$variant" = "screen" ]; then
+        print_info "Building LittleFS image..."
+        pio run -e "$env_name" -t buildfs || {
+            print_error "LittleFS build failed"
+            exit 1
+        }
+    fi
     
     # Generate compile_commands.json for IDE
     print_info "Generating compile database for IDE..."
     pio run --target compiledb 2>/dev/null || true
     
     print_success "ESP32 firmware built successfully"
-    if [ -f ".pio/build/esp32s3/firmware.bin" ]; then
-        ls -lh .pio/build/esp32s3/firmware.bin | awk '{print "  Firmware: " $9 " (" $5 ")"}'
+    if [ -f ".pio/build/$env_name/firmware.bin" ]; then
+        ls -lh ".pio/build/$env_name/firmware.bin" | awk '{print "  Firmware: " $9 " (" $5 ")"}'
     fi
-    if [ -f ".pio/build/esp32s3/littlefs.bin" ]; then
-        ls -lh .pio/build/esp32s3/littlefs.bin | awk '{print "  LittleFS: " $9 " (" $5 ")"}'
+    if [ "$variant" = "screen" ] && [ -f ".pio/build/$env_name/littlefs.bin" ]; then
+        ls -lh ".pio/build/$env_name/littlefs.bin" | awk '{print "  LittleFS: " $9 " (" $5 ")"}'
     fi
 }
 
@@ -218,26 +228,32 @@ clean_esp32() {
 
 # Show usage
 show_usage() {
-    echo "Usage: $0 [pico|esp32|all|clean|clean-pico|clean-esp32]"
+    echo "Usage: $0 [pico|esp32|esp32-noscreen|all|clean|clean-pico|clean-esp32]"
     echo ""
     echo "Commands:"
-    echo "  pico        Build Pico firmware (all machine types)"
-    echo "  esp32       Build ESP32 firmware only"
-    echo "  all         Build both firmwares (default)"
-    echo "  clean       Clean all build artifacts"
-    echo "  clean-pico  Clean Pico build only"
-    echo "  clean-esp32 Clean ESP32 build only"
+    echo "  pico           Build Pico firmware (all machine types)"
+    echo "  esp32          Build ESP32 firmware with screen (default)"
+    echo "  esp32-noscreen Build ESP32 firmware without screen (headless)"
+    echo "  all            Build both firmwares (default)"
+    echo "  clean          Clean all build artifacts"
+    echo "  clean-pico     Clean Pico build only"
+    echo "  clean-esp32    Clean ESP32 build only"
     echo ""
     echo "Pico builds generate firmware for all machine types:"
     echo "  - brewos_dual_boiler.uf2"
     echo "  - brewos_single_boiler.uf2"
     echo "  - brewos_heat_exchanger.uf2"
     echo ""
+    echo "ESP32 builds generate:"
+    echo "  - esp32: brewos_esp32.bin (with screen)"
+    echo "  - esp32-noscreen: brewos_esp32_noscreen.bin (headless)"
+    echo ""
     echo "Examples:"
-    echo "  $0           # Build both"
-    echo "  $0 pico      # Build Pico only"
-    echo "  $0 esp32     # Build ESP32 only"
-    echo "  $0 clean     # Clean everything"
+    echo "  $0              # Build both"
+    echo "  $0 pico         # Build Pico only"
+    echo "  $0 esp32        # Build ESP32 with screen"
+    echo "  $0 esp32-noscreen # Build ESP32 headless"
+    echo "  $0 clean        # Clean everything"
 }
 
 # Main
@@ -247,12 +263,15 @@ main() {
             build_pico
             ;;
         esp32)
-            build_esp32
+            build_esp32 "screen"
+            ;;
+        esp32-noscreen)
+            build_esp32 "noscreen"
             ;;
         all)
             build_pico
             echo ""
-            build_esp32
+            build_esp32 "screen"
             echo ""
             print_header "Build Complete"
             print_success "Both firmwares built successfully!"

@@ -1,12 +1,13 @@
 #!/bin/bash
 # Flash ESP32 firmware and web files via USB
-# Usage: ./scripts/flash_esp32.sh [port] [--skip-prompt] [--firmware-only] [--no-clean] [--factory-reset] [--quiet]
+# Usage: ./scripts/flash_esp32.sh [port] [--skip-prompt] [--firmware-only] [--no-clean] [--factory-reset] [--quiet] [--noscreen]
 #   port: Serial port (optional, auto-detects if not provided)
 #   --skip-prompt: Skip the bootloader mode prompt (for automated scripts)
 #   --firmware-only: Only flash firmware, skip web files (default: flash both)
 #   --no-clean: Skip clean rebuild (faster, but may use cached code)
 #   --factory-reset: Erase entire flash before flashing (complete clean slate)
 #   --quiet, -q: Suppress non-essential output (faster execution)
+#   --noscreen: Build and flash headless variant (no screen)
 
 set -e
 set -o pipefail  # Make pipes fail if any command in the pipeline fails
@@ -15,10 +16,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ESP32_DIR="$SCRIPT_DIR/../esp32"
 FIRMWARE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 APP_DIR="$FIRMWARE_DIR/../app"
-FIRMWARE="$ESP32_DIR/.pio/build/esp32s3/firmware.bin"
-LITTLEFS_IMAGE="$ESP32_DIR/.pio/build/esp32s3/littlefs.bin"
 WEB_DATA_DIR="$ESP32_DIR/data"
 BUILD_APP_SCRIPT="$SCRIPT_DIR/build_app_for_esp32.sh"
+
+# Variant selection (default to screen, will be updated by --noscreen flag)
+VARIANT="screen"
+ENV_NAME="esp32s3"
+
+# Function to update firmware paths based on variant
+update_firmware_paths() {
+    FIRMWARE="$ESP32_DIR/.pio/build/$ENV_NAME/firmware.bin"
+    LITTLEFS_IMAGE="$ESP32_DIR/.pio/build/$ENV_NAME/littlefs.bin"
+}
+
+# Initialize paths with default variant
+update_firmware_paths
 
 # Configuration
 MAX_FILE_AGE_SECONDS=60  # Warn if web files are older than this
@@ -80,6 +92,11 @@ for arg in "$@"; do
         --quiet|-q)
             QUIET=true
             SKIP_PROMPT=true  # Auto-skip prompt in quiet mode
+            ;;
+        --noscreen)
+            VARIANT="noscreen"
+            ENV_NAME="esp32s3-noscreen"
+            update_firmware_paths
             ;;
     esac
 done
@@ -186,22 +203,27 @@ if [ "$DO_CLEAN" = true ]; then
     status_log "Cleaning previous build..."
     quiet_echo "${BLUE}Cleaning previous build (use --no-clean to skip)...${NC}"
     if [ "$QUIET" = true ]; then
-        pio run -e esp32s3 -t clean > /dev/null 2>&1
+        pio run -e "$ENV_NAME" -t clean > /dev/null 2>&1
     else
-        pio run -e esp32s3 -t clean
+        pio run -e "$ENV_NAME" -t clean
     fi
 fi
 
 # Build firmware (PlatformIO will rebuild only changed files unless --clean was used)
-status_log "Compiling firmware..."
-quiet_echo "${BLUE}Running PlatformIO build...${NC}"
+if [ "$VARIANT" = "noscreen" ]; then
+    status_log "Compiling firmware (headless variant)..."
+    quiet_echo "${BLUE}Building ESP32 firmware (headless - no screen)...${NC}"
+else
+    status_log "Compiling firmware..."
+    quiet_echo "${BLUE}Running PlatformIO build...${NC}"
+fi
 if [ "$QUIET" = true ]; then
-    if ! pio run -e esp32s3 > /dev/null 2>&1; then
+    if ! pio run -e "$ENV_NAME" > /dev/null 2>&1; then
         echo -e "${RED}✗ Build failed!${NC}" >&2
         exit 1
     fi
 else
-    if ! pio run -e esp32s3; then
+    if ! pio run -e "$ENV_NAME"; then
         echo -e "${RED}✗ Build failed!${NC}"
         exit 1
     fi
@@ -222,8 +244,8 @@ elif [ "$DO_CLEAN" = false ]; then
     quiet_echo "${YELLOW}  Consider running without --no-clean to force a fresh build${NC}"
 fi
 
-# Build LittleFS image if not firmware-only
-if [ "$FIRMWARE_ONLY" = false ]; then
+# Build LittleFS image if not firmware-only and screen variant
+if [ "$FIRMWARE_ONLY" = false ] && [ "$VARIANT" = "screen" ]; then
     # Double-check data directory exists and has files before building LittleFS
     if [ ! -d "$WEB_DATA_DIR" ] || [ -z "$(ls -A "$WEB_DATA_DIR" 2>/dev/null)" ]; then
         echo -e "${RED}✗ Data directory is empty or missing: $WEB_DATA_DIR${NC}" >&2
@@ -240,12 +262,12 @@ if [ "$FIRMWARE_ONLY" = false ]; then
     fi
     
     if [ "$QUIET" = true ]; then
-        if ! pio run -e esp32s3 -t buildfs > /dev/null 2>&1; then
+        if ! pio run -e "$ENV_NAME" -t buildfs > /dev/null 2>&1; then
             echo -e "${RED}✗ LittleFS build failed!${NC}" >&2
             exit 1
         fi
     else
-        if ! pio run -e esp32s3 -t buildfs; then
+        if ! pio run -e "$ENV_NAME" -t buildfs; then
             echo -e "${RED}✗ LittleFS build failed!${NC}"
             quiet_echo "${YELLOW}Check that:${NC}"
             quiet_echo "  1. Data directory exists: $WEB_DATA_DIR"
@@ -280,7 +302,7 @@ quiet_echo "${BLUE}Detecting serial port...${NC}"
 PORT=""
 for arg in "$@"; do
     case "$arg" in
-        --skip-prompt|--firmware-only|--no-clean|--factory-reset|--quiet|-q)
+        --skip-prompt|--firmware-only|--no-clean|--factory-reset|--quiet|-q|--noscreen)
             # Skip flags
             ;;
         *)
@@ -407,6 +429,7 @@ fi
 
 status_log "Preparing to flash to $PORT"
 quiet_echo "📍 Port: ${GREEN}$PORT${NC}"
+quiet_echo "📦 Variant: ${GREEN}$VARIANT${NC}"
 quiet_echo "📦 Firmware: ${GREEN}$(basename $FIRMWARE)${NC} ($(du -h "$FIRMWARE" | cut -f1))"
 if [ "$FIRMWARE_ONLY" = false ]; then
     if [ -d "$WEB_DATA_DIR" ] && [ -n "$(ls -A "$WEB_DATA_DIR" 2>/dev/null)" ]; then
@@ -560,7 +583,7 @@ if [ "$FIRMWARE_ONLY" = false ] && [ -f "$LITTLEFS_IMAGE" ]; then
     # Get LittleFS partition address from PlatformIO (partitions_16MB.csv uses 0x610000)
     # Try to get it from partition table, fallback to default
     LITTLEFS_ADDR="0x610000"
-    PARTITION_TABLE="$ESP32_DIR/.pio/build/esp32s3/partitions.bin"
+    PARTITION_TABLE="$ESP32_DIR/.pio/build/$ENV_NAME/partitions.bin"
     if [ -f "$PARTITION_TABLE" ]; then
         # Try to extract from partition table (this is a fallback - PlatformIO uses 0x610000 for partitions_16MB.csv)
         # For now, we'll use the known address for partitions_16MB.csv
@@ -597,8 +620,8 @@ if [ "$FIRMWARE_ONLY" = false ] && [ -f "$LITTLEFS_IMAGE" ]; then
     quiet_echo "${YELLOW}(Sectors will be automatically erased before writing)${NC}"
     
     # Check if bootloader, partition table, and other required files exist
-    BOOTLOADER="$ESP32_DIR/.pio/build/esp32s3/bootloader.bin"
-    PARTITION_TABLE="$ESP32_DIR/.pio/build/esp32s3/partitions.bin"
+    BOOTLOADER="$ESP32_DIR/.pio/build/$ENV_NAME/bootloader.bin"
+    PARTITION_TABLE="$ESP32_DIR/.pio/build/$ENV_NAME/partitions.bin"
     BOOTLOADER_ADDR="0x0"
     PARTITION_TABLE_ADDR="0x8000"
     
@@ -624,7 +647,7 @@ if [ "$FIRMWARE_ONLY" = false ] && [ -f "$LITTLEFS_IMAGE" ]; then
     )
     
     # Include bootloader if it exists (at 0x0) - REQUIRED for ESP32-S3
-    BOOTLOADER="$ESP32_DIR/.pio/build/esp32s3/bootloader.bin"
+    BOOTLOADER="$ESP32_DIR/.pio/build/$ENV_NAME/bootloader.bin"
     if [ -f "$BOOTLOADER" ]; then
         quiet_echo "${BLUE}Including bootloader at 0x0...${NC}"
         FLASH_ARGS+=("0x0" "$BOOTLOADER")
@@ -716,7 +739,7 @@ else
     status_log "Flashing firmware only to $PORT..."
     quiet_echo "${YELLOW}⚡ Flashing firmware (with auto-erase)...${NC}"
     if [ "$QUIET" = true ]; then
-        if pio run -e esp32s3 -t upload --upload-port "$PORT" > /dev/null 2>&1; then
+        if pio run -e "$ENV_NAME" -t upload --upload-port "$PORT" > /dev/null 2>&1; then
             FLASH_SUCCESS=true
             status_log "Firmware flash complete"
         else
@@ -725,7 +748,7 @@ else
             exit 1
         fi
     else
-        if pio run -e esp32s3 -t upload --upload-port "$PORT"; then
+        if pio run -e "$ENV_NAME" -t upload --upload-port "$PORT"; then
             status_log "Firmware flash complete"
             echo ""
             echo -e "${GREEN}✓ Firmware flashed successfully!${NC}"

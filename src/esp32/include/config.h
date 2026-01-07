@@ -29,9 +29,28 @@
 #define ESP32_DEFAULT_CHANNEL   "beta"
 
 // -----------------------------------------------------------------------------
-// Display Configuration (included from display/display_config.h)
+// Screen/Display Configuration
 // -----------------------------------------------------------------------------
+// ENABLE_SCREEN is set by build flags (1 = enabled, 0 = disabled)
+// Default to enabled if not defined (backward compatibility)
+#ifndef ENABLE_SCREEN
+#define ENABLE_SCREEN 1
+#endif
+
+// Firmware variant string (for OTA update selection)
+#if ENABLE_SCREEN
+#define FIRMWARE_VARIANT "screen"
+#define FIRMWARE_VARIANT_SHORT "screen"
+#else
+#define FIRMWARE_VARIANT "noscreen"
+#define FIRMWARE_VARIANT_SHORT "noscreen"
+#endif
+
+// Display Configuration (included from display/display_config.h)
+// Only included when screen is enabled
+#if ENABLE_SCREEN
 // See display/display_config.h for pin definitions and display settings
+#endif
 
 // -----------------------------------------------------------------------------
 // WiFi Configuration
@@ -99,7 +118,9 @@
 // GitHub OTA - Download firmware from GitHub releases
 #define GITHUB_OWNER            "brewos-io"
 #define GITHUB_REPO             "firmware"
-#define GITHUB_ESP32_ASSET      "brewos_esp32.bin"
+// ESP32 firmware asset names (variant-specific)
+#define GITHUB_ESP32_ASSET      "brewos_esp32.bin"              // With screen
+#define GITHUB_ESP32_NOSCREEN_ASSET "brewos_esp32_noscreen.bin" // No screen
 #define GITHUB_ESP32_LITTLEFS_ASSET "brewos_esp32_littlefs.bin"
 
 // Pico firmware assets by machine type (UF2 format)

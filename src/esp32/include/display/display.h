@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include <lvgl.h>
+#include "config.h"
 #include "display_config.h"
 
 // =============================================================================
@@ -104,8 +105,10 @@ private:
     static void flushCallback(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* color_p);
 };
 
-// Global display instance
+// Global display instance (only when screen is enabled)
+#if ENABLE_SCREEN
 extern Display display;
+#endif
 
 #endif // DISPLAY_H
 

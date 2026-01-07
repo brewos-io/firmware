@@ -151,10 +151,15 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio pyyaml
 
-      - name: Build ESP32 Firmware
+      - name: Build ESP32 Firmware (with screen)
         run: |
           cd src/esp32
           pio run -e esp32s3
+
+      - name: Build ESP32 Firmware (no screen)
+        run: |
+          cd src/esp32
+          pio run -e esp32s3-noscreen
 
       - name: Build LittleFS Image
         run: |
@@ -176,8 +181,9 @@ jobs:
           cp src/pico/build/brewos_single_boiler.bin release/
           cp src/pico/build/brewos_heat_exchanger.bin release/
 
-          # Copy ESP32 firmware and filesystem
+          # Copy ESP32 firmware and filesystem (both variants)
           cp src/esp32/.pio/build/esp32s3/firmware.bin release/brewos_esp32.bin
+          cp src/esp32/.pio/build/esp32s3-noscreen/firmware.bin release/brewos_esp32_noscreen.bin
           cp src/esp32/.pio/build/esp32s3/littlefs.bin release/brewos_esp32_littlefs.bin
 
           # Create checksums
@@ -249,6 +255,7 @@ jobs:
             release/brewos_single_boiler.bin
             release/brewos_heat_exchanger.bin
             release/brewos_esp32.bin
+            release/brewos_esp32_noscreen.bin
             release/brewos_esp32_littlefs.bin
             release/SHA256SUMS.txt
           body: |
@@ -268,7 +275,8 @@ jobs:
             | `brewos_dual_boiler.bin` | Pico firmware for dual boiler machines - OTA update |
             | `brewos_single_boiler.bin` | Pico firmware for single boiler machines - OTA update |
             | `brewos_heat_exchanger.bin` | Pico firmware for heat exchanger machines - OTA update |
-            | `brewos_esp32.bin` | ESP32 firmware (main application) |
+            | `brewos_esp32.bin` | ESP32 firmware (with screen) |
+            | `brewos_esp32_noscreen.bin` | ESP32 firmware (headless, no screen) |
             | `brewos_esp32_littlefs.bin` | ESP32 filesystem image (web UI) |
 
             ## Installation

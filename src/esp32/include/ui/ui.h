@@ -8,7 +8,12 @@
 #ifndef UI_H
 #define UI_H
 
+#include "config.h"
+
+// LVGL is only needed when screen is enabled
+#if ENABLE_SCREEN
 #include <lvgl.h>
+#endif
 
 // =============================================================================
 // Screen IDs
@@ -138,9 +143,10 @@ typedef void (*ui_set_target_weight_callback_t)(float weight);
 typedef void (*ui_wifi_setup_callback_t)(void);
 
 // =============================================================================
-// UI Manager Class
+// UI Manager Class (only when screen is enabled)
 // =============================================================================
 
+#if ENABLE_SCREEN
 class UI {
 public:
     UI();
@@ -280,7 +286,8 @@ private:
     void rebuildScreens();
 };
 
-// Global UI instance
+// Global UI instance (only when screen is enabled)
 extern UI ui;
+#endif // ENABLE_SCREEN
 
 #endif // UI_H

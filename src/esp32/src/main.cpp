@@ -33,7 +33,8 @@
 #include "pico_uart.h"
 #include "log_manager.h"
 
-// Display and UI
+// Display and UI (conditional compilation)
+#if ENABLE_SCREEN
 #include "display/display.h"
 #include "display/encoder.h"
 #include "display/theme.h"
@@ -41,6 +42,7 @@
 #include "ui/screen_setup.h"
 #include "ui/screen_ota.h"
 #include "ui/screen_cloud.h"
+#endif
 
 // MQTT
 #include "mqtt_client.h"
@@ -177,6 +179,17 @@ static char diagnosticJsonBuffer[512] = {0};
 static SemaphoreHandle_t diagnosticBufferMutex = nullptr;  // Thread-safe access to diagnostic buffer
 
 // Forward declarations
+#if ENABLE_SCREEN
+#include "display/encoder.h"  // For button_state_t
+#else
+// Define button_state_t when screen is disabled (for handleEncoderEvent signature)
+typedef enum {
+    BTN_RELEASED,
+    BTN_PRESSED,
+    BTN_LONG_PRESSED,
+    BTN_DOUBLE_PRESSED
+} button_state_t;
+#endif
 void handleEncoderEvent(int32_t diff, button_state_t btn);
 static void onPicoPacket(const PicoPacket& packet);
 
@@ -330,7 +343,9 @@ static void onWiFiAPStarted() {
     LOG_I("Captive portal DNS server started");
     
     // Update setup screen with AP credentials
+#if ENABLE_SCREEN
     screen_setup_set_ap_info(WIFI_AP_SSID, WIFI_AP_PASSWORD, apIPStr);
+#endif
 }
 
 // =============================================================================
@@ -781,6 +796,23 @@ static void setupEarlyInitialization() {
     } else {
         Serial.println("NVS initialized OK");
     }
+    
+    // Store firmware variant in NVS (for OTA update selection)
+    // This is stored once and persists across firmware updates
+    Preferences prefs;
+    if (prefs.begin("firmware", false)) {  // Read-write mode
+        String storedVariant = prefs.getString("variant", "");
+        String currentVariant = FIRMWARE_VARIANT;
+        
+        if (storedVariant != currentVariant) {
+            // Variant changed or first boot - update NVS
+            prefs.putString("variant", currentVariant);
+            Serial.printf("Firmware variant stored: %s\n", currentVariant.c_str());
+        } else {
+            Serial.printf("Firmware variant: %s (already stored)\n", currentVariant.c_str());
+        }
+        prefs.end();
+    }
 }
 
 static void setupCheckPendingOTA() {
@@ -988,9 +1020,11 @@ static void setupCreateGlobalObjects() {
 }
 
 static void setupInitializeDisplayAndEncoder() {
+#if ENABLE_SCREEN
     // Initialize display (PSRAM enabled for RGB frame buffer)
     // Now using lower PCLK (8 MHz) and bounce buffer for WiFi compatibility
     Serial.println("[4/8] Initializing display...");
+    extern Display display;
     if (!display.begin()) {
         Serial.println("ERROR: Display initialization failed!");
     } else {
@@ -999,15 +1033,20 @@ static void setupInitializeDisplayAndEncoder() {
     
     // Initialize encoder
     Serial.println("[4.5/8] Initializing encoder...");
+    extern Encoder encoder;
     if (!encoder.begin()) {
         Serial.println("ERROR: Encoder initialization failed!");
     } else {
         Serial.println("Encoder initialized OK");
     }
     encoder.setCallback(handleEncoderEvent);
+#else
+    Serial.println("[4/8] Display disabled (headless mode)");
+#endif
 }
 
 static void setupInitializeUI() {
+#if ENABLE_SCREEN
     // Check if WiFi setup is needed BEFORE initializing UI
     // This ensures the setup screen shows immediately if no credentials exist
     Serial.println("[4.7/8] Checking WiFi credentials...");
@@ -1028,6 +1067,8 @@ static void setupInitializeUI() {
     
     // Initialize UI
     Serial.println("[4.8/8] Initializing UI...");
+    extern UI ui;
+    extern Display display;
     if (!ui.begin()) {
         Serial.println("ERROR: UI initialization failed!");
     } else {
@@ -1038,10 +1079,29 @@ static void setupInitializeUI() {
         }
         display.update();
     }
+#else
+    // Headless mode - still need to check WiFi credentials for state
+    Serial.println("[4.7/8] Checking WiFi credentials (headless mode)...");
+    bool needsWifiSetup = !wifiManager->checkCredentials();
+    ui_state_t& state = runtimeState().beginUpdate();
+    if (needsWifiSetup) {
+        Serial.println("No WiFi credentials found");
+        state.wifi_ap_mode = true;
+        state.wifi_connected = false;
+    } else {
+        Serial.println("WiFi credentials found");
+        state.wifi_ap_mode = false;
+        state.wifi_connected = false;  // Will be updated when WiFi connects
+    }
+    runtimeState().endUpdate();
+    Serial.println("[4.8/8] UI disabled (headless mode)");
+#endif
 }
 
 static void setupUICallbacks() {
+#if ENABLE_SCREEN
     // UI callbacks
+    extern UI ui;
     ui.onTurnOn([]() {
         LOG_I("UI: Turn on requested");
         uint8_t cmd = 0x01;
@@ -1082,6 +1142,9 @@ static void setupUICallbacks() {
         wifiManager->setStaticIP(false);
         wifiManager->startAP();
     });
+#else
+    // UI callbacks not needed in headless mode
+#endif
 }
 
 static void setupInitializePicoUART() {
@@ -1322,9 +1385,13 @@ void setup() {
     // Serial.flush(); // Removed - can block on USB CDC
     
     // Final display update before entering main loop to ensure screen is visible
+#if ENABLE_SCREEN
+    extern Display display;
+    extern UI ui;
     display.update();
     ui.update(runtimeState().get());
     display.update();
+#endif
 }
 
 static void setupInitializeMQTT() {
@@ -1525,10 +1592,15 @@ static void setupInitializeStateManager() {
     }
     
     // Apply display settings from State
+#if ENABLE_SCREEN
+    extern Display display;
     const auto& displaySettings = State.settings().display;
     display.setBacklight(displaySettings.brightness);
     LOG_I("Display settings applied: brightness=%d, timeout=%ds", 
           displaySettings.brightness, displaySettings.screenTimeout);
+#else
+    // Display settings not applicable in headless mode
+#endif
 }
 
 static void setupInitializeLogManager() {
@@ -1665,6 +1737,7 @@ static void setupInitializeCloudConnection() {
     // Set up cloud screen callback for QR code generation
     // This is set regardless of whether cloud is enabled - the callback
     // will show appropriate error if cloud is not configured
+#if ENABLE_SCREEN
     screen_cloud_set_refresh_callback([]() {
         auto& cloudSettings = State.settings().cloud;
         
@@ -1694,6 +1767,7 @@ static void setupInitializeCloudConnection() {
             screen_cloud_show_error("Cloud not initialized");
         }
     });
+#endif
 }
 
 static void setupInitializeNotificationManager() {
@@ -1929,7 +2003,11 @@ static void loopUpdateBrewByWeight() {
 }
 
 static void loopUpdateUI() {
+#if ENABLE_SCREEN
     // Update display and encoder
+    extern Display display;
+    extern Encoder encoder;
+    extern UI ui;
     unsigned long now = millis();
     unsigned long uiUpdateInterval = 100; // 10 FPS - good balance of responsiveness and CPU usage
     
@@ -1966,6 +2044,9 @@ static void loopUpdateUI() {
         State.resetIdleTimer();
     }
     lastPressed = currentPressed;
+#else
+    // UI updates not needed in headless mode
+#endif
 }
 
 static void loopUpdateMQTTStatus() {
@@ -2232,6 +2313,10 @@ static void loopMonitorMemoryAndTiming() {
  * Handle encoder rotation and button events
  */
 void handleEncoderEvent(int32_t diff, button_state_t btn) {
+#if ENABLE_SCREEN
+    extern Display display;
+    extern Encoder encoder;
+    extern UI ui;
     // Track when we last woke up the display - ignore button presses shortly after wake
     // This prevents accidental actions when user presses button to wake screen
     static unsigned long lastWakeTime = 0;
@@ -2310,4 +2395,9 @@ void handleEncoderEvent(int32_t diff, button_state_t btn) {
     if (cloudConnection && (diff != 0 || btn != BTN_RELEASED)) {
         cloudConnection->notifyUserActivity();
     }
+#else
+    // Encoder events not handled in headless mode
+    (void)diff;
+    (void)btn;
+#endif
 }
