@@ -212,10 +212,7 @@ void BrewWebServer::setupRoutes() {
     // Simple test endpoint - no LittleFS needed - for diagnosing web server performance
     _server.on("/test", HTTP_GET, [this](AsyncWebServerRequest* request) {
         unsigned long startTime = millis();
-        // Pause cloud to ensure web server is responsive
-        if (_cloudConnection) {
-            _cloudConnection->pause();
-        }
+        // Note: Cloud connection works simultaneously - no need to pause
         char response[128];
         snprintf(response, sizeof(response), "BrewOS Web Server OK\nHeap: %zu bytes\nTime: %lu ms", 
                  ESP.getFreeHeap(), millis() - startTime);
@@ -284,10 +281,7 @@ void BrewWebServer::setupRoutes() {
         size_t freeHeap = ESP.getFreeHeap();
         LOG_I("/ hit - serving index.html (heap: %zu bytes)", freeHeap);
         
-        // Pause cloud connection IMMEDIATELY to free network/memory
-        if (_cloudConnection) {
-            _cloudConnection->pause();
-        }
+        // Note: Cloud connection works simultaneously - memory is managed automatically by cloud task
         
         // Check memory before serving
         if (freeHeap < 20000) {

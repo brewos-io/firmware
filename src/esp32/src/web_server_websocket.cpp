@@ -82,10 +82,8 @@ void BrewWebServer::handleWsConnect(AsyncWebSocket* server, AsyncWebSocketClient
     
     LOG_I("WebSocket client %u connected from %s", client->id(), client->remoteIP().toString().c_str());
     
-    // Pause cloud connection while serving local clients
-    if (_cloudConnection) {
-        _cloudConnection->pause();
-    }
+    // Note: Local and cloud WebSocket connections can work simultaneously
+    // Cloud connection is no longer paused when local clients connect
     
     // Check if we have enough memory to send device info and status (needs ~3KB for JSON)
     size_t freeHeap = ESP.getFreeHeap();
@@ -126,14 +124,8 @@ void BrewWebServer::handleWsConnect(AsyncWebSocket* server, AsyncWebSocketClient
 
 void BrewWebServer::handleWsDisconnect(AsyncWebSocket* server, AsyncWebSocketClient* client) {
     LOG_I("WebSocket client %u disconnected", client->id());
-    // When last local client disconnects, wait 30s before resuming cloud
-    // This prevents rapid cloud reconnect if user is just refreshing the page
-    // Note: count() still includes the disconnecting client at this point
-    if (server->count() <= 1 && _cloudConnection) {
-        // Extend pause by 30s instead of immediate resume
-        _cloudConnection->pause();
-        LOG_I("Cloud will resume in 30s");
-    }
+    // Note: Cloud connection continues to work independently of local WebSocket clients
+    // No need to pause/resume cloud when local clients connect/disconnect
 }
 
 void BrewWebServer::handleWsError(AsyncWebSocketClient* client, uint8_t* data, size_t len) {
@@ -154,11 +146,8 @@ void BrewWebServer::handleWsError(AsyncWebSocketClient* client, uint8_t* data, s
 }
 
 void BrewWebServer::handleWsMessage(uint32_t clientNum, uint8_t* payload, size_t length) {
-    // Extend cloud pause on every WebSocket activity from local client
-    // This ensures cloud stays disconnected while user is actively using the local UI
-    if (_cloudConnection) {
-        _cloudConnection->pause();
-    }
+    // Note: Local and cloud WebSocket connections work simultaneously
+    // Cloud connection is no longer paused on local client activity
     
     // Parse JSON command from client - use stack allocation
     #pragma GCC diagnostic push
