@@ -15,6 +15,7 @@
 | U1  | RP2354A        | RP2354 Microcontroller (Discrete chip, QFN-60) | QFN-60   |
 | U2  | HLK-15M05C     | AC/DC isolated power supply (5V)               | Module   |
 | U3  | TPS563200DDCR  | Synchronous buck converter (3.3V)              | SOT-23-6 |
+| U4  | TLV74311PDBVR  | 1.1V LDO (DVDD core voltage, external)         | SOT-23-5 |
 | U5  | LM4040DIM3-3.0 | Precision 3.0V voltage reference               | SOT-23-3 |
 | U6  | OPA342UA       | Level probe oscillator (op-amp)                | SOIC-8   |
 | U7  | TLV3201AIDBVR  | Level probe comparator                         | SOT-23-5 |
@@ -138,18 +139,18 @@
 
 #### Communication Interface Protection (R40-R47)
 
-| Ref  | Value | Tolerance | Function                                                  |
-| ---- | ----- | --------- | --------------------------------------------------------- |
-| R40  | 1kΩ   | 5%        | ESP32 UART TX series (5V tolerance protection - ECO-03)   |
-| R41  | 1kΩ   | 5%        | ESP32 UART RX series (5V tolerance protection - ECO-03)   |
-| R42  | 1kΩ   | 5%        | Service port TX series (5V tolerance protection - ECO-03) |
-| R43  | 1kΩ   | 5%        | Service port RX series (5V tolerance protection - ECO-03) |
-| R44  | 33Ω   | 5%        | Power meter TX series                                     |
-| R45  | 2.2kΩ | 1%        | J17 RX level shift (upper)                                |
-| R45A | 3.3kΩ | 1%        | J17 RX level shift (lower)                                |
-| R45B | 33Ω   | 5%        | J17 RX series (post-divider)                              |
-| R46  | 4.7kΩ | 5%        | I2C SDA pull-up                                           |
-| R47  | 4.7kΩ | 5%        | I2C SCL pull-up                                           |
+| Ref  | Value | Tolerance | Function                                                         |
+| ---- | ----- | --------- | ---------------------------------------------------------------- |
+| R40  | 33Ω   | 5%        | ESP32 UART TX series (ESD/ringing protection) + TVS (D_UART_TX)  |
+| R41  | 33Ω   | 5%        | ESP32 UART RX series (ESD/ringing protection) + TVS (D_UART_RX)  |
+| R42  | 33Ω   | 5%        | Service port TX series (ESD/ringing protection, shared with J15) |
+| R43  | 33Ω   | 5%        | Service port RX series (ESD/ringing protection, shared with J15) |
+| R44  | 33Ω   | 5%        | Power meter TX series                                            |
+| R45  | 2.2kΩ | 1%        | J17 RX level shift (upper)                                       |
+| R45A | 3.3kΩ | 1%        | J17 RX level shift (lower)                                       |
+| R45B | 33Ω   | 5%        | J17 RX series (post-divider)                                     |
+| R46  | 4.7kΩ | 5%        | I2C SDA pull-up                                                  |
+| R47  | 4.7kΩ | 5%        | I2C SCL pull-up                                                  |
 
 #### Control Signal Pull-ups (R71, R73)
 
@@ -191,15 +192,15 @@
 
 #### Power Supply Filtering (C1-C6)
 
-| Ref | Value    | Voltage | Type        | Function                                        |
-| --- | -------- | ------- | ----------- | ----------------------------------------------- |
-| C1  | 100nF X2 | 275V AC | Radial      | Mains EMI filter                                |
-| C2  | 470µF    | 6.3V    | SMD V-Chip  | 5V bulk capacitor                               |
-| C3  | 22µF     | 25V     | Ceramic     | Buck converter input                            |
-| C4  | 22µF     | 10V     | Ceramic     | Buck converter output                           |
-| C4A | 22µF     | 10V     | Ceramic     | Buck output (parallel)                          |
-| C5  | 47µF     | 10V     | Ceramic X5R | 3.3V rail bulk (WiFi/relay transients - ECO-05) |
-| C6  | 100nF    | 25V     | Ceramic     | 3.3V digital decoupling                         |
+| Ref | Value    | Voltage | Type                 | Function                                        |
+| --- | -------- | ------- | -------------------- | ----------------------------------------------- |
+| C1  | 100nF X2 | 275V AC | Radial               | Mains EMI filter                                |
+| C2  | 470µF    | 6.3V    | **105°C Al-Polymer** | 5V bulk capacitor (e.g., Panasonic OS-CON)      |
+| C3  | 22µF     | 25V     | Ceramic              | Buck converter input                            |
+| C4  | 22µF     | 10V     | Ceramic              | Buck converter output                           |
+| C4A | 22µF     | 10V     | Ceramic              | Buck output (parallel)                          |
+| C5  | 47µF     | 10V     | Ceramic X5R          | 3.3V rail bulk (WiFi/relay transients - ECO-05) |
+| C6  | 100nF    | 25V     | Ceramic              | 3.3V digital decoupling                         |
 
 #### ADC Reference & Sensor Filters (C7-C13)
 
@@ -225,15 +226,15 @@
 
 #### Communication & Monitoring (C70, C80, C81)
 
-| Ref     | Value   | Voltage | Type    | Function                                  |
-| ------- | ------- | ------- | ------- | ----------------------------------------- |
-| C70     | 100nF   | 25V     | Ceramic | MAX3485 VCC decoupling                    |
-| C80     | 100nF   | 25V     | Ceramic | OPA2342 VCC decoupling                    |
-| C81     | 100nF   | 25V     | Ceramic | 5V monitor filter                         |
-| C_XTAL  | 10-22pF | 50V     | Ceramic | Crystal load capacitors (×2)              |
-| C_IOVDD | 100nF   | 25V     | Ceramic | RP2354 IOVDD decoupling (×6, one per pin) |
-| C_DVDD  | 1µF     | 10V     | Ceramic | RP2354 DVDD bulk (core voltage)           |
-| C_DVDD2 | 10µF    | 10V     | Ceramic | RP2354 DVDD additional bulk               |
+| Ref     | Value | Voltage | Type    | Function                                                                          |
+| ------- | ----- | ------- | ------- | --------------------------------------------------------------------------------- |
+| C70     | 100nF | 25V     | Ceramic | MAX3485 VCC decoupling                                                            |
+| C80     | 100nF | 25V     | Ceramic | OPA2342 VCC decoupling                                                            |
+| C81     | 100nF | 25V     | Ceramic | 5V monitor filter                                                                 |
+| C_XTAL  | 22pF  | 50V     | 0603    | Crystal load capacitors (×2, calculated: C_L = 2×(15pF-3pF) = 24pF, use 22pF std) |
+| C_IOVDD | 100nF | 25V     | Ceramic | RP2354 IOVDD decoupling (×6, one per pin)                                         |
+| C_DVDD  | 10µF  | 10V     | 1206    | RP2354 DVDD bulk (external LDO output)                                            |
+| C_DVDD2 | 100nF | 25V     | 0805    | RP2354 DVDD decoupling (external LDO output)                                      |
 
 ---
 
@@ -297,13 +298,13 @@
 
 #### Other Components
 
-| Ref | Part          | Function                             |
-| --- | ------------- | ------------------------------------ | ---------------------------- |
-| BZ1 | Passive 12mm  | Piezo buzzer                         |
-| FB1 | 600Ω @ 100MHz | ADC reference isolation              |
-| L1  | 2.2µH 3A      | Buck converter inductor              |
-| L2  | 2.2µH 3A      | RP2354 VREG SMPS (DVDD core voltage) |
-| Y1  | 12 MHz        | Crystal (HC-49 or SMD)               | Main clock source for RP2354 |
+| Ref | Part          | Function                                                   |
+| --- | ------------- | ---------------------------------------------------------- | ---------------------------- |
+| BZ1 | Passive 12mm  | Piezo buzzer                                               |
+| FB1 | 600Ω @ 100MHz | ADC reference isolation                                    |
+| L1  | 2.2µH 3A      | Buck converter inductor                                    |
+| L2  | **REMOVED**   | **No longer needed (external LDO replaces internal SMPS)** |
+| Y1  | 12 MHz        | Crystal (HC-49 or SMD)                                     | Main clock source for RP2354 |
 
 ---
 

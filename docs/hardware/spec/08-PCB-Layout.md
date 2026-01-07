@@ -2,20 +2,20 @@
 
 ## Board Specifications
 
-| Parameter       | Specification                      |
-| --------------- | ---------------------------------- |
-| Dimensions      | **80mm × 80mm** (target)           |
-| Layers          | 2 (Top + Bottom)                   |
-| Material        | FR-4 TG130 or higher               |
-| Thickness       | 1.6mm ±10%                         |
-| Copper Weight   | 2oz (70µm) both layers             |
-| Min Trace/Space | 0.2mm / 0.2mm (8mil/8mil)          |
-| Min Drill       | 0.3mm                              |
-| Surface Finish  | ENIG (preferred) or HASL Lead-Free |
-| Solder Mask     | Green (both sides)                 |
-| Silkscreen      | White (both sides)                 |
-| IPC Class       | Class 2 minimum                    |
-| **Edge Rails**  | **5mm keep-out zone on all edges** |
+| Parameter       | Specification                                    |
+| --------------- | ------------------------------------------------ |
+| Dimensions      | **80mm × 80mm** (target)                         |
+| Layers          | **4-layer recommended** (2-layer minimum viable) |
+| Material        | FR-4 TG130 or higher                             |
+| Thickness       | 1.6mm ±10%                                       |
+| Copper Weight   | 2oz (70µm) both layers                           |
+| Min Trace/Space | 0.2mm / 0.2mm (8mil/8mil)                        |
+| Min Drill       | 0.3mm                                            |
+| Surface Finish  | ENIG (preferred) or HASL Lead-Free               |
+| Solder Mask     | Green (both sides)                               |
+| Silkscreen      | White (both sides)                               |
+| IPC Class       | Class 2 minimum                                  |
+| **Edge Rails**  | **5mm keep-out zone on all edges**               |
 
 ---
 
@@ -182,7 +182,47 @@ and ensure controlled current paths.
 
 ---
 
-## Layer Stackup (2-Layer)
+## Layer Stackup
+
+### Recommended: 4-Layer (Mixed-Signal Design)
+
+For optimal performance in a mixed-signal design (high-speed digital + precision analog + high-power switching), a 4-layer stackup is strongly recommended:
+
+```
+┌─────────────────────────────────────────┐
+│  LAYER 1 (TOP): Components              │
+│  - High-speed traces (QSPI, USB, UART)  │
+│  - Analog signals                        │
+│  - Component pads                       │
+│  - HV traces (wide, isolated)            │
+├─────────────────────────────────────────┤
+│  LAYER 2 (INNER 1): SOLID GROUND PLANE  │
+│  - GND (no splits)                       │
+│  - Reference for all signals             │
+│  - Analog island strategy (zone partition)│
+├─────────────────────────────────────────┤
+│  LAYER 3 (INNER 2): POWER PLANES        │
+│  - 3.3V plane                            │
+│  - 5V plane                               │
+│  - 24V plane (if needed)                 │
+├─────────────────────────────────────────┤
+│  LAYER 4 (BOTTOM): Non-Critical Routing │
+│  - Low-speed signals                     │
+│  - Return paths                          │
+│  - Additional ground pour (LV section)   │
+└─────────────────────────────────────────┘
+```
+
+**Benefits:**
+
+- Solid ground plane provides excellent signal integrity
+- Power planes reduce voltage drop and EMI
+- Analog island strategy: partition zones without splitting ground
+- Better thermal management through power plane copper
+
+### Minimum Viable: 2-Layer (Fallback)
+
+If cost constraints require 2-layer, the following stackup is acceptable but with performance trade-offs:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -200,6 +240,13 @@ and ensure controlled current paths.
 │  - Return paths                         │
 └─────────────────────────────────────────┘
 ```
+
+**Trade-offs:**
+
+- Reduced signal integrity (no dedicated power planes)
+- More challenging analog routing (ground return paths)
+- Higher EMI susceptibility
+- Still functional but not optimal for production
 
 ---
 
@@ -305,10 +352,27 @@ J17─┤            │
 ### RP2354 MCU Section (v2.31)
 
 1. **Crystal placement**: 12MHz crystal (Y1) + load caps (C_XTAL) within 5mm of XIN/XOUT pins
+   - **Load capacitance calculation**: C_L,external = 2 × (C_L,crystal - C_stray)
+   - Typical: C_L,crystal = 12-20pF (from crystal datasheet), C_stray = 2-5pF (PCB + MCU pins)
+   - Result: C_XTAL = 2 × (15pF - 3pF) = 24pF each → use 22pF standard value
+   - **Ground guard ring**: Surround crystal on layer below to prevent frequency pulling from EMI
 2. **Decoupling**: 100nF ceramic cap at each IOVDD pin, placed as close as possible
-3. **Core voltage**: 1µF + 10µF on DVDD rail, place near VREG_OUT connection
-4. **VREG inductor**: 2.2µH inductor (L2) on VREG_OUT/DVDD path, keep loop area small
-5. **SWD routing**: SWDIO/SWCLK (dedicated pins) traces to J15 Pins 6/8 via 47Ω series resistors (R_SWD), keep short and away from noisy signals
+3. **Core voltage (DVDD)**: External LDO (U4) generates 1.1V
+   - **LDO placement**: Close to RP2354, minimize trace length to DVDD pins
+   - **Decoupling**: 10µF bulk (1206) + 100nF (0805) on LDO output, placed near DVDD pins
+   - **L2 inductor REMOVED**: No longer needed (internal SMPS disabled)
+4. **VREG pins configuration**:
+   - VREG_VIN: Connect to +3.3V
+   - VREG_AVDD: Connect to +3.3V via RC filter (33Ω + 100nF)
+   - VREG_LX: Leave unconnected (floating)
+   - VREG_PGND: Connect to ground plane
+5. **QSPI pin protection**:
+   - QSPI_SS (CSn): Add 10kΩ pull-up to +3.3V (R_QSPI_CS) to ensure defined state during POR
+   - Prevents parasitic boot mode entry that could corrupt internal flash boot sequence
+6. **SWD routing**: SWDIO/SWCLK (dedicated pins) traces to J15 Pins 6/8 via 47Ω series resistors (R_SWD)
+   - Route as differential-like pair with ground guard trace
+   - Keep short and away from noisy signals
+   - Add RUN (reset) line to debug header if not present
 
 ### Power Section
 
@@ -332,6 +396,15 @@ J17─┤            │
 2. **Ground pour** around sensitive signals
 3. **Guard traces** around ADC inputs
 4. **Decoupling caps** at every IC VCC pin
+5. **UART ESD protection**: Place TVS diodes (D_UART_TX, D_UART_RX) near J15 connector
+   - Protects RP2354 GPIOs from static discharge during display installation
+   - Series resistors (R40, R41 = 33Ω) reduce ringing on cable
+6. **Analog island strategy** (4-layer recommended):
+   - Zone A (Noisy): Power input, Solenoid Drivers, 5V/24V regulators
+   - Zone B (Digital): RP2354, Flash, Display Connector
+   - Zone C (Quiet Analog): Sensor inputs (Temperature, Water Level)
+   - Place RP2354 between Zone B and C
+   - Route analog signals cleanly over solid ground plane without crossing noisy power traces
 
 ---
 
@@ -344,7 +417,7 @@ J17─┤            │
 │                                                                                  │
 │    1. MACHINE CHASSIS is Earthed via the main power cord (Wall Plug).          │
 │    2. PCB HV SIDE is Floating (No Earth connection).                            │
-│    3. PCB LV SIDE (GND) connects to CHASSIS via J5 (SRif).                      │
+│    3. PCB LV SIDE (GND) connects to CHASSIS via J5 (SRif) with C-R network.      │
 │                                                                                  │
 │                              MACHINE CHASSIS                                    │
 │                            (Earthed via wall plug)                              │
@@ -355,6 +428,15 @@ J17─┤            │
 │                              │  Spade)   │                                      │
 │                              └─────┬─────┘                                      │
 │                                    │                                            │
+│                    ┌───────────────┴───────────────┐                            │
+│                    │                               │                            │
+│              ┌─────┴─────┐                   ┌─────┴─────┐                      │
+│              │  C_SRif   │                   │  R_SRif   │                      │
+│              │  100nF     │                   │  1MΩ      │                      │
+│              │  (AC path) │                   │  (DC block)│                      │
+│              └─────┬─────┘                   └─────┬─────┘                      │
+│                    │                               │                            │
+│                    └───────────────┬───────────────┘                            │
 │                                    │                                            │
 │                              ┌─────┴─────┐                                      │
 │                              │  LV GND   │  ← PCB Logic Ground                  │
@@ -380,11 +462,12 @@ J17─┤            │
 │                                                                                  │
 │    KEY RULES:                                                                   │
 │    ──────────                                                                   │
-│    1. Single connection point between Chassis and LV GND (at J5 SRif)         │
-│    2. HV GND isolated from LV GND via HLK module                               │
-│    3. AGND and DGND connect at single point near Pico ADC_GND                  │
-│    4. No ground loops - star topology only                                     │
-│    5. All mounting holes (MH1-MH4) are NPTH - no random grounding            │
+│    1. Single connection point between Chassis and LV GND (at J5 SRif via C-R)  │
+│    2. C-R network: Capacitor allows 1kHz AC return, Resistor blocks DC loops   │
+│    3. HV GND isolated from LV GND via HLK module                               │
+│    4. AGND and DGND connect at single point near RP2354 ADC_GND                │
+│    5. No ground loops - star topology only                                     │
+│    6. All mounting holes (MH1-MH4) are NPTH - no random grounding            │
 │                                                                                  │
 │    Safety Benefit:                                                              │
 │    ───────────────                                                              │

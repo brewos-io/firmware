@@ -162,7 +162,8 @@ TVS, ESD protection, filtering
                               │     ║ISOLATE║            │ ┌─────┴─────┐
     N_FUSED ──────────────────┤ N   ╚═══════╝    -Vout   │ │   470µF   │
                               │                          ├─┤   6.3V    │
-                              │                          │ │ SMD V-Chip│
+                              │                          │ │ 105°C Al- │
+                              │                          │ │ Polymer   │
                               └──────────────────────────┘ └─────┬─────┘
                                                                  │
                                                                 ─┴─
@@ -181,7 +182,7 @@ TVS, ESD protection, filtering
     ─────────────────
     U2:  Hi-Link HLK-15M05C (5V 3A/15W) - adequate for ~1.1A peak load
          Alt: Mean Well IRM-20-5 (5V 4A) if more headroom needed
-    C2:  470µF 6.3V SMD V-Chip Aluminum Electrolytic (e.g., Panasonic FKS series)
+    C2:  470µF 6.3V 105°C Aluminum Polymer (e.g., Panasonic OS-CON series) - Required for >5 year life at 65°C ambient
 ```
 
 ## 1.3 5V to 3.3V Synchronous Buck Converter
@@ -251,11 +252,15 @@ critical for reliable operation inside hot espresso machine enclosures.
     Output Voltage Setting:
     V_OUT = 0.768V × (1 + R_FB1/R_FB2) = 0.768V × (1 + 33k/10k) = 3.30V ✓
 
-    RP2354 Internal Regulator Configuration:
+    RP2354 Core Voltage (DVDD) - External LDO Configuration:
     ─────────────────────────────────────────────
-    The RP2354 has an internal VREG that generates DVDD (1.1V core voltage) from IOVDD (3.3V).
-    VREG_IN connects to +3.3V (from TPS563200), and VREG_OUT connects to DVDD via a 2.2µH inductor (L2).
-    This uses SMPS mode for efficiency. IOVDD (3.3V) is supplied directly from TPS563200.
+    **⚠️ CRITICAL:** This design uses an **external 1.1V LDO (U4)** instead of the RP2354 internal SMPS to eliminate switching noise.
+    VREG_VIN connects to +3.3V (from TPS563200).
+    VREG_AVDD connects to +3.3V via RC filter (33Ω + 100nF).
+    VREG_LX is left unconnected (floating).
+    VREG_PGND connects to ground plane.
+    DVDD (1.1V) is supplied from external LDO (U4: TLV74311PDBVR).
+    IOVDD (3.3V) is supplied directly from TPS563200.
 ```
 
 ## 1.4 Precision ADC Voltage Reference (Buffered)
@@ -1496,15 +1501,15 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     UART TX (GPIO0 → ESP32 RX):
     ───────────────────────────
                                     ┌────┐
-    GPIO0 ──────────────────────────┤ 1kΩ├─────────────────── J15 Pin 3 (TX)
-    (UART0_TX)                      │R40 │ (ECO-03: 5V tolerance)
+    GPIO0 ──────────────────────────┤ 33Ω├─────────────────── J15 Pin 3 (TX)
+    (UART0_TX)                      │R40 │ (ESD/ringing protection)
                                     └────┘
 
     UART RX (ESP32 TX → GPIO1):
     ───────────────────────────
                                     ┌────┐
-    GPIO1 ◄─────────────────────────┤ 1kΩ├─────────────────── J15 Pin 4 (RX)
-    (UART0_RX)                      │R41 │ (ECO-03: 5V tolerance)
+    GPIO1 ◄─────────────────────────┤ 33Ω├─────────────────── J15 Pin 4 (RX)
+    (UART0_RX)                      │R41 │ (ESD/ringing protection)
                                     └────┘
 
 
@@ -1644,7 +1649,8 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
 
     Component Values:
     ─────────────────
-    R40-41: 1kΩ 5%, 0805 (UART series protection - 5V tolerance per ECO-03)
+    R40-41: 33Ω 5%, 0805 (UART series protection - ESD/ringing protection)
+    D_UART_TX, D_UART_RX: ESDALC6V1 TVS diodes (SOD-323) - ESD protection near J15 connector
     R71:    10kΩ 5%, 0805 (RUN pull-up)
     R73:    4.7kΩ 5%, 0805 (WEIGHT_STOP pull-down, RP2350 E9)
     R74:    4.7kΩ 5%, 0805 (SPARE1 pull-down, RP2350 E9)
@@ -1671,8 +1677,8 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     ⚠️ DISCONNECT ESP32 (J15) BEFORE USING SERVICE PORT
 
                                     ┌────┐
-    GPIO0 ──────────────────────────┤ 1kΩ├──┬──────────────── J15 Pin 3 (ESP32 RX)
-    (UART0_TX)                      │R42 │  │ (ECO-03: 5V tolerance)
+    GPIO0 ──────────────────────────┤ 33Ω├──┬──────────────── J15 Pin 3 (ESP32 RX)
+    (UART0_TX)                      │R42 │  │ (33Ω ESD/ringing protection)
                                     └────┘  ├──────────────── J16 Pin 3 (Service TX)
                                             │
                                        ┌────┴────┐
@@ -1683,8 +1689,8 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
                                            GND
 
                                     ┌────┐
-    GPIO1 ◄─────────────────────────┤ 1kΩ├──┬──────────────── J15 Pin 4 (ESP32 TX)
-    (UART0_RX)                      │R43 │  │ (ECO-03: 5V tolerance)
+    GPIO1 ◄─────────────────────────┤ 33Ω├──┬──────────────── J15 Pin 4 (ESP32 TX)
+    (UART0_RX)                      │R43 │  │ (33Ω ESD/ringing protection)
                                     └────┘  ├──────────────── J16 Pin 4 (Service RX)
                                             │
                                        ┌────┴────┐
@@ -1713,8 +1719,8 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
 
     Component Values:
     ─────────────────
-    R42:  1kΩ 5%, 0805 (Service TX series - 5V tolerance per ECO-03)
-    R43:  1kΩ 5%, 0805 (Service RX series - 5V tolerance per ECO-03)
+    R42:  33Ω 5%, 0805 (Service TX series - ESD/ringing protection, shared with J15)
+    R43:  33Ω 5%, 0805 (Service RX series - ESD/ringing protection, shared with J15)
     D23:  BZT52C3V3 3.3V Zener, SOD-123 (TX overvoltage clamp)
     D24:  BZT52C3V3 3.3V Zener, SOD-123 (RX overvoltage clamp)
 
@@ -2293,7 +2299,8 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
           │               │   D20   │    │    C2     │
           │               │   TVS   │    │   470µF   │
           │               │SMBJ5.0A │    │   6.3V    │
-          │               │  ──┬──  │    │ SMD V-Chip│
+          │               │  ──┬──  │    │ 105°C Al- │
+          │               │    │    │    │ Polymer   │
           │               │  ──┴──  │    │     │     │
           │               │    │    │    │   ═══     │
           │               └────┬────┘    └─────┬─────┘
@@ -2336,10 +2343,11 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
            - Peak pulse power: 600W (10/1000µs)
            - Purpose: Clamps voltage spikes to protect downstream ICs
 
-      C2:  470µF, 6.3V, SMD V-Chip Aluminum Electrolytic
+      C2:  470µF, 6.3V, 105°C Aluminum Polymer (e.g., Panasonic OS-CON)
            - Purpose: Bulk decoupling, absorbs load transients
-           - Note: SMD V-Chip type chosen for pick-and-place compatibility
-                   and lower profile in hot environment inside espresso machine (~60-80°C)
+           - Note: 105°C rating required for >5 year life at 65°C ambient temperature
+           - Solid electrolyte eliminates dry-out mechanism
+           - Ultra-low ESR ideal for high-frequency transients
 
     PROTECTION BEHAVIOR:
     ────────────────────
@@ -2444,9 +2452,11 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
 
     J5 CHASSIS REFERENCE (SRif) - 6.3mm Spade Terminal:
     ───────────────────────────────────────────────────
-    J5     → PCB GND (Logic Ground)
+    J5     → PCB GND via C-R network (R_SRif + C_SRif in parallel)
+    R_SRif: 1MΩ (blocks DC loop currents)
+    C_SRif: 100nF (allows 1kHz AC signal return, low impedance at AC)
     Connect via 18AWG Green/Yellow wire to boiler/chassis mounting bolt.
-    This provides the return path for level probe operation.
+    This provides the AC return path for level probe operation while preventing DC ground loops.
 
     NOTE: With RP2354 discrete chip, GPIO23-25 are NOW AVAILABLE (previously internal to Pico module).
           GPIO29 is used for ADC3 (5V_MONITOR) - ratiometric pressure compensation.

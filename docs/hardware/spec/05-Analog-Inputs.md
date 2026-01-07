@@ -175,3 +175,30 @@ See [Power Supply](03-Power-Supply.md#precision-adc-voltage-reference-buffered) 
 | ADC1 | GPIO27 | Steam NTC       | 0-3.0V     | ~25 counts/°C     |
 | ADC2 | GPIO28 | Pressure        | 0.32-2.88V | ~200 counts/bar   |
 | ADC3 | GPIO29 | 5V_MONITOR      | 0-3.0V     | 5V rail monitor (ratiometric pressure compensation) |
+
+---
+
+## Level Probe AC Coupling Verification Checklist
+
+The steam boiler level probe uses AC excitation to prevent electrolysis and probe corrosion. Verify the following implementation:
+
+**Circuit Verification:**
+
+- [ ] **AC Excitation:** Probe is driven by capacitor-coupled clock signal (C64 = 1µF AC coupling)
+- [ ] **DC Blocking:** C64 provides adequate DC blocking (prevents electrolysis)
+- [ ] **Input Protection:** Series resistor R85 (100Ω) limits current if probe shorts to high-voltage heater element
+- [ ] **SRif Routing:** J5 (SRif) connector pin connects to PCB GND via C-R network (R_SRif = 1MΩ, C_SRif = 100nF in parallel)
+- [ ] **AC Return Path:** C_SRif allows 1kHz AC signal return (low impedance at AC)
+- [ ] **DC Loop Prevention:** R_SRif blocks DC loop currents (high impedance at DC)
+
+**Firmware Requirements:**
+
+- [ ] **Software Filter:** Debounce/integration filter in firmware (1-2 second integration time)
+- [ ] **Rationale:** Water in a boiling boiler is turbulent; signal will oscillate rapidly
+- [ ] **Prevents:** Fill solenoid chattering from rapid level signal changes
+
+**Expected Behavior:**
+
+- When water touches probe: AC signal is attenuated (water = resistive load) → comparator output LOW
+- When no water: AC signal passes with minimal attenuation → comparator output HIGH
+- Signal frequency: ~1.6kHz (Wien bridge oscillator, U6)

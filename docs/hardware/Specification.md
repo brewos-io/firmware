@@ -1,6 +1,6 @@
 # ECM Synchronika Custom Control Board
 
-## Production Design Specification v2.28
+## Production Design Specification v2.31
 
 **Target:** Plug & play replacement for GICAR control board and PID controller  
 **Status:** Draft specification - Ready for review and prototype
@@ -12,7 +12,7 @@
 | Section                                       | Description                                                  |
 | --------------------------------------------- | ------------------------------------------------------------ |
 | [Overview](spec/01-Overview.md)               | System architecture, design goals, electrical specifications |
-| [GPIO Allocation](spec/02-GPIO-Allocation.md) | Complete Pico 2 pin mapping, RP2350 errata notes             |
+| [GPIO Allocation](spec/02-GPIO-Allocation.md) | Complete RP2354 pin mapping, GPIO errata notes                |
 | [Power Supply](spec/03-Power-Supply.md)       | AC/DC isolation, 3.3V buck converter, ADC reference          |
 | [Outputs](spec/04-Outputs.md)                 | Relay drivers, SSR triggers, indicator LEDs                  |
 | [Analog Inputs](spec/05-Analog-Inputs.md)     | NTC thermistors, pressure transducer, level probe            |
@@ -43,10 +43,10 @@
 | Parameter     | Value                             |
 | ------------- | --------------------------------- |
 | Input Voltage | 100-240V AC, 50/60Hz              |
-| Output Rails  | 5V DC (3A), 3.3V DC (500mA)       |
+| Output Rails  | 5V DC (3A), 3.3V DC (500mA), 1.1V DC (100mA via external LDO) |
 | Isolation     | 3000V AC (reinforced)             |
-| PCB Size      | **80mm × 80mm** (target), 2-layer |
-| MCU           | Raspberry Pi Pico 2 (RP2350)      |
+| PCB Size      | **80mm × 80mm** (target), **4-layer recommended** (2-layer minimum viable) |
+| MCU           | **RP2354A (QFN-60)** discrete chip with 2MB stacked flash |
 
 ### Interfaces
 
@@ -89,7 +89,7 @@
 
 | Terminal          | Function       |
 | ----------------- | -------------- |
-| J1-L, J1-N, J1-PE | Mains input    |
+| J1-L, J1-N        | Mains input (PE removed, HV section floating) |
 | J2-NO             | Indicator lamp |
 | J3-NO             | Pump           |
 | J4-NO             | Solenoid       |
@@ -122,6 +122,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 | Version | Date     | Changes                                                        |
 | ------- | -------- | -------------------------------------------------------------- |
+| 2.31    | Jan 2026 | RP2354 discrete migration, external LDO, SRif C-R network, 105°C capacitors |
 | 2.28    | Dec 2025 | RP2350 Engineering Verification ECOs (5V tolerance, bulk cap)  |
 | 2.27    | Dec 2025 | Schematic diagram clarifications, netlist cleanup              |
 | 2.24.3  | Dec 2025 | Removed thermocouple, fixed F2 fuse, netlist validation        |

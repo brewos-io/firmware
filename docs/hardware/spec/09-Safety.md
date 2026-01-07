@@ -108,7 +108,7 @@ PRESS_SIG ────────┬──────────────�
 ```
 
 **Protection Scenario:** If R3 fails open, full 5V appears at GPIO28.
-BAT54S clamps to 3.3V + 0.3V = 3.6V (within RP2350 absolute max).
+BAT54S clamps to 3.3V + 0.3V = 3.6V (within RP2354 absolute max).
 
 ---
 
@@ -220,23 +220,26 @@ The level probe signal return path is now explicitly via the SRif loop:
 Signal Flow:
 AC_OUT (U6) ──► J26-5 ──► PROBE ──► WATER ──► BOILER BODY
                                                        │
-PCB GND ◄────── J5 (SRif) ◄────── WIRE ◄───────────┘
+PCB GND ◄── C_SRif (AC) / R_SRif (DC block) ◄── J5 (SRif) ◄────── WIRE ◄───────────┘
 ```
 
 ### Implementation Requirements
 
-- **J5 Connector:** Single 6.3mm male spade terminal connected to PCB GND
+- **J5 Connector:** Single 6.3mm male spade terminal connected to PCB GND via C-R network
+- **C-R Network:** Parallel combination of R_SRif (1MΩ) and C_SRif (100nF)
+  - C_SRif allows 1kHz AC signal return (low impedance at AC)
+  - R_SRif blocks DC loop currents (high impedance at DC)
 - **Wiring:** 18AWG Green/Yellow wire from J5 to boiler/chassis mounting bolt
 - **Mounting Holes:** All mounting holes (MH1-MH4) must be NPTH (Non-Plated Through Hole) to prevent random grounding
 - **Isolation:** Maintain 6mm Keep-Out Zone between HV traces and LV Ground Pour
 
 ---
 
-## RP2350 5V Tolerance and Power Sequencing
+## RP2354 5V Tolerance and Power Sequencing
 
 ### Critical Design Constraint
 
-The RP2350 "5V Tolerant" GPIO feature has a critical caveat documented in the datasheet:
+The RP2354 "5V Tolerant" GPIO feature has a critical caveat documented in the datasheet:
 
 **⚠️ IOVDD (3.3V) must be present for the 5V tolerance to be active.**
 
@@ -251,12 +254,12 @@ The RP2350 "5V Tolerant" GPIO feature has a critical caveat documented in the da
 
 ### Protection Mechanisms Implemented
 
-| Protection                  | Component        | Purpose                                                    |
-| --------------------------- | ---------------- | ---------------------------------------------------------- |
-| Series resistors (1kΩ)      | R40-R43          | Limits fault current to <500µA during sequencing anomalies |
-| Pull-down resistors (4.7kΩ) | R11-R15, R73-R75 | Ensures defined GPIO states at boot                        |
-| ESD clamps                  | D10-D15          | Additional transient protection                            |
-| Schottky clamp (BAT54S)     | D16              | ADC overvoltage protection                                 |
+| Protection                   | Component             | Purpose                                            |
+| ---------------------------- | --------------------- | -------------------------------------------------- |
+| Series resistors (33Ω) + TVS | R40-R43, D_UART_TX/RX | ESD protection and ringing reduction on UART lines |
+| Pull-down resistors (4.7kΩ)  | R11-R15, R73-R75      | Ensures defined GPIO states at boot                |
+| ESD clamps                   | D10-D15               | Additional transient protection                    |
+| Schottky clamp (BAT54S)      | D16                   | ADC overvoltage protection                         |
 
 ### Safe Operating Procedures
 
@@ -283,7 +286,7 @@ GPIO13/14 → Transistor → SSR Trigger → Heater Element
 
 | Layer | Protection                        | Notes                                    |
 | ----- | --------------------------------- | ---------------------------------------- |
-| 1     | RP2350 internal watchdog          | 8-second timeout, resets MCU             |
+| 1     | RP2354 internal watchdog          | 8-second timeout, resets MCU             |
 | 2     | SSR pull-down resistors (R14/R15) | SSR OFF when GPIO tristated during reset |
 | 3     | Machine thermal fuse              | Factory-installed on boiler              |
 | 4     | Pressure relief valve             | Factory-installed mechanical safety      |
@@ -302,7 +305,7 @@ For higher safety assurance (commercial/certification), consider adding an exter
 - Firmware must toggle the watchdog input every few seconds
 - If MCU hangs, TPL5010 pulls RUN low → system reset → SSRs turn OFF
 
-**Note:** This is NOT implemented in the current design. The internal RP2350 watchdog combined with SSR pull-downs provides adequate protection for home/prosumer use.
+**Note:** This is NOT implemented in the current design. The internal RP2354 watchdog combined with SSR pull-downs provides adequate protection for home/prosumer use.
 
 ---
 
@@ -340,7 +343,7 @@ If AC pump phase control is required:
 | -------------- | ---------------------- | ---------------------------- | --------------------------------- |
 | HLK-15M05C     | 100,000                | Electrolytic capacitor aging | Derated operation, thermal mgmt   |
 | Relays (K1-K3) | 500,000 (mechanical)   | Contact wear, coil burnout   | Relay drivers with flyback diodes |
-| RP2350 Pico    | 1,000,000+             | Overvoltage, ESD damage      | ESD protection on all GPIO        |
+| RP2354 MCU     | 1,000,000+             | Overvoltage, ESD damage      | ESD protection on all GPIO        |
 | MOV (RV1)      | Degrades with surges   | Open after multiple surges   | Replaceable, visual inspection    |
 | Fuses (F1, F2) | N/A (consumable)       | Normal operation on fault    | Spare fuses provided              |
 

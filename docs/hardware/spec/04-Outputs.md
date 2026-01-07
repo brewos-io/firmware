@@ -38,7 +38,7 @@ All relays use identical driver circuits with integrated indicator LEDs.
 │         ┌────┴────┐              │                                             │
 │         │  4.7kΩ  │             GND                                            │
 │         │R11+n    │  ← Pull-down: Ensures relay OFF at boot and during        │
-│         └────┬────┘    MCU reset (RP2350 errata E9 + safety requirement)      │
+│         └────┬────┘    MCU reset (RP2354 errata E9 + safety requirement)      │
 │              │                                                                  │
 │             GND                                                                │
 │                                                                                 │

@@ -528,7 +528,7 @@ Verify the voltage divider correctly scales the YD4060's 0.5-4.5V output to **0.
 ### Pass Criteria
 
 - [ ] Output ratio is **0.641 ±2%**
-- [ ] Output never exceeds 3.0V (safe for Pico ADC with 3.0V reference)
+- [ ] Output never exceeds 3.0V (safe for RP2354 ADC with 3.0V reference)
 - [ ] Stable readings (no noise/drift)
 
 ---
@@ -537,36 +537,36 @@ Verify the voltage divider correctly scales the YD4060's 0.5-4.5V output to **0.
 
 ### Purpose
 
-Verify UART communication between Pico and ESP32 display module, and test the **brew-by-weight (WEIGHT_STOP)** signal.
+Verify UART communication between RP2354 and ESP32 display module, and test the **brew-by-weight (WEIGHT_STOP)** signal.
 
 > **Important Architecture Note:** In the production design:
 >
-> - **ESP32 controls Pico** (not the other way around) for OTA firmware updates
-> - ESP32 controls Pico's **RUN** pin (J15 Pin 5) via GPIO8
-> - **SPARE1** (J15 Pin 6): ESP32 GPIO9 ↔ Pico GPIO16 (4.7kΩ pull-down)
-> - **WEIGHT_STOP** (J15 Pin 7): ESP32 GPIO10 → Pico GPIO21 (4.7kΩ pull-down)
-> - **SPARE2** (J15 Pin 8): ESP32 GPIO22 ↔ Pico GPIO22 (4.7kΩ pull-down)
+> - **ESP32 controls RP2354** (not the other way around) for OTA firmware updates
+> - ESP32 controls RP2354's **RUN** pin (J15 Pin 5) via GPIO20
+> - **SWDIO** (J15 Pin 6): ESP32 TX2 ↔ RP2354 SWDIO (dedicated pin, 47Ω series)
+> - **WEIGHT_STOP** (J15 Pin 7): ESP32 GPIO19 → RP2354 GPIO21 (4.7kΩ pull-down)
+> - **SWCLK** (J15 Pin 8): ESP32 RX2 ↔ RP2354 SWCLK (dedicated pin, 47Ω series)
 
 ### Required
 
-- Raspberry Pi Pico 2 (or Pico 2 W)
+- RP2354 microcontroller (discrete chip or development board)
 - ESP32 display module (or any ESP32 dev board)
 - Resistors per schematic (33Ω series on UART lines)
 
 ### J15 Connector Wiring (8-pin JST-XH)
 
-| J15 Pin | Function    | Pico Connection | ESP32 Connection | Protection      |
+| J15 Pin | Function    | RP2354 Connection | ESP32 Connection | Protection      |
 | ------- | ----------- | --------------- | ---------------- | --------------- |
 | 1       | 5V Power    | VSYS (5V)       | VIN              | -               |
 | 2       | Ground      | GND             | GND              | -               |
-| 3       | TX          | GPIO0           | GPIO17 (RX)      | 33Ω series      |
-| 4       | RX          | GPIO1           | GPIO18 (TX)      | 33Ω series      |
-| 5       | RUN         | RUN pin         | GPIO8            | 10kΩ pull-up    |
-| 6       | SPARE1      | GPIO16          | GPIO9            | 4.7kΩ pull-down |
-| 7       | WEIGHT_STOP | GPIO21          | GPIO10           | 4.7kΩ pull-down |
-| 8       | SPARE2      | GPIO22          | GPIO22           | 4.7kΩ pull-down |
+| 3       | TX          | GPIO0           | GPIO44 (RX)      | 33Ω series + TVS |
+| 4       | RX          | GPIO1           | GPIO43 (TX)      | 33Ω series + TVS |
+| 5       | RUN         | RUN pin         | GPIO20           | 10kΩ pull-up    |
+| 6       | SWDIO       | SWDIO (dedicated) | TX2              | 47Ω series      |
+| 7       | WEIGHT_STOP | GPIO21          | GPIO19           | 4.7kΩ pull-down |
+| 8       | SWCLK       | SWCLK (dedicated) | RX2               | 47Ω series      |
 
-### Test Firmware - Pico Side (MicroPython)
+### Test Firmware - RP2354 Side (MicroPython)
 
 ```python
 from machine import UART, Pin
@@ -581,7 +581,7 @@ weight_stop = Pin(21, Pin.IN, Pin.PULL_DOWN)
 def uart_test():
     """Test UART communication"""
     print("Sending test message...")
-    uart.write("Hello from Pico!\n")
+    uart.write("Hello from RP2354!\n")
     time.sleep_ms(100)
 
     if uart.any():
@@ -608,7 +608,7 @@ print("ESP32 Interface Test")
 print("-" * 40)
 print("Commands: uart, weight, quit")
 print("")
-print("NOTE: ESP32 controls Pico RUN pin via GPIO8")
+print("NOTE: ESP32 controls RP2354 RUN pin via GPIO20")
 
 while True:
     cmd = input("> ").strip().lower()
@@ -630,27 +630,27 @@ while True:
 | 1    | Connect ESP32 to J15, power on       | Both devices boot               |     |
 | 2    | Type "uart" - send test message      | Data transmitted to ESP32       |     |
 | 3    | Verify ESP32 receives message        | Message received on ESP32 RX    |     |
-| 4    | ESP32 sends response                 | Pico receives response          |     |
+| 4    | ESP32 sends response                 | RP2354 receives response        |     |
 | 5    | Type "weight" to monitor WEIGHT_STOP | Shows "LOW" initially           |     |
-| 6    | ESP32 sets WEIGHT_STOP HIGH          | Pico prints "HIGH - STOP BREW!" |     |
-| 7    | ESP32 releases WEIGHT_STOP           | Pico prints "LOW"               |     |
-| 8    | ESP32 pulses J15 Pin 5 (RUN) LOW     | Pico resets                     |     |
+| 6    | ESP32 sets WEIGHT_STOP HIGH          | RP2354 prints "HIGH - STOP BREW!" |     |
+| 7    | ESP32 releases WEIGHT_STOP           | RP2354 prints "LOW"             |     |
+| 8    | ESP32 pulses J15 Pin 5 (RUN) LOW     | RP2354 resets                   |     |
 
 ### Results Log
 
 | Test                        | Result      | Notes |
 | --------------------------- | ----------- | ----- |
-| UART TX (Pico → ESP32)      | Pass / Fail |       |
-| UART RX (ESP32 → Pico)      | Pass / Fail |       |
-| WEIGHT_STOP signal (GPIO21) | Pass / Fail |       |
-| ESP32 can reset Pico (RUN)  | Pass / Fail |       |
+| UART TX (RP2354 → ESP32)      | Pass / Fail |       |
+| UART RX (ESP32 → RP2354)      | Pass / Fail |       |
+| WEIGHT_STOP signal (GPIO21)   | Pass / Fail |       |
+| ESP32 can reset RP2354 (RUN)  | Pass / Fail |       |
 
 ### Pass Criteria
 
 - [ ] UART communication works bidirectionally
 - [ ] No data corruption at 115200 baud
 - [ ] WEIGHT_STOP signal (GPIO21) reads correctly
-- [ ] ESP32 can reset Pico via RUN pin
+- [ ] ESP32 can reset RP2354 via RUN pin
 
 ---
 
@@ -669,7 +669,7 @@ while True:
 | No cold solder joints (dull, grainy) | All joints shiny            |      |
 | All SMD components placed correctly  | No tombstoning              |      |
 | **Component Orientation**            |                             |      |
-| Pico module (if socketed)            | Pin 1 aligned               |      |
+| RP2354 module (if socketed)          | Pin 1 aligned               |      |
 | HLW8012 IC                           | Pin 1 aligned               |      |
 | All diodes                           | Cathode band correct        |      |
 | Electrolytic capacitors              | Polarity correct            |      |
@@ -728,8 +728,8 @@ while True:
 | 3    | Verify 3.3V buck output   | Voltage at 3V3        | 3.3V ±3%          | \_\_\_V  |      |
 | 3a   | Verify ADC reference      | Voltage at TP2        | 3.0V ±0.5%        | \_\_\_V  |      |
 | 4    | Check for hot components  | Touch test (careful!) | All cool          |          |      |
-| 5    | Connect Pico module       | Observe USB LED       | Pico LED flashes  |          |      |
-| 6    | Verify USB enumeration    | Computer detects      | "RPI-RP2" or Pico |          |      |
+| 5    | Connect RP2354 module     | Observe power LED      | Module powers on   |          |      |
+| 6    | Verify power-on           | Measure 3.3V rail     | 3.3V ±3%          |          |      |
 | 7    | Remove USB, power from 5V | 5V current draw       | ~50-100mA         | \_\_\_mA |      |
 
 ---
@@ -741,11 +741,11 @@ while True:
 Upload a comprehensive test firmware to exercise all GPIOs:
 
 ```python
-# gpio_test.py - Upload to Pico
+# gpio_test.py - Upload to RP2354
 from machine import Pin, ADC, PWM, SPI, UART
 import time
 
-# Define all outputs (directly controlled by Pico)
+# Define all outputs (directly controlled by RP2354)
 outputs = {
     10: "K1_RELAY",      # Mains indicator lamp relay
     11: "K2_RELAY",      # Pump relay
@@ -825,7 +825,7 @@ def main():
     print("=" * 50)
     print("ECM Control Board - GPIO Test")
     print("=" * 50)
-    print("Note: J15 pins 6-8 are ESP32↔Pico GPIO (SPARE1/WEIGHT_STOP/SPARE2)")
+    print("Note: J15 pins 6-8 are SWDIO/WEIGHT_STOP/SWCLK (SWD interface + brew-by-weight)")
 
     while True:
         print("\nOptions:")
@@ -1008,8 +1008,8 @@ Connect all sensors but do NOT connect mains loads. **All sensors connect to uni
 | K1 - LED      | J2 (spade)    | Energize K1   | Click heard |      |
 | K2 - Pump     | J3 (spade)    | Energize K2   | Click heard |      |
 | K3 - Solenoid | J4 (spade)    | Energize K3   | Click heard |      |
-| SSR1 - Brew   | J26 Pin 17-18 | Energize SSR1 | SSR LED on  |      |
-| SSR2 - Steam  | J26 Pin 19-20 | Energize SSR2 | SSR LED on  |      |
+| SSR1 - Brew   | J26 Pin 15-16 | Energize SSR1 | SSR LED on  |      |
+| SSR2 - Steam  | J26 Pin 17-18 | Energize SSR2 | SSR LED on  |      |
 
 ---
 

@@ -1,7 +1,8 @@
 Reference,Component,Value,Footprint,Net1,Net2,Net3,Description
-U1,Raspberry_Pi_Pico_2,RP2350,Module,VSYS=+5V,GND=GND,3V3=+3.3V,3V3_EN=GND,Microcontroller module (Pico 2) - Internal regulator DISABLED via 3V3_EN=GND
+U1,Microcontroller,RP2354A,QFN-60,VSYS=+5V,IOVDD=+3.3V,DVDD=+1.1V,GND=GND,RP2354 discrete chip with 2MB stacked flash - External LDO (U4) for DVDD
 U2,AC_DC_Converter,HLK-15M05C,Module,L=L_HLK,N=N_FUSED,+Vout=+5V,Isolated 5V 3A/15W power supply (via F2 2A fuse)
 U3,DC_DC_Buck,TPS563200DDCR,SOT-23-6,VIN=+5V,SW=SW,FB=FB,EN=+5V,GND=GND,3.3V 3A synchronous buck converter (>90% efficient) - Output voltage set by R_FB1/R_FB2 divider
+U4,LDO,TLV74311PDBVR,SOT-23-5,VIN=+3.3V,VOUT=DVDD,GND=GND,1.1V LDO for RP2354 DVDD core voltage (external, replaces internal SMPS)
 U5,Voltage_Ref,LM4040DIM3-3.0,SOT-23,VREF=LM4040_VREF,GND=GND,,Precision 3.0V shunt reference (feeds U9A buffer)
 U6,Op_Amp,OPA342UA,SOIC-8,VCC=+3.3V,OUT=AC_OUT,GND=GND,Level probe oscillator (Wien bridge)
 U7,Comparator,TLV3201AIDBVR,SOT-23-5,VCC=+3.3V,OUT=GPIO4,GND=GND,Level probe detector with hysteresis
@@ -29,6 +30,8 @@ D20,TVS_Diode,SMBJ5.0A,SMB,A=GND,K=+5V,,5V rail protection
 D21,TVS_Diode,SM712,SOT-23,1=RS485_A,2=GND,3=RS485_B,RS485 A/B line surge protection (-7V to +12V asymmetric)
 D23,Zener_Diode,BZT52C3V3,SOD-123,A=GND,K=J16_3,,Service port TX 3.3V clamp (protects from 5V TTL adapters)
 D24,Zener_Diode,BZT52C3V3,SOD-123,A=GND,K=J16_4,,Service port RX 3.3V clamp (protects from 5V TTL adapters)
+D_UART_TX,TVS_Diode,ESDALC6V1,SOD-323,A=GND,K=J15_3,,UART TX ESD protection (near J15 connector)
+D_UART_RX,TVS_Diode,ESDALC6V1,SOD-323,A=GND,K=J15_4,,UART RX ESD protection (near J15 connector)
 LED1,LED,Green_0805,0805,A=LED1_A,K=K1_COIL,,K1 indicator (parallel with relay coil)
 LED2,LED,Green_0805,0805,A=LED2_A,K=K2_COIL,,K2 indicator (parallel with relay coil)
 LED3,LED,Green_0805,0805,A=LED3_A,K=K3_COIL,,K3 indicator (parallel with relay coil)
@@ -47,6 +50,9 @@ R7,Resistor,1k_1%,0805,1=3V3_ANALOG,2=LM4040_VREF,,LM4040 bias resistor (0.3mA v
 R8,Resistor,47R_1%,0805,1=U9A_OUT,2=ADC_VREF,,ADC VREF buffer isolation (prevents oscillation with cap load)
 R9,Resistor,33k_1%,0805,1=FB,2=+3.3V,,TPS563200 feedback upper (voltage divider)
 R10,Resistor,10k_1%,0805,1=FB,2=GND,,TPS563200 feedback lower (sets 3.3V output)
+R_VREG_AVDD,Resistor,33R,0805,1=+3.3V,2=VREG_AVDD_FILT,,VREG_AVDD RC filter (series resistor)
+R_SRif,Resistor,1M,0805,1=J5,2=GND,,SRif DC blocking (parallel with C_SRif, prevents DC ground loops)
+R_QSPI_CS,Resistor,10k,0805,1=+3.3V,2=QSPI_SS,,QSPI_SS pull-up (boot protection, prevents parasitic boot mode entry)
 R11,Resistor,4.7k,0805,1=GPIO10,2=GND,,K1 relay driver pull-down (per RP2350 errata E9)
 R12,Resistor,4.7k,0805,1=GPIO11,2=GND,,K2 relay driver pull-down (per RP2350 errata E9)
 R13,Resistor,4.7k,0805,1=GPIO12,2=GND,,K3 relay driver pull-down (per RP2350 errata E9)
@@ -66,8 +72,8 @@ R31,Resistor,470R,0805,1=+5V,2=LED2_A,,LED2 current limit (6.4mA)
 R32,Resistor,470R,0805,1=+5V,2=LED3_A,,LED3 current limit (6.4mA)
 R34,Resistor,330R,0805,1=GPIO13,2=LED5_A,,SSR1 LED current limit (logic side)
 R35,Resistor,330R,0805,1=GPIO14,2=LED6_A,,SSR2 LED current limit (logic side)
-R40,Resistor,33R,0805,1=GPIO0,2=J15_3,,UART0 TX series
-R41,Resistor,33R,0805,1=GPIO1,2=J15_4,,UART0 RX series
+R40,Resistor,33R,0805,1=GPIO0,2=J15_3,,UART0 TX series (ESD/ringing protection)
+R41,Resistor,33R,0805,1=GPIO1,2=J15_4,,UART0 RX series (ESD/ringing protection)
 R42,Resistor,33R,0805,1=GPIO0,2=J16_3,,Service TX (shared with J15 GPIO0)
 R43,Resistor,33R,0805,1=GPIO1,2=J16_4,,Service RX (shared with J15 GPIO1)
 R44,Resistor,33R,0805,1=GPIO6,2=U8_DI,,PZEM/RS485 TX series (to MAX3485 DI)
@@ -78,7 +84,7 @@ R46,Resistor,4.7k,0805,1=+3.3V,2=GPIO8,,I2C0 SDA pull-up
 R47,Resistor,4.7k,0805,1=+3.3V,2=GPIO9,,I2C0 SCL pull-up
 R48,Resistor,330R,0805,1=GPIO15,2=LED7_A,,Status LED current limit
 R49,Resistor,100R,0805,1=GPIO19,2=BZ1,,Buzzer series
-R71,Resistor,10k,0805,1=+3.3V,2=PICO_RUN,,Pico RUN pull-up
+R71,Resistor,10k,0805,1=+3.3V,2=RP2354_RUN,,RP2354 RUN pull-up
 R72,Resistor,DNP,0805,,,,DNP - Not used
 R73,Resistor,4.7k,0805,1=GND,2=GPIO21,,WEIGHT_STOP pull-down (per RP2350 errata E9)
 R74,Resistor,4.7k,0805,1=GND,2=GPIO16,,SPARE1 pull-down (per RP2350 errata E9)
@@ -97,11 +103,17 @@ R92,Resistor,5.6k_1%,0805,1=5V_DIV,2=GND,,5V monitor lower (ratiometric compensa
 R93,Resistor,20k,0805,1=+3.3V,2=RS485_A,,RS485 failsafe bias pull-up on A line (bus idle state definition)
 R94,Resistor,20k,0805,1=RS485_B,2=GND,,RS485 failsafe bias pull-down on B line (bus idle state definition)
 C1,Capacitor,100nF_X2,Radial,1=L_FUSED,2=N_FUSED,,Mains EMI filter
-C2,Capacitor,470uF_6.3V,SMD_V-Chip,1=+5V,2=GND,,5V bulk cap (SMD V-Chip Aluminum Electrolytic)
+C2,Capacitor,470uF_6.3V,105C_AlPolymer,1=+5V,2=GND,,5V bulk cap (105°C Aluminum Polymer, e.g., Panasonic OS-CON) - Required for >5 year life at 65°C ambient
 C3,Capacitor,22uF_25V,1206,1=+5V,2=GND,,Buck input cap (ceramic X5R)
 C4,Capacitor,22uF_10V,1206,1=+3.3V,2=GND,,Buck output cap (ceramic X5R)
 C4A,Capacitor,22uF_10V,1206,1=+3.3V,2=GND,,Buck output cap 2 (ceramic X5R) - parallel
-C5,Capacitor,100nF,0805,1=+3.3V,2=GND,,3.3V decoupling
+C5,Capacitor,47uF_10V,1206,1=+3.3V,2=GND,,3.3V rail bulk (WiFi/relay transients) - ceramic X5R
+C_VREG_AVDD,Capacitor,100nF,0805,1=VREG_AVDD_FILT,2=GND,,VREG_AVDD RC filter (parallel to GND)
+C_SRif,Capacitor,100nF,0805,1=J5,2=GND,,SRif AC coupling (parallel with R_SRif, allows 1kHz AC signal return)
+C_DVDD,Capacitor,10uF_10V,1206,1=DVDD,2=GND,,RP2354 DVDD bulk (external LDO output)
+C_DVDD2,Capacitor,100nF,0805,1=DVDD,2=GND,,RP2354 DVDD decoupling (external LDO output)
+C_XTAL1,Capacitor,22pF,0603,1=XIN,2=GND,,Crystal load capacitor (calculated: C_L = 2×(15pF-3pF) = 24pF, use 22pF std)
+C_XTAL2,Capacitor,22pF,0603,1=XOUT,2=GND,,Crystal load capacitor (calculated: C_L = 2×(15pF-3pF) = 24pF, use 22pF std)
 C6,Capacitor,100nF,0805,1=+3.3V,2=GND,,3.3V digital decoupling
 C7,Capacitor,22uF_10V,1206,1=ADC_VREF,2=GND,,ADC reference bulk cap
 C7A,Capacitor,100nF,0805,1=ADC_VREF,2=GND,,ADC reference decoupling
@@ -119,33 +131,35 @@ C70,Capacitor,100nF,0805,1=+3.3V,2=GND,,MAX3485 VCC decoupling
 C80,Capacitor,100nF,0805,1=+3.3V,2=GND,,OPA2342 (U9) VCC decoupling
 C81,Capacitor,100nF,0805,1=5V_DIV,2=GND,,5V monitor filter
 L1,Inductor,2.2uH_3A,1210,1=SW,2=+3.3V,,Buck inductor (TPS563200) - 2.2µH per TI datasheet for 3.3V output
+L2,Inductor,REMOVED,NA,NA,NA,No longer needed (external LDO replaces internal SMPS)
 F1,Fuse,10A_250VAC,SMD_Nano2,1=L,2=L_FUSED,,Main mains fuse 10A slow-blow (Littelfuse 463 Series 0463010.ER) - MUST be High Breaking Capacity
 F2,Fuse,2A_250VAC,SMD_Nano2,1=L_FUSED,2=L_HLK,,HLK module secondary fuse 2A slow-blow (Littelfuse 463 Series 0463002.ER)
 RV1,Varistor,275V,14mm,1=L_FUSED,2=N_FUSED,,Mains surge protection (S14K275)
 RV2,Varistor,275V,10mm,1=J3_NO,2=N,,Pump arc suppression MOV across load (S10K275)
 RV3,Varistor,275V,10mm,1=J4_NO,2=N,,Solenoid arc suppression MOV across load (S10K275)
-SW1,Switch,Tactile_6x6mm,SMD,1=PICO_RUN,2=GND,,Reset button (active-low via R71 pull-up)
+SW1,Switch,Tactile_6x6mm,SMD,1=RP2354_RUN,2=GND,,Reset button (active-low via R71 pull-up)
 BZ1,Buzzer,Passive_12mm,TH,1=BZ1_POS,2=GND,,Passive piezo buzzer
 FB1,Ferrite_Bead,600R_100MHz,0603,1=+3.3V,2=3V3_ANALOG,,ADC reference section isolation (feeds R7→LM4040→U9A→ADC_VREF)
 JP1,Solder_Jumper,Open,2-pad,1=ADC_VREF,2=R1A,,Brew NTC selection (OPEN=50kΩ ECM/Profitec, CLOSE=10kΩ Rocket/Gaggia)
 JP2,Solder_Jumper,Open,2-pad,1=ADC_VREF,2=R2A,,Steam NTC selection (OPEN=50kΩ ECM/Profitec, CLOSE=10kΩ Rocket/Gaggia)
 JP3,Solder_Jumper,Open,2-pad,1=J17_RX,2=J17_DIV,,Power meter RX level (OPEN=5V TTL meters, CLOSE=3.3V logic meters)
 JP4,Solder_Jumper,Center+A,3-pad,1=U8_RO,2=GPIO7,3=J17_DIV,,Power meter interface select (1-2=RS485 differential, 2-3=TTL UART)
-J1,Connector,Terminal_3pos,6.3mm_Spade,1=L,2=N,3=PE,Mains input
+J1,Connector,Terminal_2pos,6.3mm_Spade,1=L,2=N,Mains input (L, N only - PE removed, HV section floating)
 J2,Connector,Terminal_2pos,6.3mm_Spade,1=J2_COM,2=J2_NO,,K1 output (Mains indicator lamp)
 J3,Connector,Terminal_2pos,6.3mm_Spade,1=J3_COM,2=J3_NO,,K2 output (Pump)
 J4,Connector,Terminal_2pos,6.3mm_Spade,1=J4_COM,2=J4_NO,,K3 output (Solenoid)
-J15,Connector,JST-XH_8pos,2.54mm,1=+5V,2=GND,3=PICO_TX,4=PICO_RX,5=PICO_RUN,6=SPARE1,7=WEIGHT_STOP,8=SPARE2,ESP32 display (GPIO16/21/22)
+J5,Connector,Terminal_1pos,6.3mm_Spade,1=J5,Chassis Reference (SRif) - connects to PCB GND via C-R network (R_SRif + C_SRif parallel)
+J15,Connector,JST-XH_8pos,2.54mm,1=+5V,2=GND,3=RP2354_TX,4=RP2354_RX,5=RP2354_RUN,6=SPARE1,7=WEIGHT_STOP,8=SPARE2,ESP32 display (GPIO16/21/22, SWD on Pins 6/8)
 J16,Connector,Header_4pos,2.54mm,1=+3.3V,2=GND,3=SERVICE_TX,4=SERVICE_RX,Service/debug (shared GPIO0/1 with J15)
 J17,Connector,JST-XH_6pos,2.54mm,1=+3.3V,2=+5V,3=GND,4=J17_RX,5=J17_TX,6=RS485_DERE,Power meter interface (TTL/RS485) - 6-pin per v2.21 spec
 J20,Connector,Header_2x20,2.54mm,,,,"Pico socket"
 J23,Connector,Header_4pos,2.54mm,1=+3.3V,2=GND,3=I2C0_SDA,4=I2C0_SCL,I2C accessory port (GPIO8/9)
-J24,Connector,Screw_3pos,5.08mm,1=L_FUSED,2=N,3=PE,External power meter HV input (L/N/PE only - NO CT)
+J24,Connector,Screw_2pos,5.08mm,1=L_FUSED,2=N,External power meter HV input (L/N only - PE removed, HV section floating)
 J26,Connector,Screw_18pos,5.08mm,1=GPIO2,2=GND,3=GPIO3,4=GND,5=PROBE,6=GPIO5,7=GND,8=ADC0,9=GND,10=ADC1,11=GND,12=+5V,13=GND,14=PRESS_SIG,15=+5V,16=SSR1_NEG,17=+5V,18=SSR2_NEG,Unified LV terminal 18-pos (switches + NTCs + pressure + SSRs)
 TP1,Test_Point,GPIO20_Spare,1.5mm,1=GPIO20,,,GPIO20/RS485_DE test point
 TP2,Test_Point,ADC_VREF,1.5mm,1=ADC_VREF,,,ADC reference test point (3.0V buffered)
 TP3,Test_Point,5V_MONITOR,1.5mm,1=5V_DIV,,,5V monitor test point (~1.8V at 5V nominal) - for ratiometric calibration
-MH1,Mounting_Hole,M3,3.2mm,1=GND,,,PE star ground point - PTH connected to GND for chassis grounding and shielding
+MH1,Mounting_Hole,M3,3.2mm,1=NC,,,NPTH - Isolated (no PE connection, SRif architecture)
 MH2,Mounting_Hole,M3,3.2mm,1=NC,,,NPTH - Isolated (no GND connection)
 MH3,Mounting_Hole,M3,3.2mm,1=NC,,,NPTH - Isolated (no GND connection)
 MH4,Mounting_Hole,M3,3.2mm,1=NC,,,NPTH - Isolated (no GND connection)

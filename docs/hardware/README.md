@@ -172,7 +172,7 @@ See [BOM](spec/07-BOM.md) for complete bill of materials.
 
 1. **Mains Voltage:** This board handles 220V AC. Only qualified personnel should install.
 2. **Isolation:** Maintain >6mm creepage between HV and LV circuits.
-3. **Grounding:** PCB uses SRif (Chassis Reference) architecture - connect J5 to chassis via 18AWG wire. No PE connection on PCB HV side.
+3. **Grounding:** PCB uses SRif (Chassis Reference) architecture - connect J5 to chassis via 18AWG wire through C-R network (1MΩ + 100nF parallel) to prevent DC ground loops. No PE connection on PCB HV side.
 4. **Fusing:** 10A fuse (F1) protects relay loads. Heaters use machine's existing fusing.
 
 ---

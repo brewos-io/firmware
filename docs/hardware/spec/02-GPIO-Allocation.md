@@ -65,8 +65,8 @@
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
 │  │  UART0 - ESP32 DISPLAY MODULE (8-pin JST-XH)                            │  │
-│  │  ├── GPIO0 (UART0 TX) ─── ESP32 RX (1kΩ series protection - R40)       │  │
-│  │  ├── GPIO1 (UART0 RX) ─── ESP32 TX (1kΩ series protection - R41)       │  │
+│  │  ├── GPIO0 (UART0 TX) ─── ESP32 RX (33Ω series + TVS - R40, D_UART_TX) │  │
+│  │  ├── GPIO1 (UART0 RX) ─── ESP32 TX (33Ω series + TVS - R41, D_UART_RX) │  │
 │  │  ├── RP2354 RUN ◄──────── ESP32 (ESP32 resets MCU, USB D- repurposed) │  │
 │  │  ├── SWDIO (Dedicated Pin) ↔── ESP32 TX2 (J15 Pin 6, SWD interface)    │  │
 │  │  ├── GPIO21 (WEIGHT_STOP) ◄─ ESP32 (J15 Pin 7, 4.7kΩ pull-down, USB D+ repurposed)│  │
@@ -75,8 +75,8 @@
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
 │  │  SERVICE/DEBUG PORT (4-pin header) - Shared with ESP32 on GPIO0/1       │  │
-│  │  ├── GPIO0 (UART0 TX) ─── J15 (ESP32) + J16 (Service) - 1kΩ protected  │  │
-│  │  └── GPIO1 (UART0 RX) ─── J15 (ESP32) + J16 (Service) - 1kΩ protected  │  │
+│  │  ├── GPIO0 (UART0 TX) ─── J15 (ESP32) + J16 (Service) - 33Ω + TVS protected  │  │
+│  │  └── GPIO1 (UART0 RX) ─── J15 (ESP32) + J16 (Service) - 33Ω + TVS protected  │  │
 │  │  ⚠️ Disconnect ESP32 cable when using service port for flashing         │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
@@ -104,9 +104,9 @@
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
 │  │  ESP32 CONTROL SIGNALS (J15 Pins 5-8) - All have 4.7kΩ pull-downs      │  │
 │  │  ├── PICO RUN ← ESP32 GPIO20 (J15 Pin 5, USB D- repurposed)           │  │
-│  │  ├── GPIO16 ── SPARE1 ↔ ESP32 GPIO9 (J15 Pin 6)                       │  │
+│  │  ├── SWDIO (Dedicated Pin) ↔ ESP32 TX2 (J15 Pin 6, SWD interface)     │  │
 │  │  ├── GPIO21 ── WEIGHT_STOP ← ESP32 GPIO19 (J15 Pin 7, USB D+ repurposed) │  │
-│  │  └── GPIO22 ── SPARE2 ↔ ESP32 GPIO22 (J15 Pin 8)                      │  │
+│  │  └── SWCLK (Dedicated Pin) ↔ ESP32 RX2 (J15 Pin 8, SWD interface)     │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
@@ -126,14 +126,14 @@
 
 | GPIO   | Function                        | Direction | Type        | Pull          | Protection                                         |
 | ------ | ------------------------------- | --------- | ----------- | ------------- | -------------------------------------------------- |
-| 0      | UART0 TX → ESP32                | Output    | Digital     | None          | 1kΩ series (R40)                                   |
-| 1      | UART0 RX ← ESP32                | Input     | Digital     | None          | 1kΩ series (R41)                                   |
+| 0      | UART0 TX → ESP32                | Output    | Digital     | None          | 33Ω series + TVS (R40, D_UART_TX)                  |
+| 1      | UART0 RX ← ESP32                | Input     | Digital     | None          | 33Ω series + TVS (R41, D_UART_RX)                  |
 | 2      | Water Reservoir Switch          | Input     | Digital     | Internal PU   | ESD clamp                                          |
 | 3      | Tank Level Sensor               | Input     | Digital     | Internal PU   | ESD clamp                                          |
 | 4      | Steam Boiler Level (Comparator) | Input     | Digital     | None          | TLV3201 output                                     |
 | 5      | Brew Handle Switch              | Input     | Digital     | Internal PU   | ESD clamp                                          |
-| 6      | Meter TX (UART1)                | Output    | Digital     | None          | 1kΩ series R42 (5V tolerance)                      |
-| 7      | Meter RX (UART1)                | Input     | Digital     | None          | 1kΩ series R43 (5V tolerance)                      |
+| 6      | Meter TX (UART1)                | Output    | Digital     | None          | 33Ω series R44 (ESD/ringing protection)            |
+| 7      | Meter RX (UART1)                | Input     | Digital     | None          | 33Ω series R45B (ESD/ringing protection)           |
 | 8      | I2C0 SDA (Accessory)            | I/O       | Digital     | 4.7kΩ ext. PU | Accessory expansion                                |
 | 9      | I2C0 SCL (Accessory)            | Output    | Digital     | 4.7kΩ ext. PU | Accessory expansion                                |
 | 10     | Relay K1 + LED                  | Output    | Digital     | None          | -                                                  |
@@ -170,14 +170,14 @@ If the BrewOS controller is powered via USB (VBUS), but an external peripheral (
 In this state, the internal protection diodes are unpowered. The 5V input will forward-bias the parasitic diode to the 3.3V rail, effectively trying to power the entire Pico board through the GPIO pin. This usually results in immediate silicon latch-up or burnout.
 
 **Protection Implemented:**
-Series current-limiting resistors (1kΩ) are mandatory on all GPIO lines that may interface with 5V-capable peripherals:
+Series resistors (33Ω) and TVS diodes are used on UART lines for ESD protection and ringing reduction:
 
-| GPIO | Signal   | Resistor | Purpose                                                |
-| ---- | -------- | -------- | ------------------------------------------------------ |
-| 0    | UART0 TX | R40 1kΩ  | Limits fault current to <500µA during power sequencing |
-| 1    | UART0 RX | R41 1kΩ  | Limits fault current to <500µA during power sequencing |
-| 6    | Meter TX | R42 1kΩ  | Protection for external meter interface                |
-| 7    | Meter RX | R43 1kΩ  | Protection for external meter interface                |
+| GPIO | Signal   | Resistor | TVS Diode | Purpose                                                |
+| ---- | -------- | -------- | --------- | ------------------------------------------------------ |
+| 0    | UART0 TX | R40 33Ω  | D_UART_TX | ESD protection, reduces ringing on cable (10-20cm length) |
+| 1    | UART0 RX | R41 33Ω  | D_UART_RX | ESD protection, reduces ringing on cable (10-20cm length) |
+| 6    | Meter TX | R44 33Ω  | -         | ESD/ringing protection for external meter interface    |
+| 7    | Meter RX | R45B 33Ω | -         | ESD/ringing protection for external meter interface    |
 
 **⚠️ IMPORTANT:** The RP2354 GPIOs are **NOT 5V tolerant** (and fail safely only if IOVDD is powered). All current limiting resistors must be kept in the layout to protect the chip from 5V peripherals.
 
@@ -207,9 +207,8 @@ The RP2354 has a documented errata (E9) where GPIO inputs can latch in a high st
 | Input GPIO | Function          | Protection                                      | Notes                   |
 | ---------- | ----------------- | ----------------------------------------------- | ----------------------- |
 | GPIO2-5    | Switches          | Internal pull-up + external pull-down (R10-R13) | Ensures defined state   |
-| GPIO16     | SPARE1            | 4.7kΩ pull-down (R74)                           | ESP32↔Pico spare I/O    |
-| GPIO20-21  | RS485/WEIGHT_STOP | 4.7kΩ pull-down (R73)                           | Prevents false triggers |
-| GPIO22     | SPARE2            | 4.7kΩ pull-down (R75)                           | ESP32↔Pico spare I/O    |
+| GPIO20-21  | RS485/WEIGHT_STOP | 4.7kΩ pull-down (R19/R73)                       | Prevents false triggers |
+| GPIO16,22  | Available         | None                                            | Disconnected from J15   |
 
 **All digital inputs have either internal pull-ups OR external pull-down resistors**, ensuring they cannot float and trigger the E9 errata condition.
 
@@ -236,7 +235,7 @@ For NTC circuits with R1=3.3kΩ, a few microamps of leakage induces several mill
 1. **Silicon Stepping:** Verify RP2354 is B0 stepping or later (may resolve E9)
 2. **Firmware Calibration:** Implement temperature-dependent offset compensation
 3. **External ADC (future revision):** Use dedicated ADC IC with voltage follower buffers
-4. **Lower Source Impedance:** Consider 1kΩ series + external buffer for critical channels
+4. **Lower Source Impedance:** Consider 33Ω series + external buffer for critical channels
 
 **Current Design Status:**
 The RC filter capacitors (C8, C9, C11) suppress AC noise but do NOT mitigate DC leakage. For ±0.5°C espresso extraction accuracy, firmware calibration against a reference thermometer is **required** during commissioning.

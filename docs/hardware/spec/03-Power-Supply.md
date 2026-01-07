@@ -9,7 +9,7 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 | Consumer            | Typical    | Peak       | Notes                        |
 | ------------------- | ---------- | ---------- | ---------------------------- |
 | RP2354 MCU          | 50mA       | 100mA      | Via VSYS (5V) → IOVDD (3.3V) |
-| RP2354 Core (DVDD)  | 30mA       | 60mA       | 1.1V via internal VREG       |
+| RP2354 Core (DVDD)  | 30mA       | 60mA       | 1.1V via external LDO (U4)   |
 | Relay coils (×3)    | 80mA       | 150mA      | K2:70mA, K1/K3:40mA each     |
 | SSR drivers (×2)    | 10mA       | 20mA       | Transistor current           |
 | ESP32 module        | 150mA      | 500mA      | **WiFi TX spikes!**          |
@@ -70,8 +70,10 @@ Use an integrated isolated AC/DC converter module for safety and simplicity.
 │                                                                                 │
 │    Component Details:                                                          │
 │    ─────────────────                                                           │
-│    F1: Fuse, 10A 250VAC, SMD Nano² (Littelfuse 463), slow-blow (relay-switched loads only)   │
-│    F2: Fuse, 2A 250VAC, SMD Nano² (Littelfuse 463), slow-blow (HLK module protection)        │
+│    F1: Fuse, 10A 250VAC, SMD Nano² (Littelfuse 463), **Time-Lag (Slow-Blow) Ceramic**        │
+│        Required for pump inrush current (3-5× steady-state). Thermal derating: K_temp = 0.75-0.80 at 80°C │
+│    F2: Fuse, 2A 250VAC, SMD Nano² (Littelfuse 463), **Time-Lag (Slow-Blow) Ceramic**         │
+│        High I²t rating required for inductive load transients                                 │
 │    RV1: MOV/Varistor, 275V AC, 14mm disc (surge protection)                   │
 │    C1: X2 safety capacitor, 100nF 275V AC (EMI filter)                        │
 │                                                                                 │
@@ -144,23 +146,33 @@ V_OUT = 0.768V × (1 + R_FB1/R_FB2)
 V_OUT = 0.768V × (1 + 33kΩ/10kΩ) = 0.768V × 4.3 = 3.30V ✓
 ```
 
-### RP2354 Internal Regulator Configuration
+### RP2354 Core Voltage (DVDD) - External LDO Configuration
 
-The RP2354 has an internal regulator that can run in LDO or SMPS (switching) mode. This design uses **SMPS mode** for efficiency, matching the original Pico 2 module's approach.
+**⚠️ CRITICAL CHANGE:** This design uses an **external 1.1V LDO** instead of the RP2354 internal SMPS to eliminate switching noise that can interfere with precision analog sensors (NTC thermistors, pressure transducer).
+
+**Rationale:**
+
+- **Noise Floor:** A linear regulator provides a spectrally clean DC rail, significantly improving Signal-to-Noise Ratio (SNR) for the on-board ADC and connected analog sensors
+- **Layout Simplicity:** An LDO requires only input and output capacitors, eliminating the bulky inductor and strict layout requirements of the switch node
+- **Reliability:** The external LDO moves heat dissipation off the MCU die, slightly lowering the junction temperature of the RP2354, which is beneficial in the high-ambient environment of an espresso machine
 
 **Power Architecture:**
 
-- **VREG_IN:** Connect to +3.3V (from TPS563200 output)
-- **VREG_OUT:** Connect to **DVDD** (Core voltage pins, 1.1V)
-- **LX:** Connect **2.2µH inductor** (L2) to VREG_OUT/DVDD
+- **VREG_VIN (Pin 44):** Connect to +3.3V (from TPS563200 output) - powers internal voltage monitoring circuits
+- **VREG_AVDD (Pin 45):** Connect to +3.3V via RC filter (33Ω series resistor + 100nF capacitor) - powers analog reference for internal regulator logic
+- **VREG_LX (Pin 43):** Leave unconnected (floating) - disconnects internal switching transistor
+- **VREG_PGND (Pin 42):** Connect to main ground plane - provides ground reference even if switcher is unused
+- **DVDD (Pins 23, 50):** Connect to external 1.1V LDO output (e.g., TLV74311PDBVR)
 - **IOVDD:** All GPIO pins require 3.3V (from TPS563200)
-- **Decoupling:** Place 100nF caps close to every IOVDD pin; at least one 1µF/10µF on DVDD rail
+- **Decoupling:** Place 10µF bulk + 100nF decoupling capacitors close to DVDD pins
 
-**Internal Regulator Benefits:**
+**External LDO Requirements:**
 
-- Efficient SMPS mode reduces heat dissipation
-- Integrated design eliminates external 1.1V regulator
-- Matches Pico 2 power architecture for compatibility
+- **Part Number:** TLV74311PDBVR or equivalent (1.1V, 500mA minimum)
+- **Input:** 3.3V from TPS563200
+- **Output:** 1.1V ±3% for DVDD
+- **Package:** SOT-23-5 or similar
+- **Output Capacitors:** 10µF bulk (1206 ceramic) + 100nF decoupling (0805 ceramic) placed close to LDO output and DVDD pins
 
 ## Precision ADC Voltage Reference (Buffered)
 
@@ -229,18 +241,18 @@ Without buffer, R7 provides only 0.3mA to share between LM4040 and NTC loads:
 
 ### Decoupling Capacitor Placement
 
-| Location                 | Capacitor  | Type               | Notes                                  |
-| ------------------------ | ---------- | ------------------ | -------------------------------------- |
-| 5V rail main             | 470µF      | SMD V-Chip (6.3V)  | Near HLK-15M05C output                 |
-| 5V at RP2354 VSYS        | 100nF      | Ceramic (0805)     | Adjacent to pin                        |
-| 5V at each relay driver  | 100nF      | Ceramic (0805)     | Suppress switching noise               |
-| 3.3V Buck output (U3)    | 2×22µF     | Ceramic (1206)     | For stability                          |
-| **3.3V Rail bulk (C5)**  | **47µF**   | **Ceramic (1206)** | **WiFi/relay transient stabilization** |
-| **3.3V at RP2354 IOVDD** | **100nF**  | **Ceramic (0805)** | **One per IOVDD pin (decoupling)**     |
-| 3.3V at each ADC input   | 100nF      | Ceramic (0603)     | Filter network                         |
-| ADC_VREF                 | 22µF+100nF | Ceramic            | Reference stability                    |
-| **RP2354 DVDD (1.1V)**   | **1µF**    | **Ceramic (0805)** | **Core voltage bulk**                  |
-| **RP2354 DVDD (1.1V)**   | **10µF**   | **Ceramic (1206)** | **Core voltage additional bulk**       |
+| Location                 | Capacitor  | Type                        | Notes                                                 |
+| ------------------------ | ---------- | --------------------------- | ----------------------------------------------------- |
+| 5V rail main             | 470µF      | **105°C Al-Polymer** (6.3V) | Near HLK-15M05C output, **thermal derating required** |
+| 5V at RP2354 VSYS        | 100nF      | Ceramic (0805)              | Adjacent to pin                                       |
+| 5V at each relay driver  | 100nF      | Ceramic (0805)              | Suppress switching noise                              |
+| 3.3V Buck output (U3)    | 2×22µF     | Ceramic (1206)              | For stability                                         |
+| **3.3V Rail bulk (C5)**  | **47µF**   | **Ceramic (1206)**          | **WiFi/relay transient stabilization**                |
+| **3.3V at RP2354 IOVDD** | **100nF**  | **Ceramic (0805)**          | **One per IOVDD pin (decoupling)**                    |
+| 3.3V at each ADC input   | 100nF      | Ceramic (0603)              | Filter network                                        |
+| ADC_VREF                 | 22µF+100nF | Ceramic                     | Reference stability                                   |
+| **RP2354 DVDD (1.1V)**   | **10µF**   | **Ceramic (1206)**          | **Core voltage bulk (external LDO output)**           |
+| **RP2354 DVDD (1.1V)**   | **100nF**  | **Ceramic (0805)**          | **Core voltage decoupling (external LDO output)**     |
 
 ### 3.3V Rail Bulk Capacitance (ECO-05)
 
@@ -278,13 +290,30 @@ Without buffer, R7 provides only 0.3mA to share between LM4040 and NTC loads:
 
 **Total 3.3V Rail Capacitance:** 22µF + 22µF + 47µF = **91µF** (adequate for ~1A transient load)
 
+### Thermal Derating for Capacitors
+
+**⚠️ CRITICAL:** Espresso machine ambient temperatures can reach 60-70°C due to boiler proximity. Standard 85°C-rated capacitors will have dangerously short service life.
+
+**Arrhenius Law Derating:**
+
+For every 10°C rise in operating temperature, capacitor lifespan halves. At 65°C ambient:
+
+- 85°C/2000h capacitor: ~8000 hours (<1 year at 24/7 operation)
+- 105°C/2000h capacitor: >5 years at 65°C ambient
+
+**Required Specifications:**
+
+- **C2 (5V bulk):** 470µF 6.3V, **105°C Aluminum Polymer** (e.g., Panasonic OS-CON series or equivalent)
+- **Rationale:** Solid electrolyte eliminates dry-out mechanism; ultra-low ESR ideal for high-frequency transients
+- **Life Expectancy:** >5 years continuous operation at 65°C ambient temperature
+
 ### RP2354 Power Requirements
 
 **Core Voltage (DVDD - 1.1V):**
 
-- Generated internally via VREG (SMPS mode)
-- Requires 2.2µH inductor (L2) on VREG_OUT/DVDD path
-- Decoupling: 1µF + 10µF capacitors on DVDD rail
+- Generated externally via dedicated 1.1V LDO (U4)
+- **L2 inductor REMOVED** - no longer needed (internal SMPS disabled)
+- Decoupling: 10µF bulk + 100nF decoupling capacitors on DVDD rail
 - Typical current: 30mA, Peak: 60mA
 
 **I/O Voltage (IOVDD - 3.3V):**
@@ -297,7 +326,7 @@ Without buffer, R7 provides only 0.3mA to share between LM4040 and NTC loads:
 
 1. 5V rail powers up (from HLK-15M05C)
 2. TPS563200 generates 3.3V (IOVDD)
-3. RP2354 VREG generates 1.1V (DVDD) from 3.3V input
+3. External LDO (U4) generates 1.1V (DVDD) from 3.3V input
 4. MCU boots and initializes
 
 **⚠️ IMPORTANT:** Ensure IOVDD is present before applying signals to GPIO pins. The RP2354 GPIOs are NOT 5V tolerant and require IOVDD to be powered for safe operation.

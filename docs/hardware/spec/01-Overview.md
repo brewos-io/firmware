@@ -77,22 +77,22 @@ This specification defines a custom control PCB to replace the factory GICAR con
 
 ### Input Power
 
-| Parameter            | Specification                            |
-| -------------------- | ---------------------------------------- |
-| Input Voltage        | 100-240V AC ±10%                         |
-| Frequency            | 50/60 Hz                                 |
-| Maximum Current      | 16A (total machine load through relays)  |
-| Power Factor         | >0.9 (machine dependent)                 |
-| Inrush Current       | Limited by machine's existing protection |
-| Transient Tolerance  | ±1kV differential, ±2kV common-mode (IEC 61000-4-5), protected by MOV (S14K275) |
+| Parameter           | Specification                                                                   |
+| ------------------- | ------------------------------------------------------------------------------- |
+| Input Voltage       | 100-240V AC ±10%                                                                |
+| Frequency           | 50/60 Hz                                                                        |
+| Maximum Current     | 16A (total machine load through relays)                                         |
+| Power Factor        | >0.9 (machine dependent)                                                        |
+| Inrush Current      | Limited by machine's existing protection                                        |
+| Transient Tolerance | ±1kV differential, ±2kV common-mode (IEC 61000-4-5), protected by MOV (S14K275) |
 
 ### Output Power Rails
 
-| Rail    | Voltage  | Current Capacity | Source                | Purpose                          |
-| ------- | -------- | ---------------- | --------------------- | -------------------------------- |
-| 5V DC   | 5.0V ±5% | **3A minimum**   | Isolated AC/DC module | RP2354 VSYS, relays, ESP32, SSR drivers |
-| 3.3V DC | 3.3V ±3% | 500mA minimum    | Buck from 5V          | RP2354 IOVDD, sensors, logic     |
-| 1.1V DC | 1.1V ±3% | 100mA minimum    | RP2354 internal VREG  | RP2354 DVDD (core voltage)       |
+| Rail    | Voltage  | Current Capacity | Source                | Purpose                                                      |
+| ------- | -------- | ---------------- | --------------------- | ------------------------------------------------------------ |
+| 5V DC   | 5.0V ±5% | **3A minimum**   | Isolated AC/DC module | RP2354 VSYS, relays, ESP32, SSR drivers                      |
+| 3.3V DC | 3.3V ±3% | 500mA minimum    | Buck from 5V          | RP2354 IOVDD, sensors, logic                                 |
+| 1.1V DC | 1.1V ±3% | 100mA minimum    | External LDO (U4)     | RP2354 DVDD (core voltage, external LDO for noise reduction) |
 
 ### Isolation Requirements
 
