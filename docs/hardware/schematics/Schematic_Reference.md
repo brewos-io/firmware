@@ -483,13 +483,13 @@ pull-up resistors. An op-amp buffer (U9A) provides the current drive capability.
     GP1  = UART0 RX ← ESP32                   GP27 = ADC1 (Steam NTC)
     GP2  = Water Reservoir Switch             GP26 = ADC0 (Brew NTC)
     GP3  = Tank Level Sensor                  RUN  = Reset button (SW1)
-    GP4  = Steam Level (Comparator)           GP22 = SPARE2 ↔ ESP32 GPIO22 (J15-8)
-    GP5  = Brew Handle Switch                 GP21 = WEIGHT_STOP ← ESP32 GPIO10 (J15-7)
+    GP4  = Steam Level (Comparator)           GP22 = AVAILABLE (v2.31: disconnected from J15, SWD moved to dedicated pins)
+    GP5  = Brew Handle Switch                 GP21 = WEIGHT_STOP ← ESP32 GPIO19/6 (J15-7, screen/noscreen variant)
     GP6  = Meter TX (UART1)                   GP20 = RS485 DE/RE
     GP7  = Meter RX (UART1)                   GP19 = Buzzer (PWM)
     GP8  = I2C0 SDA (Accessory)               GP18 = SPI_SCK (available)
     GP9  = I2C0 SCL (Accessory)               GP17 = SPI_CS (available)
-    GP10 = Relay K1 (Lamp)                    GP16 = SPARE1 ↔ ESP32 GPIO9 (J15-6)
+    GP10 = Relay K1 (Lamp)                    GP16 = AVAILABLE (v2.31: disconnected from J15, SWD moved to dedicated pins)
     GP11 = Relay K2 (Pump)                    GP15 = Status LED
     GP12 = Relay K3 (Solenoid)                GP14 = SSR2 (Steam)
     GP13 = SSR1 (Brew)                        BOOT = Bootsel button (onboard)
@@ -1542,15 +1542,53 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     • ESP32 releases (high-Z) → Pico runs normally
 
 
-    SPARE1 Signal (J15 Pin 6 → Available):
+    SWD Interface (J15 Pins 6/8) - v2.31:
     ───────────────────────────────────────
 
-    (No connection) ◄──────────────────────────────── J15 Pin 6 (SPARE1)
-                                                              │
-                                                              │
-                                                         ESP32 GPIO9
+    **CRITICAL:** v2.31 uses dedicated SWDIO/SWCLK pins (not GPIO16/22).
+    This fixes OTA update reliability issues with the RP2354 E9 errata.
 
-    • Available for future expansion
+    SWDIO (J15 Pin 6):
+    ──────────────────
+                                    ┌────┐
+    RP2354 SWDIO ────────────────────┤ 47Ω├─────────────────── J15 Pin 6 (SWDIO)
+    (dedicated pin)                  │R_  │ (series protection)
+                                     │SWD │
+                                     │IO  │
+                                     └────┘
+                                           │
+                                           │
+                                      ESP32 TX2
+                                    (GPIO17)
+
+    SWCLK (J15 Pin 8):
+    ──────────────────
+                                    ┌────┐
+    RP2354 SWCLK ────────────────────┤ 47Ω├─────────────────── J15 Pin 8 (SWCLK)
+    (dedicated pin)                  │R_  │ (series protection)
+                                     │SWD │
+                                     │CLK │
+                                     └────┘
+                                           │
+                                           │
+                                      ESP32 RX2
+                                    (GPIO16)
+                                           │
+                                      ┌────┴────┐
+                                      │ R_SWD  │
+                                      │  4.7kΩ │ (CRITICAL: E9 errata fix)
+                                      │Pull-down│
+                                      └────┬────┘
+                                           │
+                                          ─┴─
+                                          GND
+
+    • SWDIO and SWCLK are dedicated physical pins on RP2354 (not multiplexed GPIOs)
+    • 47Ω series resistors (R_SWDIO, R_SWCLK) provide ESD/ringing protection
+    • **4.7kΩ pull-down on SWCLK (R_SWD_PD) is REQUIRED** to fix RP2354 errata E9
+    • E9 errata: SWCLK internal pull-down can latch high (~2.2V), causing OTA failures
+    • External pull-down ensures SWCLK stays LOW when not driven, preventing "ACK 0x07" errors
+    • Used for factory flash and recovery (blank chips, corrupted firmware)
 
 
     WEIGHT_STOP Signal (J15 Pin 7 → GPIO21) - BREW BY WEIGHT:
@@ -1578,44 +1616,6 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     • If ESP32 disconnected/reset → GPIO21 stays LOW (safe state, no false triggers)
 
 
-    SPARE1 Signal (J15 Pin 6 → GPIO16):
-    ────────────────────────────────────
-
-    GPIO16 ◄────────────────────────┬────────────────── J15 Pin 6 (SPARE1)
-    (I/O)                           │                         │
-                               ┌────┴────┐                    │
-                               │  R74    │               ESP32 GPIO9
-                               │  4.7kΩ  │             (Push-Pull I/O)
-                               │Pull-down│
-                               │(E9 fix) │
-                               └────┬────┘
-                                    │
-                                   ─┴─
-                                   GND
-                                (Normally LOW when unused)
-
-    • General-purpose spare I/O between ESP32 and Pico
-    • 4.7kΩ pull-down ensures defined LOW state when unused (RP2350 E9 errata)
-
-
-    SPARE2 Signal (J15 Pin 8 → GPIO22):
-    ────────────────────────────────────
-
-    GPIO22 ◄────────────────────────┬────────────────── J15 Pin 8 (SPARE2)
-    (I/O)                           │                         │
-                               ┌────┴────┐                    │
-                               │  R75    │               ESP32 GPIO22
-                               │  4.7kΩ  │             (Push-Pull I/O)
-                               │Pull-down│
-                               │(E9 fix) │
-                               └────┬────┘
-                                    │
-                                   ─┴─
-                                   GND
-                                (Normally LOW when unused)
-
-    • General-purpose spare I/O between ESP32 and Pico
-    • 4.7kΩ pull-down ensures defined LOW state when unused (RP2350 E9 errata)
 
 
     OTA Update Sequence:
@@ -1636,26 +1636,29 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     4. Drag-drop .uf2 firmware file to the USB drive
 
 
-    J15 Pinout Summary (8-pin):
-    ───────────────────────────
+    J15 Pinout Summary (8-pin, v2.31):
+    ───────────────────────────────────
     Pin 1: 5V      → ESP32 VIN (power)
     Pin 2: GND     → Common ground
-    Pin 3: TX      → ESP32 RX (from Pico GPIO0)
-    Pin 4: RX      ← ESP32 TX (to Pico GPIO1)
-    Pin 5: RUN     ← ESP32 GPIO8 (to Pico RUN pin)
-    Pin 6: SPARE1  ↔ ESP32 GPIO9 ↔ Pico GPIO16 (spare I/O)
-    Pin 7: WGHT    ← ESP32 GPIO10 (to Pico GPIO21) - Brew-by-weight stop signal
-    Pin 8: SPARE2  ↔ ESP32 GPIO22 ↔ Pico GPIO22 (spare I/O)
+    Pin 3: TX      → ESP32 RX (from RP2354 GPIO0)
+    Pin 4: RX      ← ESP32 TX (to RP2354 GPIO1)
+    Pin 5: RUN     ← ESP32 GPIO20/4 (to RP2354 RUN pin, screen/noscreen variant)
+    Pin 6: SWDIO   ↔ ESP32 TX2 (GPIO17) ↔ RP2354 SWDIO (dedicated pin, 47Ω series)
+    Pin 7: WGHT    ← ESP32 GPIO19/6 (to RP2354 GPIO21, screen/noscreen variant) - Brew-by-weight stop signal
+    Pin 8: SWCLK   ↔ ESP32 RX2 (GPIO16) ↔ RP2354 SWCLK (dedicated pin, 47Ω series + 4.7kΩ pull-down)
 
     Component Values:
     ─────────────────
-    R40-41: 33Ω 5%, 0805 (UART series protection - ESD/ringing protection)
+    R40-41:    33Ω 5%, 0805 (UART series protection - ESD/ringing protection)
     D_UART_TX, D_UART_RX: ESDALC6V1 TVS diodes (SOD-323) - ESD protection near J15 connector
-    R71:    10kΩ 5%, 0805 (RUN pull-up)
-    R73:    4.7kΩ 5%, 0805 (WEIGHT_STOP pull-down, RP2350 E9)
-    R74:    4.7kΩ 5%, 0805 (SPARE1 pull-down, RP2350 E9)
-    R75:    4.7kΩ 5%, 0805 (SPARE2 pull-down, RP2350 E9)
-    C13:    100µF 10V, Electrolytic (ESP32 power decoupling)
+    R71:       10kΩ 5%, 0805 (RUN pull-up)
+    R73:       4.7kΩ 5%, 0805 (WEIGHT_STOP pull-down, RP2350 E9)
+    R_SWDIO:   47Ω 5%, 0805 (SWDIO series protection, J15 Pin 6)
+    R_SWCLK:   47Ω 5%, 0805 (SWCLK series protection, J15 Pin 8)
+    R_SWD_PD:  4.7kΩ 5%, 0805 (SWCLK pull-down, CRITICAL for RP2354 E9 errata fix)
+    C13:       100µF 10V, Electrolytic (ESP32 power decoupling)
+
+    **Note:** R74 and R75 are DNP (Do Not Populate) in v2.31 - GPIO16/22 are no longer used for SWD.
 ```
 
 ## 6.2 Service/Debug Port

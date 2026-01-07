@@ -90,8 +90,11 @@ R49,Resistor,100R,0805,1=GPIO19,2=BZ1,,Buzzer series
 R71,Resistor,10k,0805,1=+3.3V,2=RP2354_RUN,,RP2354 RUN pull-up
 R72,Resistor,DNP,0805,,,,DNP - Not used
 R73,Resistor,4.7k,0805,1=GND,2=GPIO21,,WEIGHT_STOP pull-down (per RP2350 errata E9)
-R74,Resistor,4.7k,0805,1=GND,2=GPIO16,,SPARE1 pull-down (per RP2350 errata E9)
-R75,Resistor,4.7k,0805,1=GND,2=GPIO22,,SPARE2 pull-down (per RP2350 errata E9)
+R74,Resistor,DNP,0805,,,,DNP - No longer used (v2.31: GPIO16 no longer used for SWD)
+R75,Resistor,DNP,0805,,,,DNP - No longer used (v2.31: GPIO22 no longer used for SWD)
+R_SWDIO,Resistor,47R,0805,1=SWDIO,2=J15_6,,SWDIO series protection (J15 Pin 6)
+R_SWCLK,Resistor,47R,0805,1=SWCLK,2=J15_8,,SWCLK series protection (J15 Pin 8)
+R_SWD_PD,Resistor,4.7k,0805,1=GND,2=SWCLK,,SWCLK pull-down (CRITICAL for RP2354 errata E9)
 R81,Resistor,10k_1%,0805,1=AC_OUT,2=OPA_NEG,,Level probe oscillator feedback
 R82,Resistor,4.7k_1%,0805,1=OPA_NEG,2=GND,,Level probe gain setting (A_CL=3.13)
 R83,Resistor,10k_1%,0805,1=OPA_POS,2=WIEN1,,Level probe Wien bridge
@@ -154,7 +157,7 @@ J2,Connector,Terminal_2pos,6.3mm_Spade,1=J2_COM,2=J2_NO,,K1 output (Mains indica
 J3,Connector,Terminal_2pos,6.3mm_Spade,1=J3_COM,2=J3_NO,,K2 output (Pump)
 J4,Connector,Terminal_2pos,6.3mm_Spade,1=J4_COM,2=J4_NO,,K3 output (Solenoid)
 J5,Connector,Terminal_1pos,6.3mm_Spade,1=J5,Chassis Reference (SRif) - connects to PCB GND via C-R network (R_SRif + C_SRif parallel)
-J15,Connector,JST-XH_8pos,2.54mm,1=+5V,2=GND,3=RP2354_TX,4=RP2354_RX,5=RP2354_RUN,6=SPARE1,7=WEIGHT_STOP,8=SPARE2,ESP32 display (GPIO16/21/22, SWD on Pins 6/8)
+J15,Connector,JST-XH_8pos,2.54mm,1=+5V,2=GND,3=RP2354_TX,4=RP2354_RX,5=RP2354_RUN,6=SWDIO,7=WEIGHT_STOP,8=SWCLK,ESP32 display (v2.31: SWD on dedicated pins 6/8, not GPIO16/22)
 J16,Connector,Header_4pos,2.54mm,1=+3.3V,2=GND,3=SERVICE_TX,4=SERVICE_RX,Service/debug (shared GPIO0/1 with J15)
 J17,Connector,JST-XH_6pos,2.54mm,1=+3.3V,2=+5V,3=GND,4=J17_RX,5=J17_TX,6=RS485_DERE,Power meter interface (TTL/RS485) - 6-pin per v2.21 spec
 J20,Connector,Header_2x20,2.54mm,,,,"Pico socket"
