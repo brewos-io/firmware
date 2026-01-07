@@ -22,19 +22,21 @@ Add high-voltage warning symbols and text:
 - "⚡ DANGER: HIGH VOLTAGE ⚡" label
 - "230VAC - DISCONNECT BEFORE SERVICING" text
 - IEC 60417-6042 symbol (lightning bolt in triangle) near J1, J2-J4, J24
+- **Warning near HV connectors:** "NO PE CONNECTION - HV SECTION FLOATING"
 - Dashed line or hatched area boundary between HV and LV sections
 
 ---
 
 ## Connector Silkscreen Labels
 
-### J1 - Mains Input (6.3mm Spade)
+### J1 - Mains Input (6.3mm Spade, 2-pin)
 
 | Pin | Label  | Notes                                 |
 | --- | ------ | ------------------------------------- |
 | 1   | **L**  | Live, bold text                       |
 | 2   | **N**  | Neutral                               |
-| 3   | **PE** | Protective earth, use ground symbol ⏚ |
+
+**⚠️ CRITICAL:** PE (Protective Earth) pin **REMOVED**. HV section is floating - no Earth connection on PCB.
 
 ---
 
@@ -58,7 +60,7 @@ Use dual-row labeling: pin numbers above, function labels below.
 | 2   | WATER_SW_GND   | Water Switch Ground        | Switch return              |
 | 3   | TANK_SW        | Tank Level Sensor          | Digital input, active low  |
 | 4   | TANK_SW_GND    | Tank Switch Ground         | Sensor return              |
-| 5   | STEAM_PROBE    | Steam Boiler Level Probe   | Single wire, ground via PE |
+| 5   | STEAM_PROBE    | Steam Boiler Level Probe   | Single wire, ground return via J5 (SRif) |
 | 6   | BREW_SW        | Brew Handle Switch         | Digital input, active low  |
 | 7   | BREW_SW_GND    | Brew Switch Ground         | Switch return              |
 | 8   | BREW_TEMP      | Brew NTC Signal            | To ADC0                    |
@@ -77,18 +79,20 @@ Use dual-row labeling: pin numbers above, function labels below.
 
 ### J15 - ESP32 Display Module (8-pin JST-XH)
 
-| Pin | Label | Function           |
-| --- | ----- | ------------------ |
-| 1   | 5V    | Power              |
-| 2   | G     | Ground             |
-| 3   | TX    | To ESP32 RX        |
-| 4   | RX    | From ESP32 TX      |
-| 5   | RST   | Pico reset control |
-| 6   | SP1   | Spare 1            |
-| 7   | WGT   | Weight stop signal |
-| 8   | SP2   | Spare 2            |
+| Pin | Label   | Function                    | Notes                                    |
+| --- | ------- | --------------------------- | ---------------------------------------- |
+| 1   | 5V      | Power                       | ESP32 power supply                       |
+| 2   | G       | Ground                      | Common ground                            |
+| 3   | TX      | RP2354 TX → ESP32 RX        | GPIO0, protected (33Ω + TVS)            |
+| 4   | RX      | ESP32 TX → RP2354 RX        | GPIO1, protected (33Ω + TVS)             |
+| 5   | RUN     | RP2354 Reset Control         | ESP32 → RP2354 RUN pin                   |
+| 6   | **SWDIO** | **SWD Data I/O**            | **RP2354 SWDIO ↔ ESP32 TX2 (47Ω series)** |
+| 7   | WGT     | Weight Stop Signal          | ESP32 → RP2354 GPIO21 (4.7kΩ pull-down) |
+| 8   | **SWCLK** | **SWD Clock**              | **RP2354 SWCLK ↔ ESP32 RX2 (47Ω series)** |
 
 **Pin 1 indicator:** Use filled square pad or dot
+
+**⚠️ IMPORTANT:** Pins 6 and 8 are SWD interface (Serial Wire Debug) for factory flash and recovery. GPIO 16 and 22 are now available for other uses.
 
 ---
 
@@ -129,15 +133,32 @@ Use dual-row labeling: pin numbers above, function labels below.
 
 ---
 
-### J24 - External Power Meter HV (3-pos Screw Terminal)
+### J5 - Chassis Reference (SRif) - 6.3mm Spade
 
-| Pin | Label |
-| --- | ----- |
-| 1   | L     |
-| 2   | N     |
-| 3   | PE    |
+| Pin | Label | Notes                                    |
+| --- | ----- | ---------------------------------------- |
+| J5  | SRif  | Chassis Reference (connect to boiler/chassis) |
 
-**CRITICAL:** Add high-voltage warning symbol (⚡) and "230VAC" label. Use ground symbol (⏚) on PE pin.
+**Silkscreen Labeling:**
+- Label as "J5" or "SRif" near connector
+- Add note: "Connect to chassis/boiler bolt (18AWG Green/Yellow wire)"
+- Use ground symbol (⏚) or "CHASSIS" label
+- **CRITICAL:** This is NOT Protective Earth - it's a chassis reference for level probe return path
+
+**Wiring Note:** This connector provides the return path for the level probe signal. Connect to a solid chassis screw or boiler mounting bolt using 18AWG Green/Yellow wire.
+
+---
+
+### J24 - External Power Meter HV (2-pos Screw Terminal)
+
+| Pin | Label | Notes                |
+| --- | ----- | -------------------- |
+| 1   | L     | Fused live (from F1) |
+| 2   | N     | Neutral              |
+
+**⚠️ CRITICAL:** PE (Protective Earth) pin **REMOVED**. HV section is floating - no Earth connection on PCB.
+
+**Safety Markings:** Add high-voltage warning symbol (⚡) and "230VAC" label near connector.
 
 ---
 
@@ -217,22 +238,29 @@ RS485 TTL
 
 Add text block with:
 
-- "BrewOS Controller v1.1"
+- "BrewOS Controller v2.31"
 - "brewos.io"
+- "RP2354 MCU"
 
 ### Test Points
 
 Label critical test points for debugging:
 
-| Designator | Label | Function       |
-| ---------- | ----- | -------------- |
-| TP1        | 3V3   | 3.3V rail      |
-| TP2        | 5V    | 5V rail        |
-| TP3        | GND   | Ground         |
-| TP4        | VBUS  | USB voltage    |
-| TP5        | BREW  | Brew temp ADC  |
-| TP6        | STEAM | Steam temp ADC |
-| TP7        | PRESS | Pressure ADC   |
+| Designator | Label      | Function                        | Expected Value | Notes                    |
+| ---------- | ---------- | ------------------------------- | -------------- | ------------------------ |
+| TP1        | GND        | Ground reference                | 0V             | Near RP2354              |
+| TP2        | 5V         | Main power rail                  | 5.00V ±5%      | Near HLK output          |
+| TP3        | 3.3V       | Logic power rail                 | 3.30V ±3%      | Near RP2354              |
+| TP4        | 5V_MON     | 5V Monitor (ratiometric)         | ~1.79V         | Near R91/R92 divider     |
+| TP5        | ADC_VREF   | ADC Reference (3.0V buffered)    | 3.00V ±0.5%    | Critical for calibration |
+| TP6        | ADC0       | Brew NTC Signal (GPIO26)         | 0.5-2.5V       | Brew temp ADC            |
+| TP7        | ADC1       | Steam NTC Signal (GPIO27)        | 0.5-2.5V       | Steam temp ADC           |
+| TP8        | ADC2       | Pressure Signal (GPIO28)         | 0.32-2.88V     | Pressure ADC             |
+| TP9        | UART0_TX   | Serial Debug TX (GPIO0)          | 3.3V idle      | Near J15/J16             |
+| TP10       | UART0_RX   | Serial Debug RX (GPIO1)          | 3.3V idle      | Near J15/J16             |
+| TP11       | RS485_DE   | RS485 Direction Control (GPIO20) | 0V/3.3V        | Near U8 (MAX3485)        |
+
+**Note:** Power rail test points (TP1-TP3) should be clearly labeled near power connectors for easy access during testing.
 
 ### Polarity Indicators
 
@@ -255,29 +283,33 @@ Create clear visual separation between high and low voltage areas:
 **High Voltage Zone:** J1, J2, J3, J4, J24
 
 - Add "⚡ HIGH VOLTAGE ZONE ⚡" label
+- Add warning: "NO PE CONNECTION - HV SECTION FLOATING"
 - Use dashed line or hatched pattern as boundary
-- Minimum 6mm creepage distance (label "CREEPAGE" in gap area)
+- Minimum 6mm creepage distance (label "CREEPAGE" or "MILLED SLOT" in gap area)
+- **Milled slot** must be visible on silkscreen (physical cutout between HV and LV sections)
 
-**Low Voltage Zone:** J15, J16, J17, J23, J26
+**Low Voltage Zone:** J5, J15, J16, J17, J23, J26
 
 - Add "LOW VOLTAGE ZONE (5V/3.3V)" label
+- Add note near J5: "SRif - Chassis Reference (NOT Protective Earth)"
 
 ---
 
 ## Reference Designator Summary
 
-| Designator | Type   | Pins | Primary Function     |
-| ---------- | ------ | ---- | -------------------- |
-| J1         | Spade  | 3    | Mains input          |
-| J2         | Spade  | 1    | Relay K1 (Lamp)      |
-| J3         | Spade  | 1    | Relay K2 (Pump)      |
-| J4         | Spade  | 1    | Relay K3 (Solenoid)  |
-| J15        | JST-XH | 8    | ESP32 display        |
-| J16        | Header | 4    | Service/Debug UART   |
-| J17        | JST-XH | 6    | Power meter          |
-| J23        | Header | 4    | I2C accessories      |
-| J24        | Screw  | 3    | Meter HV passthrough |
-| J26        | Screw  | 18   | Unified LV terminal  |
+| Designator | Type   | Pins | Primary Function                    | Notes                                    |
+| ---------- | ------ | ---- | ----------------------------------- | ---------------------------------------- |
+| J1         | Spade  | **2** | Mains input (L, N)                  | **PE removed - HV floating**             |
+| J2         | Spade  | 1    | Relay K1 (Lamp)                     | Mains indicator lamp                     |
+| J3         | Spade  | 1    | Relay K2 (Pump)                     | Vibration pump                           |
+| J4         | Spade  | 1    | Relay K3 (Solenoid)                 | Solenoid valve                           |
+| **J5**     | **Spade** | **1** | **Chassis Reference (SRif)**        | **Connect to chassis/boiler bolt**       |
+| J15        | JST-XH | 8    | ESP32 display + SWD                 | SWD on Pins 6/8 (factory flash)          |
+| J16        | Header | 4    | Service/Debug UART                  | Shared GPIO0/1 with J15                  |
+| J17        | JST-XH | 6    | Power meter interface               | TTL/RS485 selectable                     |
+| J23        | Header | 4    | I2C accessories                     | GPIO8/9 (SDA/SCL)                        |
+| J24        | Screw  | **2** | Meter HV passthrough (L, N)         | **PE removed - HV floating**             |
+| J26        | Screw  | 18   | Unified LV terminal                 | All sensors + SSR control                |
 
 ---
 
