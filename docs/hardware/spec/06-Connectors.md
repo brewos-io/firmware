@@ -84,8 +84,8 @@ HV section is now floating - no Earth connection on PCB to prevent L-to-Earth sh
 | --- | ----------- | ---------------- | ------------------------------------------------------------- |
 | 1   | +5V         | Power            | ESP32 power                                                   |
 | 2   | GND         | Power            | Ground                                                        |
-| 3   | RP2354_TX   | RP2354→ESP32     | GPIO0 via 33Ω (R40, ESD/ringing protection) + TVS (D_UART_TX) |
-| 4   | RP2354_RX   | ESP32→RP2354     | GPIO1 via 33Ω (R41, ESD/ringing protection) + TVS (D_UART_RX) |
+| 3   | RP2354_TX   | RP2354→ESP32     | GPIO0 via 1kΩ (R40, 5V tolerance protection) + TVS (D_UART_TX) |
+| 4   | RP2354_RX   | ESP32→RP2354     | GPIO1 via 1kΩ (R41, 5V tolerance protection) + TVS (D_UART_RX) |
 | 5   | RP2354_RUN  | ESP32→RP2354     | Reset control                                                 |
 | 6   | **SWDIO**   | **ESP32↔RP2354** | **RP2354 SWDIO Pin ↔ ESP32 TX2, 47Ω series (R_SWDIO) only**   |
 | 7   | WEIGHT_STOP | ESP32→RP2354     | GPIO21, 4.7kΩ pull-down (R73, RP2350 E9 errata)               |
@@ -103,11 +103,14 @@ Pins 6 and 8 connect to the **dedicated SWDIO and SWCLK physical pins** on the R
 - **SWD lines use 47Ω series resistors only** - NO pull-down resistors needed. The RP2350 E9 errata affects GPIO Input Buffer circuitry, NOT the dedicated Debug Port interface.
 - **GPIO inputs (e.g., GPIO21/WEIGHT_STOP) require 4.7kΩ pull-down resistors** for E9 errata mitigation, but SWD lines do not.
 
-**ESD Protection:**
+**5V Tolerance & ESD Protection:**
 
 - **D_UART_TX, D_UART_RX:** ESDALC6V1 TVS diodes placed near J15 connector
 - Protects RP2354 GPIOs from static discharge during display installation/cleaning
-- Series resistors (R40, R41) reduce ringing on cable (10-20cm length)
+- **Series resistors (R40, R41 = 1kΩ):** Critical for 5V tolerance protection
+  - Limits fault current to <500µA during power sequencing anomalies
+  - Required because RP2354 "5V tolerant" feature only works when IOVDD (3.3V) is present
+  - If ESP32 powers up before PCB (IOVDD=0V), 1kΩ prevents latch-up/burnout
 
 **Part Number:** JST B8B-XH-A (8-pin, 2.54mm pitch)
 
@@ -134,14 +137,14 @@ The ESP32-S3 module **MUST** use an external antenna connected via u.FL/IPEX con
 | --- | ---------- | ------------------------------------ |
 | 1   | +3.3V      | 3.3V power                           |
 | 2   | GND        | Ground                               |
-| 3   | SERVICE_TX | GPIO0 via 33Ω (R42, shared with J15) |
-| 4   | SERVICE_RX | GPIO1 via 33Ω (R43, shared with J15) |
+| 3   | SERVICE_TX | GPIO0 via 1kΩ (R42, shared with J15) |
+| 4   | SERVICE_RX | GPIO1 via 1kΩ (R43, shared with J15) |
 
 **⚠️ Disconnect ESP32 cable when using service port for flashing!**
 
 **Protection:**
 
-- R42/R43: 33Ω series resistors for ESD/ringing protection (shared with J15)
+- R42/R43: 1kΩ series resistors for 5V tolerance protection (shared with J15)
 - D23/D24: BZT52C3V3 Zener clamps for 5V TTL adapter overvoltage safety
 
 ---
@@ -155,14 +158,22 @@ The ESP32-S3 module **MUST** use an external antenna connected via u.FL/IPEX con
 | 1   | +3.3V      | Meter logic power                 |
 | 2   | +5V        | Meter power (if needed)           |
 | 3   | GND        | Ground                            |
-| 4   | J17_RX     | From meter TX (via level shifter) |
-| 5   | J17_TX     | To meter RX                       |
-| 6   | RS485_DERE | Direction control (GPIO20)        |
+| 4   | J17_RX     | From meter TX (via 5V→3.3V level shifter) |
+| 5   | J17_TX     | To meter RX (via 1kΩ series protection)  |
+| 6   | RS485_DERE | Direction control (GPIO20)                 |
 
 **Jumper Configuration:**
 
-- **JP3:** OPEN = 5V TTL meters, CLOSED = 3.3V meters
+- **JP3:** OPEN = 5V TTL meters (uses voltage divider), CLOSED = 3.3V meters (bypasses divider)
 - **JP4:** 1-2 = RS485 differential, 2-3 = TTL UART
+
+**⚠️ CRITICAL - Level Shifter Protection:**
+
+For 5V TTL meters (JP3 OPEN), J17 Pin 4 uses a **voltage divider** (R45=2.2kΩ, R45A=3.3kΩ) to scale 5V logic signals down to 3.3V before reaching GPIO7. This prevents damage to the RP2354, which is **NOT 5V tolerant** when IOVDD is unpowered.
+
+- **5V Input:** V_out = 5V × 3.3k/(2.2k+3.3k) = 3.0V ✓
+- **3.3V Input:** When JP3 is CLOSED, the divider is bypassed for 3.3V logic meters
+- **Series Protection:** R45B (33Ω) provides additional ESD/ringing protection after the divider
 
 ---
 

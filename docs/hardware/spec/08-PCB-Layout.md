@@ -435,7 +435,7 @@ Standard FR4 coating is NOT sufficient for high-voltage isolation. IPC-2221B sta
 4. **Decoupling caps** at every IC VCC pin
 5. **UART ESD protection**: Place TVS diodes (D_UART_TX, D_UART_RX) near J15 connector
    - Protects RP2354 GPIOs from static discharge during display installation
-   - Series resistors (R40, R41 = 33Ω) reduce ringing on cable
+   - Series resistors (R40, R41 = 1kΩ) provide 5V tolerance protection (limits fault current to <500µA)
 6. **Analog island strategy** (4-layer recommended):
    - Zone A (Noisy): Power input, Solenoid Drivers, 5V/24V regulators
    - Zone B (Digital): RP2354, Flash, Display Connector

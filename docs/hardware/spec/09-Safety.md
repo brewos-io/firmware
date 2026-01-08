@@ -271,6 +271,33 @@ PCB GND ◄── C_SRif (AC) / R_SRif (DC block) ◄── J5 (SRif) ◄──�
 - **Mounting Holes:** All mounting holes (MH1-MH4) must be NPTH (Non-Plated Through Hole) to prevent random grounding
 - **Isolation:** Maintain 6mm Keep-Out Zone between HV traces and LV Ground Pour
 
+### Level Probe Fail-Safe Analysis
+
+**⚠️ FAILURE MODE:** If the user forgets to connect the Green/Yellow SRif wire (J5) to the chassis, the level probe circuit opens (high impedance).
+
+**Consequences:**
+
+- **Steam Boiler Level Probe:** Reads "No Water" (high impedance = HIGH signal)
+  - Autofill will attempt to run but will timeout (safe failure)
+  - Heater will not turn on if firmware requires valid level reading (safe)
+  - Ensure firmware handles "infinite fill" timeout gracefully (e.g., 30-second timeout with error indication)
+
+- **Reservoir Sensor (GPIO2):** Independent switch, not affected by SRif failure
+  - If "No Water" prevents heater operation, this is safe (prevents dry-fire)
+
+**Firmware Requirements:**
+
+- Implement timeout for autofill operation (e.g., 30 seconds max)
+- Detect persistent "No Water" condition and indicate error to user
+- Do not allow heater operation if level probe is invalid/unconnected
+- Log SRif connection status during diagnostics
+
+**Installation Checklist:**
+
+- [ ] Verify SRif wire (J5) is connected to boiler/chassis mounting bolt
+- [ ] Test level probe operation: fill boiler manually, verify GPIO4 reads LOW when water touches probe
+- [ ] Verify autofill timeout works correctly (disconnect SRif wire, attempt fill, verify timeout)
+
 ---
 
 ## RP2354 5V Tolerance and Power Sequencing
@@ -294,7 +321,7 @@ The RP2354 "5V Tolerant" GPIO feature has a critical caveat documented in the da
 
 | Protection                   | Component             | Purpose                                            |
 | ---------------------------- | --------------------- | -------------------------------------------------- |
-| Series resistors (33Ω) + TVS | R40-R43, D_UART_TX/RX | ESD protection and ringing reduction on UART lines |
+| Series resistors (1kΩ) + TVS | R40-R43, D_UART_TX/RX | 5V tolerance protection (limits fault current to <500µA during power sequencing) |
 | Pull-down resistors (4.7kΩ)  | R11-R15, R73-R75      | Ensures defined GPIO states at boot                |
 | ESD clamps                   | D10-D15               | Additional transient protection                    |
 | Schottky clamp (BAT54S)      | D16                   | ADC overvoltage protection                         |

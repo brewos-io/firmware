@@ -126,14 +126,14 @@
 
 | GPIO   | Function                        | Direction | Type        | Pull          | Protection                                         |
 | ------ | ------------------------------- | --------- | ----------- | ------------- | -------------------------------------------------- |
-| 0      | UART0 TX → ESP32                | Output    | Digital     | None          | 33Ω series + TVS (R40, D_UART_TX)                  |
-| 1      | UART0 RX ← ESP32                | Input     | Digital     | None          | 33Ω series + TVS (R41, D_UART_RX)                  |
+| 0      | UART0 TX → ESP32                | Output    | Digital     | None          | 1kΩ series + TVS (R40, D_UART_TX) - 5V tolerance protection |
+| 1      | UART0 RX ← ESP32                | Input     | Digital     | None          | 1kΩ series + TVS (R41, D_UART_RX) - 5V tolerance protection |
 | 2      | Water Reservoir Switch          | Input     | Digital     | Internal PU   | ESD clamp                                          |
 | 3      | Tank Level Sensor               | Input     | Digital     | Internal PU   | ESD clamp                                          |
 | 4      | Steam Boiler Level (Comparator) | Input     | Digital     | None          | TLV3201 output                                     |
 | 5      | Brew Handle Switch              | Input     | Digital     | Internal PU   | ESD clamp                                          |
-| 6      | Meter TX (UART1)                | Output    | Digital     | None          | 33Ω series R44 (ESD/ringing protection)            |
-| 7      | Meter RX (UART1)                | Input     | Digital     | None          | 33Ω series R45B (ESD/ringing protection)           |
+| 6      | Meter TX (UART1)                | Output    | Digital     | None          | 1kΩ series R44 (5V tolerance protection)           |
+| 7      | Meter RX (UART1)                | Input     | Digital     | None          | 5V→3.3V divider (R45/R45A) + 33Ω R45B (ESD/ringing protection) |
 | 8      | I2C0 SDA (Accessory)            | I/O       | Digital     | 4.7kΩ ext. PU | Accessory expansion                                |
 | 9      | I2C0 SCL (Accessory)            | Output    | Digital     | 4.7kΩ ext. PU | Accessory expansion                                |
 | 10     | Relay K1 + LED                  | Output    | Digital     | None          | -                                                  |
@@ -170,14 +170,16 @@ If the BrewOS controller is powered via USB (VBUS), but an external peripheral (
 In this state, the internal protection diodes are unpowered. The 5V input will forward-bias the parasitic diode to the 3.3V rail, effectively trying to power the entire Pico board through the GPIO pin. This usually results in immediate silicon latch-up or burnout.
 
 **Protection Implemented:**
-Series resistors (33Ω) and TVS diodes are used on UART lines for ESD protection and ringing reduction:
+Series resistors (1kΩ) and TVS diodes are used on UART lines for 5V tolerance protection and ESD protection:
 
 | GPIO | Signal   | Resistor | TVS Diode | Purpose                                                |
 | ---- | -------- | -------- | --------- | ------------------------------------------------------ |
-| 0    | UART0 TX | R40 33Ω  | D_UART_TX | ESD protection, reduces ringing on cable (10-20cm length) |
-| 1    | UART0 RX | R41 33Ω  | D_UART_RX | ESD protection, reduces ringing on cable (10-20cm length) |
-| 6    | Meter TX | R44 33Ω  | -         | ESD/ringing protection for external meter interface    |
-| 7    | Meter RX | R45B 33Ω | -         | ESD/ringing protection for external meter interface    |
+| 0    | UART0 TX | R40 1kΩ  | D_UART_TX | 5V tolerance protection, limits fault current to <500µA during power sequencing |
+| 1    | UART0 RX | R41 1kΩ  | D_UART_RX | 5V tolerance protection, limits fault current to <500µA during power sequencing |
+| 6    | Meter TX | R44 1kΩ  | -         | 5V tolerance protection for external meter interface  |
+| 7    | Meter RX | R45/R45A divider + R45B 33Ω | - | 5V→3.3V level shifter (2.2kΩ/3.3kΩ) + series protection |
+
+**⚠️ CRITICAL:** The RP2354 "5V Tolerant" GPIO feature requires IOVDD (3.3V) to be present. If an external peripheral (ESP32 via separate USB power) initializes before the Pico's buck converter, a condition exists where V_GPIO=5V and IOVDD=0V. In this state, internal protection diodes are unpowered, causing forward-bias through parasitic diodes to the 3.3V rail, resulting in silicon latch-up or burnout. The 1kΩ series resistors limit fault current to <500µA, providing safe margin even when IOVDD is absent.
 
 **⚠️ IMPORTANT:** The RP2354 GPIOs are **NOT 5V tolerant** (and fail safely only if IOVDD is powered). All current limiting resistors must be kept in the layout to protect the chip from 5V peripherals.
 

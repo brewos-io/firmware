@@ -175,14 +175,41 @@ Maximum ADC sensitivity occurs when R_pullup ≈ R_NTC at target temperature:
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Pressure Calculation
+### Pressure Calculation (Ratiometric Compensation)
+
+**⚠️ CRITICAL:** Pressure sensors are **ratiometric** to their 5V supply voltage. If the 5V rail sags (e.g., when relays click on), the sensor output scales proportionally, but the ADC reference (3.0V) remains fixed. This causes pressure reading errors.
+
+**Solution:** Use GPIO29 (ADC3) to monitor the 5V rail and calculate pressure as a ratio:
 
 ```
-ADC_raw = adc_read()
+// Read raw ADC values
+ADC_pressure = adc_read(GPIO28)  // Pressure sensor signal
+ADC_5V_monitor = adc_read(GPIO29)  // 5V rail monitor (R91/R92 divider)
+
+// Convert to voltages
+V_adc_pressure = ADC_pressure × 3.0V / 4095
+V_adc_5V = ADC_5V_monitor × 3.0V / 4095
+
+// Calculate actual 5V rail voltage (divider: R91=10kΩ, R92=5.6kΩ)
+V_5V_actual = V_adc_5V × (10kΩ + 5.6kΩ) / 5.6kΩ = V_adc_5V × 2.786
+
+// Ratiometric compensation: scale sensor voltage by actual vs nominal 5V
+V_sensor_nominal = V_adc_pressure × 15.6kΩ / 10kΩ = V_adc_pressure × 1.56
+V_sensor_actual = V_sensor_nominal × (V_5V_actual / 5.0V)
+
+// Calculate pressure (0.5-4.5V range = 0-16 bar)
+Pressure_bar = (V_sensor_actual - 0.5V) × 16 bar / 4.0V
+```
+
+**Simplified Formula (if 5V rail is stable):**
+```
+ADC_raw = adc_read(GPIO28)
 V_adc = ADC_raw × 3.0V / 4095
 V_sensor = V_adc × 15.6kΩ / 10kΩ = V_adc × 1.56
 Pressure_bar = (V_sensor - 0.5V) × 16 bar / 4.0V
 ```
+
+**Note:** For maximum accuracy, always use ratiometric compensation. The simplified formula assumes a stable 5V rail, which may not be true during relay switching transients.
 
 ### Recommended Transducer
 

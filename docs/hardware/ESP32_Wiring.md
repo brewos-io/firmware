@@ -12,8 +12,8 @@ The control PCB provides an 8-pin JST-XH connector (J15) for the ESP32 display m
 | --- | ----------- | --------- | ------- | --------------------------------------------------------------------------- |
 | 1   | 5V          | Power Out | 5V DC   | Power supply for ESP32 (300-500mA)                                          |
 | 2   | GND         | Ground    | 0V      | Common ground                                                               |
-| 3   | TX          | Input     | 3.3V    | RP2354 TX → ESP32 RX (GPIO0, 33Ω series R40 + TVS D_UART_TX)                |
-| 4   | RX          | Output    | 3.3V    | ESP32 TX → RP2354 RX (GPIO1, 33Ω series R41 + TVS D_UART_RX)                |
+| 3   | TX          | Input     | 3.3V    | RP2354 TX → ESP32 RX (GPIO0, 1kΩ series R40 + TVS D_UART_TX)                |
+| 4   | RX          | Output    | 3.3V    | ESP32 TX → RP2354 RX (GPIO1, 1kΩ series R41 + TVS D_UART_RX)                |
 | 5   | RUN         | Output    | 3.3V    | ESP32 GPIO20 (screen) / GPIO4 (no-screen) → RP2354 RUN pin (reset control)  |
 | 6   | SWDIO       | I/O       | 3.3V    | ESP32 TX2 (GPIO17) ↔ RP2354 SWDIO (dedicated pin, 47Ω series only)          |
 | 7   | WEIGHT_STOP | Output    | 3.3V    | ESP32 GPIO19 (screen) / GPIO6 (no-screen) → RP2354 GPIO21 (4.7kΩ pull-down) |
@@ -259,6 +259,8 @@ If your debug board has test points (like TX1, RX1, TX2, RX2, PBZ, etc.), you ca
 
 **NEVER connect a USB cable to the ESP32 or RP2354 debug ports while the machine is powered from mains AC.**
 
+**⚠️ ADDITIONAL RISK - Floating Ground:** The PCB design uses a "floating" high-voltage section (no PE connection) with soft-grounded logic via SRif (1MΩ||100nF). This means the Logic Ground (and thus USB shield) is **not hard-earthed**. If a fault occurs (Live shorts to Low Voltage), the USB shield could float to dangerous potentials AC-coupled through the 100nF capacitor or leakage paths.
+
 ### Why This Is Dangerous
 
 ```
@@ -290,9 +292,12 @@ If your debug board has test points (like TX1, RX1, TX2, RX2, PBZ, etc.), you ca
 | Scenario                                 | Safe?  | Notes                                          |
 | ---------------------------------------- | ------ | ---------------------------------------------- |
 | USB debug while machine **unplugged**    | ✅ Yes | Preferred method for firmware development      |
-| USB debug while machine on **mains AC**  | ❌ NO  | Ground loop hazard, potential equipment damage |
+| USB debug while machine on **mains AC**  | ❌ NO  | Ground loop hazard + floating ground risk - potential equipment damage or electric shock |
 | USB debug with **isolation transformer** | ✅ Yes | Isolates machine from mains ground             |
+| USB debug with **USB isolator**          | ✅ Yes | Adafruit USB Isolator (ADuM3160-based, 2500V RMS isolation) |
 | Wireless debug (WiFi/BLE) while on mains | ✅ Yes | No galvanic connection to PC                   |
+
+**⚠️ RECOMMENDATION:** Consider adding a physical barrier or locking connector for the USB port to prevent users from plugging in a laptop while the machine is powered. Label the board: **"DO NOT CONNECT USB WHILE MAINS POWERED"**.
 
 ### Recommended Debug Workflow
 

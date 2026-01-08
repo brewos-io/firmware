@@ -71,8 +71,8 @@
 
 | Qty   | Ref        | Value   | Tolerance | Package  | Notes                                                            |
 | ----- | ---------- | ------- | --------- | -------- | ---------------------------------------------------------------- |
-| 4     | R40-R43    | **33Ω** | 5%        | 0805     | UART series (ESD/ringing protection) + TVS diodes (D_UART_TX/RX) |
-| 1     | R44        | 33Ω     | 5%        | 0805     | I2C series                                                       |
+| 4     | R40-R43    | **1kΩ** | 5%        | 0805     | UART series (5V tolerance protection) + TVS diodes (D_UART_TX/RX) |
+| 1     | R44        | 1kΩ     | 5%        | 0805     | Power meter TX series (5V tolerance protection)                  |
 | 1     | R45        | 2.2kΩ   | 1%        | 0805     | J17 RX level shift (upper)                                       |
 | 1     | R45A       | 3.3kΩ   | 1%        | 0805     | J17 RX level shift (lower)                                       |
 | 1     | R45B       | 33Ω     | 5%        | 0805     | J17 RX series                                                    |
