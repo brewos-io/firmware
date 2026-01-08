@@ -124,13 +124,35 @@
 // -----------------------------------------------------------------------------
 // SWD - Pico Debug/Flash Interface
 // -----------------------------------------------------------------------------
+// ═══════════════════════════════════════════════════════════════════════════
+// SINGLE CONFIGURATION POINT: Switch between SWD and UART bootloader methods
+// ═══════════════════════════════════════════════════════════════════════════
+// 
+// ENABLE_SWD: Controls which method is used for Pico firmware flashing
+//   - 1 = Use SWD method (GPIO 21/45, requires hardware wiring)
+//   - 0 = Use UART bootloader method (default, works via existing UART connection)
+//
+// To switch methods, change the value below:
+//   #define ENABLE_SWD 1   // Use SWD (requires GPIO 21/45 wired to Pico SWD pins)
+//   #define ENABLE_SWD 0   // Use UART bootloader (default, no additional wiring needed)
+//
+// NOTE: SWD uses GPIO 21 (SWDIO) and GPIO 45 (SWCLK) - safe pins, no PSRAM conflicts
+//       Hardware must be wired accordingly for SWD to work.
+//
+#ifndef ENABLE_SWD
+#define ENABLE_SWD 0  // Enabled by default - use SWD method (change to 0 for UART bootloader)
+#endif
+
 #if ENABLE_SCREEN
-    // Screen variant (UEDX48480021-MD80E): SWD available on TX2/RX2
-    // Pin 6: SWDIO - ESP32 TX2 (GPIO17) ↔ RP2354 SWDIO Pin, 47Ω series (R_SWD)
-    // Pin 8: SWCLK - ESP32 RX2 (GPIO16) ↔ RP2354 SWCLK Pin, 47Ω series (R_SWD)
+    // Screen variant (UEDX48480021-MD80E): SWD pins changed to avoid GPIO 16/17 conflict
+    // Changed from GPIO 16/17 (PSRAM conflict on WROVER modules) to GPIO 21/45
+    // GPIO 21 is recommended in ADIv6 Multidrop analysis document (Section 2.1.1)
+    // GPIO 45 is safe for ESP32-S3 and available
+    // Pin 6: SWDIO - ESP32 GPIO21 ↔ RP2354 SWDIO Pin, 47Ω series (R_SWD)
+    // Pin 8: SWCLK - ESP32 GPIO45 ↔ RP2354 SWCLK Pin, 47Ω series (R_SWD)
     // NOTE: Screen variant uses UART bootloader for OTA, but SWD pins are available for debugging
-    #define SWD_DIO_PIN             17              // ESP32 TX2 -> Pico SWDIO (J15 Pin 6)
-    #define SWD_CLK_PIN             16              // ESP32 RX2 -> Pico SWCLK (J15 Pin 8)
+    #define SWD_DIO_PIN             21              // ESP32 GPIO21 -> Pico SWDIO (J15 Pin 6) - Safe, recommended
+    #define SWD_CLK_PIN             45              // ESP32 GPIO45 -> Pico SWCLK (J15 Pin 8) - Safe for ESP32-S3
     #define SWD_RESET_PIN           PICO_RUN_PIN    // Use existing PICO_RUN_PIN for reset
     
     // Screen variant: J15 Pin 6 & 8 also have spare GPIOs available
@@ -140,12 +162,14 @@
     // J15 Pin 8 - SPARE2: ESP32 GPIO22 ↔ Pico GPIO22 (4.7kΩ pull-down on Pico side)
     #define SPARE2_PIN              22              // J15 Pin 8 - General purpose bidirectional I/O
 #else
-    // No-screen variant (ESP32-S3 N16R8): SWD used for Pico OTA
-    // Pin 6: SWDIO - ESP32 TX2 (GPIO17) ↔ RP2354 SWDIO Pin, 47Ω series (R_SWD)
-    // Pin 8: SWCLK - ESP32 RX2 (GPIO16) ↔ RP2354 SWCLK Pin, 47Ω series (R_SWD)
-    // NOTE: On ESP32-S3, UART2 TX = GPIO17, UART2 RX = GPIO16
-    #define SWD_DIO_PIN             17              // ESP32 TX2 -> Pico SWDIO (J15 Pin 6)
-    #define SWD_CLK_PIN             16              // ESP32 RX2 -> Pico SWCLK (J15 Pin 8)
+    // No-screen variant (ESP32-S3 N16R8): SWD pins changed to avoid GPIO 16/17 conflict
+    // Changed from GPIO 16/17 (UART2 pins, potential PSRAM conflict) to GPIO 21/45
+    // GPIO 21 is recommended in ADIv6 Multidrop analysis document (Section 2.1.1)
+    // GPIO 45 is safe for ESP32-S3 and available
+    // Pin 6: SWDIO - ESP32 GPIO21 ↔ RP2354 SWDIO Pin, 47Ω series (R_SWD)
+    // Pin 8: SWCLK - ESP32 GPIO45 ↔ RP2354 SWCLK Pin, 47Ω series (R_SWD)
+    #define SWD_DIO_PIN             21              // ESP32 GPIO21 -> Pico SWDIO (J15 Pin 6) - Safe, recommended
+    #define SWD_CLK_PIN             45              // ESP32 GPIO45 -> Pico SWCLK (J15 Pin 8) - Safe for ESP32-S3
     #define SWD_RESET_PIN           PICO_RUN_PIN    // Use existing PICO_RUN_PIN for reset
 #endif // ENABLE_SCREEN
 

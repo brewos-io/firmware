@@ -235,9 +235,10 @@ void StatisticsManager::loop() {
 
 bool StatisticsManager::recordBrew(uint32_t durationMs, float yieldWeight, float doseWeight,
                                     float peakPressure, float avgTemp, float avgFlow) {
-    // Validate duration
+    // Validate duration - only record coffee brews (10-40s), filter out flushing/cleaning
     if (durationMs < STATS_MIN_BREW_TIME_MS || durationMs > STATS_MAX_BREW_TIME_MS) {
-        Serial.printf("[Stats] Ignoring brew with invalid duration: %lu ms\n", durationMs);
+        Serial.printf("[Stats] Ignoring brew with invalid duration: %lu ms (valid range: %lu-%lu ms)\n", 
+                      durationMs, STATS_MIN_BREW_TIME_MS, STATS_MAX_BREW_TIME_MS);
         return false;
     }
     
@@ -386,18 +387,64 @@ void StatisticsManager::getFullStatistics(FullStatistics& stats) const {
 }
 
 void StatisticsManager::getDailyStats(PeriodStats& stats) const {
-    uint32_t dayAgo = time(nullptr) - 86400;  // 24 hours
-    calculatePeriodStats(stats, dayAgo);
+    // Use cache if valid and same day
+    time_t now = time(nullptr);
+    if (now > 0) {
+        struct tm* tm_now = localtime(&now);
+        uint16_t currentDay = tm_now->tm_yday;
+        
+        if (!_statsCacheInvalid && _cachedDailyDay == currentDay && 
+            _cachedDailyTimestamp > 0 && (now - _cachedDailyTimestamp) < 3600) {
+            // Cache is valid (same day, less than 1 hour old)
+            stats = _cachedDailyStats;
+            return;
+        }
+    }
+    
+    // Recalculate and cache
+    uint32_t dayAgo = now - 86400;  // 24 hours
+    calculatePeriodStats(_cachedDailyStats, dayAgo);
+    stats = _cachedDailyStats;
+    _cachedDailyTimestamp = now;
+    if (now > 0) {
+        struct tm* tm_now = localtime(&now);
+        _cachedDailyDay = tm_now->tm_yday;
+    }
+    _statsCacheInvalid = false;  // Mark cache as valid
 }
 
 void StatisticsManager::getWeeklyStats(PeriodStats& stats) const {
-    uint32_t weekAgo = time(nullptr) - (7 * 86400);  // 7 days
-    calculatePeriodStats(stats, weekAgo);
+    // Use cache if valid (less than 1 hour old)
+    time_t now = time(nullptr);
+    if (!_statsCacheInvalid && _cachedWeeklyTimestamp > 0 && 
+        (now - _cachedWeeklyTimestamp) < 3600) {
+        stats = _cachedWeeklyStats;
+        return;
+    }
+    
+    // Recalculate and cache
+    uint32_t weekAgo = now - (7 * 86400);  // 7 days
+    calculatePeriodStats(_cachedWeeklyStats, weekAgo);
+    stats = _cachedWeeklyStats;
+    _cachedWeeklyTimestamp = now;
+    _statsCacheInvalid = false;  // Mark cache as valid
 }
 
 void StatisticsManager::getMonthlyStats(PeriodStats& stats) const {
-    uint32_t monthAgo = time(nullptr) - (30 * 86400);  // 30 days
-    calculatePeriodStats(stats, monthAgo);
+    // Use cache if valid (less than 1 hour old)
+    time_t now = time(nullptr);
+    if (!_statsCacheInvalid && _cachedMonthlyTimestamp > 0 && 
+        (now - _cachedMonthlyTimestamp) < 3600) {
+        stats = _cachedMonthlyStats;
+        return;
+    }
+    
+    // Recalculate and cache
+    uint32_t monthAgo = now - (30 * 86400);  // 30 days
+    calculatePeriodStats(_cachedMonthlyStats, monthAgo);
+    stats = _cachedMonthlyStats;
+    _cachedMonthlyTimestamp = now;
+    _statsCacheInvalid = false;  // Mark cache as valid
 }
 
 void StatisticsManager::calculatePeriodStats(PeriodStats& stats, uint32_t startTimestamp) const {
@@ -761,6 +808,8 @@ void StatisticsManager::addBrewRecord(const BrewRecord& record) {
     if (_brewHistoryCount < STATS_MAX_BREW_HISTORY) {
         _brewHistoryCount++;
     }
+    // Invalidate stats cache when new brew is recorded
+    _statsCacheInvalid = true;
 }
 
 void StatisticsManager::addPowerSample(const PowerSample& sample) {
@@ -769,6 +818,8 @@ void StatisticsManager::addPowerSample(const PowerSample& sample) {
     if (_powerSamplesCount < STATS_MAX_POWER_SAMPLES) {
         _powerSamplesCount++;
     }
+    // Invalidate stats cache when new power sample is added
+    _statsCacheInvalid = true;
 }
 
 void StatisticsManager::addDailySummary(const DailySummary& summary) {
@@ -795,6 +846,8 @@ void StatisticsManager::checkDayChange() {
         // Day has changed - save yesterday's summary
         saveDailySummary();
         _todayStartTimestamp = todayMidnight;
+        // Invalidate stats cache when day changes
+        _statsCacheInvalid = true;
     }
 }
 

@@ -13,8 +13,8 @@ namespace BrewOS {
 constexpr size_t STATS_MAX_BREW_HISTORY = 200;       // Max brew records to store
 constexpr size_t STATS_MAX_POWER_SAMPLES = 288;      // 5-min intervals for 24 hours
 constexpr size_t STATS_MAX_DAILY_HISTORY = 30;       // 30 days of daily summaries
-constexpr uint32_t STATS_MIN_BREW_TIME_MS = 5000;    // 5 seconds minimum
-constexpr uint32_t STATS_MAX_BREW_TIME_MS = 120000;  // 2 minutes maximum
+constexpr uint32_t STATS_MIN_BREW_TIME_MS = 10000;   // 10 seconds minimum (filters out flushing)
+constexpr uint32_t STATS_MAX_BREW_TIME_MS = 40000;   // 40 seconds maximum (filters out cleaning)
 constexpr uint32_t STATS_POWER_SAMPLE_INTERVAL = 300000;  // 5 minutes
 
 // =============================================================================
@@ -326,6 +326,16 @@ private:
     uint32_t _lastSaveTime = 0;
     bool _dirty = false;
     static constexpr uint32_t SAVE_INTERVAL = 300000;  // 5 minutes
+    
+    // Cached period statistics (recalculated only when data changes)
+    mutable PeriodStats _cachedDailyStats;
+    mutable PeriodStats _cachedWeeklyStats;
+    mutable PeriodStats _cachedMonthlyStats;
+    mutable uint32_t _cachedDailyTimestamp = 0;
+    mutable uint32_t _cachedWeeklyTimestamp = 0;
+    mutable uint32_t _cachedMonthlyTimestamp = 0;
+    mutable uint32_t _cachedDailyDay = 0;  // Day of year when cached
+    mutable bool _statsCacheInvalid = true;  // Invalidate cache when data changes (mutable for const functions)
     
     // Callback
     StatsCallback _onStatsChanged;

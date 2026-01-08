@@ -5,6 +5,35 @@
 // Forward declaration
 class File;
 
+// ACK Response Codes (from reference)
+#define SWD_ACK_OK     0x1
+#define SWD_ACK_WAIT   0x2
+#define SWD_ACK_FAULT  0x4
+#define SWD_ACK_ERROR  0x7
+
+// Error Codes (from reference project)
+typedef enum {
+    SWD_OK = 0,                    ///< Operation successful
+    SWD_ERROR_TIMEOUT,             ///< Operation timed out
+    SWD_ERROR_FAULT,               ///< Target returned FAULT ACK
+    SWD_ERROR_PROTOCOL,            ///< SWD protocol error
+    SWD_ERROR_PARITY,              ///< Parity check failed
+    SWD_ERROR_WAIT,                ///< Target returned WAIT ACK (retry exhausted)
+    SWD_ERROR_NOT_CONNECTED,       ///< Target not connected
+    SWD_ERROR_NOT_HALTED,          ///< Operation requires hart to be halted
+    SWD_ERROR_ALREADY_HALTED,      ///< Hart is already halted
+    SWD_ERROR_INVALID_STATE,        ///< Invalid state for operation
+    SWD_ERROR_NO_MEMORY,           ///< Memory allocation failed
+    SWD_ERROR_INVALID_CONFIG,      ///< Invalid configuration
+    SWD_ERROR_RESOURCE_BUSY,       ///< PIO/SM already in use
+    SWD_ERROR_INVALID_PARAM,       ///< Invalid parameter
+    SWD_ERROR_NOT_INITIALIZED,     ///< Debug module not initialized
+    SWD_ERROR_ABSTRACT_CMD,        ///< Abstract command failed
+    SWD_ERROR_BUS,                 ///< System bus access error
+    SWD_ERROR_ALIGNMENT,           ///< Memory address alignment error
+    SWD_ERROR_VERIFY,              ///< Memory verification failed
+} swd_error_t;
+
 /**
  * PicoSWD - SWD-based firmware flashing for RP2040/Pico using BootROM functions
  * 
@@ -47,12 +76,17 @@ public:
      * @return true if connected
      */
     bool isConnected() { return _connected; }
+    
+    // Diagnostic
+    const char* getLastError() { return _lastErrorStr; }
+    static const char* errorToString(swd_error_t error);
 
 private:
     int _swdio;
     int _swclk;
     int _reset;
     bool _connected;
+    const char* _lastErrorStr;
     
     // SWD Low Level
     void setSWDIO(bool high);
@@ -62,36 +96,41 @@ private:
     uint8_t swdRead(uint8_t bits);
     void swdTurnaround();
     void swdIdle();
+    void swdSendIdleClocks(uint8_t count);
+    void swdResetSeq();
     void swdLineReset();
+    void swdLineResetSoft();
+    void sendDormantSequence();
+    bool powerUpDebug();
+    bool powerDownDebug();
     
     // Packet Layer
-    uint32_t swdReadPacket(uint8_t request);
-    bool swdWritePacket(uint8_t request, uint32_t data, bool ignoreAck = false);
+    swd_error_t swdReadPacket(uint8_t request, uint32_t *data);
+    swd_error_t swdWritePacket(uint8_t request, uint32_t data, bool ignoreAck = false);
+    const char* ackToString(uint8_t ack);
     
-    // DP/AP Access
-    uint32_t readDP(uint8_t addr);
-    bool writeDP(uint8_t addr, uint32_t data, bool ignoreAck = false);
-    uint32_t readAP(uint8_t addr);
-    bool writeAP(uint8_t addr, uint32_t data);
+    // Protocol Wrappers
+    swd_error_t readDP(uint8_t addr, uint32_t *data);
+    swd_error_t writeDP(uint8_t addr, uint32_t data, bool ignoreAck = false);
+    swd_error_t readAP(uint8_t addr, uint32_t *data);
+    swd_error_t writeAP(uint8_t addr, uint32_t data);
     
-    // Memory Access
+    // RP2350-specific helpers
+    uint32_t makeDPSelectRP2350(uint8_t apsel, uint8_t bank, bool ctrlsel);
+    bool initRP2350DebugModule();
+    bool initDebugModule();  // Simpler DM reset (fixes unhealthy states)
+    
+    // Memory/Core
     bool writeWord(uint32_t addr, uint32_t data);
     uint32_t readWord(uint32_t addr);
-    bool writeBlock(uint32_t addr, const uint8_t* data, size_t size);
-    
-    // Core Control
     bool initAP();
     bool haltCore();
     bool runCore();
     bool writeCoreReg(uint8_t reg, uint32_t val);
     uint32_t readCoreReg(uint8_t reg);
     
-    // RP2040 Specific
+    // BootROM
     bool connectToTarget();
     uint32_t findRomFunc(char c1, char c2);
     bool callRomFunc(uint32_t funcAddr, uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3);
-    
-    // Constants
-    static constexpr uint32_t SWD_DELAY = 1; // microseconds
-    static constexpr uint32_t RP2040_CORE0_ID = 0x01002927;
 };

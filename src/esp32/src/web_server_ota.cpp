@@ -31,6 +31,7 @@
 #include <AsyncTCP.h>
 #include <AsyncWebSocket.h>
 #include <memory>
+#include <driver/gpio.h>  // For gpio_reset_pin() to detach pins from UART2
 
 // Forward declare PicoUART class if not already included
 class PicoUART;
@@ -374,7 +375,7 @@ static void handleOTAFailure(AsyncWebSocket* ws) {
 constexpr unsigned long OTA_TOTAL_TIMEOUT_MS = 300000;     // 5 minutes total OTA timeout
 constexpr unsigned long OTA_DOWNLOAD_TIMEOUT_MS = 300000;  // 5 minutes per download (accommodate slow networks)
 constexpr unsigned long OTA_HTTP_TIMEOUT_MS = 30000;       // 30 seconds HTTP timeout
-constexpr unsigned long OTA_WATCHDOG_FEED_INTERVAL_MS = 50;// Feed watchdog every 50ms
+constexpr unsigned long OTA_WATCHDOG_FEED_INTERVAL_MS = 20;// Feed watchdog every 20ms to prevent slow loop warnings
 
 // Buffer sizes
 constexpr size_t OTA_BUFFER_SIZE = 512;                    // Smaller buffer for stack safety
@@ -701,14 +702,25 @@ static bool downloadToFile(const char* url, const char* filePath,
     
     // Download to file
     WiFiClient* stream = http.getStreamPtr();
+    if (!stream) {
+        LOG_E("Failed to get HTTP stream pointer");
+        file.close();
+        LittleFS.remove(filePath);
+        http.end();
+        return false;
+    }
+    
     uint8_t buffer[OTA_BUFFER_SIZE];
     size_t written = 0;
     unsigned long lastYield = millis();
     unsigned long lastDataReceived = millis();
     unsigned long lastConsoleLog = millis();
-    constexpr unsigned long STALL_TIMEOUT_MS = 30000;
+    unsigned long lastConnectionCheck = millis();
+    constexpr unsigned long STALL_TIMEOUT_MS = 15000;  // Reduced from 30s to 15s
+    constexpr unsigned long CONNECTION_CHECK_INTERVAL_MS = 2000;  // Check connection health every 2s
+    unsigned long noDataCount = 0;
     
-    while (http.connected() && written < (size_t)contentLength) {
+    while (written < (size_t)contentLength) {
         // Check for overall timeout
         if (millis() - downloadStart > OTA_DOWNLOAD_TIMEOUT_MS) {
             LOG_E("Download timeout after %lu ms (wrote %d/%d)", millis() - downloadStart, written, contentLength);
@@ -718,7 +730,22 @@ static bool downloadToFile(const char* url, const char* filePath,
             return false;
         }
         
-        // Check for stall
+        // Check connection health periodically
+        if (millis() - lastConnectionCheck > CONNECTION_CHECK_INTERVAL_MS) {
+            bool httpConnected = http.connected();
+            bool streamConnected = stream->connected();
+            
+            if (!httpConnected || !streamConnected) {
+                LOG_E("Connection lost: http=%d stream=%d (wrote %d/%d)", httpConnected, streamConnected, written, contentLength);
+                file.close();
+                LittleFS.remove(filePath);
+                http.end();
+                return false;
+            }
+            lastConnectionCheck = millis();
+        }
+        
+        // Check for stall (no data received for too long)
         if (millis() - lastDataReceived > STALL_TIMEOUT_MS) {
             LOG_E("Download stalled - no data for %lu ms (wrote %d/%d)", STALL_TIMEOUT_MS, written, contentLength);
             file.close();
@@ -727,19 +754,34 @@ static bool downloadToFile(const char* url, const char* filePath,
             return false;
         }
         
-        // Feed watchdog frequently
+        // Feed watchdog frequently and yield to prevent blocking main loop
         if (millis() - lastYield >= OTA_WATCHDOG_FEED_INTERVAL_MS) {
             feedWatchdog();
+            yield();  // Yield to other tasks
             lastYield = millis();
         }
         
         size_t available = stream->available();
         if (available > 0) {
             lastDataReceived = millis();
-            size_t toRead = min(available, sizeof(buffer));
+            noDataCount = 0;  // Reset stall counter
+            
+            // Limit read size to prevent blocking main loop for too long
+            // Read in smaller chunks with yields to allow main loop to run
+            size_t maxChunkSize = min(available, (size_t)4096);  // Max 4KB per chunk
+            size_t toRead = min(maxChunkSize, sizeof(buffer));
+            
+            // Yield before potentially blocking read operation
+            feedWatchdog();
+            yield();
+            
             size_t bytesRead = stream->readBytes(buffer, toRead);
             
             if (bytesRead > 0) {
+                // Yield before potentially blocking write operation
+                feedWatchdog();
+                yield();
+                
                 size_t bytesWritten = file.write(buffer, bytesRead);
                 if (bytesWritten != bytesRead) {
                     LOG_E("Write error: %d/%d bytes (filesystem full?)", bytesWritten, bytesRead);
@@ -750,6 +792,12 @@ static bool downloadToFile(const char* url, const char* filePath,
                 }
                 written += bytesWritten;
                 
+                // Yield after write to allow main loop to run
+                // This prevents blocking the main loop for >1 second
+                feedWatchdog();
+                yield();
+                vTaskDelay(pdMS_TO_TICKS(1));  // 1ms delay using FreeRTOS for better task scheduling
+                
                 // Log to console every 5 seconds (progress not sent to WebSocket - UI uses simple animation)
                 if (millis() - lastConsoleLog > OTA_CONSOLE_LOG_INTERVAL_MS) {
                     int pct = (written * 100) / contentLength;
@@ -758,7 +806,23 @@ static bool downloadToFile(const char* url, const char* filePath,
                 }
             }
         } else {
-            yield();  // Yield to other tasks while waiting for data
+            // No data available - increment counter and check for potential issues
+            noDataCount++;
+            
+            // If we've had no data for a while, check connection more aggressively
+            if (noDataCount > 100) {  // ~1 second at 10ms delay
+                if (!http.connected() || !stream->connected()) {
+                    LOG_E("Connection dropped during download (wrote %d/%d)", written, contentLength);
+                    file.close();
+                    LittleFS.remove(filePath);
+                    http.end();
+                    return false;
+                }
+            }
+            
+            // Yield and delay to prevent tight loop blocking main task
+            yield();
+            delay(10);  // 10ms delay to allow other tasks to run
             feedWatchdog();
         }
     }
@@ -844,12 +908,13 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     }
     
     // Flash to Pico
-#if ENABLE_SCREEN
-    // Screen variant: Use UART bootloader (original working implementation)
-    broadcastOtaProgress(&_ws, "flash", 40, "Installing Pico firmware...");
-#else
-    // No-screen variant: Use SWD
+    // Method selection controlled by ENABLE_SWD in config.h (single configuration point)
+#if ENABLE_SWD
+    // SWD method: Uses GPIO 21 (SWDIO) and GPIO 45 (SWCLK) for direct flash programming
     broadcastOtaProgress(&_ws, "flash", 40, "Installing Pico firmware (SWD)...");
+#else
+    // UART bootloader method: Uses existing UART connection (GPIO 41/42) for firmware transfer
+    broadcastOtaProgress(&_ws, "flash", 40, "Installing Pico firmware (UART)...");
 #endif
     
     File flashFile = LittleFS.open(OTA_FILE_PATH, "r");
@@ -861,9 +926,163 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
         return false;
     }
     
-#if ENABLE_SCREEN
+#if ENABLE_SWD
     // =============================================================================
-    // UART BOOTLOADER METHOD (Screen Variant)
+    // SWD METHOD (Currently disabled - kept for future development)
+    // =============================================================================
+    
+    broadcastOtaProgress(&_ws, "flash", 42, "Connecting via SWD...");
+    feedWatchdog();
+    
+    // Pause UART to prevent interference with SWD
+    _picoUart.pause();
+    LOG_I("Paused UART packet processing for SWD");
+    
+    // CRITICAL: End Serial1 (UART1 on GPIO41/42) to prevent any interference
+    // Then reconfigure SWD pins (GPIO21/GPIO45) as GPIO outputs
+    // These pins are safe GPIOs (not UART2, not PSRAM) but we still reset them to ensure clean state
+    Serial1.end();
+    delay(10); // Small delay to ensure UART1 is fully stopped
+    
+    // Reset SWD pins to default state and configure as GPIO outputs
+    // gpio_reset_pin() resets the pin to default state and detaches it from any peripheral
+    // GPIO 21/45 are safe pins (no conflicts), but we reset them to ensure clean configuration
+    LOG_I("SWD: Resetting SWD pins (GPIO%d/GPIO%d) to default state...", SWD_DIO_PIN, SWD_CLK_PIN);
+    gpio_reset_pin((gpio_num_t)SWD_DIO_PIN);
+    gpio_reset_pin((gpio_num_t)SWD_CLK_PIN);
+    delay(10); // Allow pins to reset
+    
+    // Use ESP-IDF GPIO functions directly for maximum control
+    // This ensures pins are fully configured as GPIO, not attached to any peripheral
+    gpio_config_t io_conf = {};
+    io_conf.pin_bit_mask = (1ULL << SWD_DIO_PIN) | (1ULL << SWD_CLK_PIN);
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&io_conf);
+    
+    // Set pins HIGH (idle state for SWD) using ESP-IDF
+    gpio_set_level((gpio_num_t)SWD_DIO_PIN, 1);
+    gpio_set_level((gpio_num_t)SWD_CLK_PIN, 1);
+    delay(5); // Allow pins to stabilize
+    
+    // CRITICAL: Sync Arduino HAL with ESP-IDF configuration
+    // This ensures digitalWrite()/digitalRead() work correctly
+    pinMode(SWD_DIO_PIN, OUTPUT);
+    pinMode(SWD_CLK_PIN, OUTPUT);
+    digitalWrite(SWD_DIO_PIN, HIGH);
+    digitalWrite(SWD_CLK_PIN, HIGH);
+    
+    LOG_I("SWD: Pins configured using ESP-IDF gpio_config() and synced with Arduino HAL");
+    
+    // Verify pins can actually be driven LOW (hardware test)
+    // Test 1: Drive LOW and verify it reads LOW while in OUTPUT mode
+    digitalWrite(SWD_DIO_PIN, LOW);
+    delayMicroseconds(50); // Longer delay for signal to settle
+    // Read while still in OUTPUT mode (ESP32 can read its own output)
+    bool swdio_low_output = digitalRead(SWD_DIO_PIN);
+    
+    // Test 2: Switch to INPUT and check if external pull-up keeps it HIGH
+    pinMode(SWD_DIO_PIN, INPUT);
+    delayMicroseconds(50);
+    bool swdio_low_input = digitalRead(SWD_DIO_PIN);
+    
+    // Restore to OUTPUT HIGH
+    pinMode(SWD_DIO_PIN, OUTPUT);
+    digitalWrite(SWD_DIO_PIN, HIGH);
+    
+    LOG_I("SWD: Pin drive test - OUTPUT mode reads: %d, INPUT mode reads: %d", 
+          swdio_low_output, swdio_low_input);
+    
+    if (swdio_low_output == 1) {
+        LOG_E("SWD: CRITICAL - SWDIO pin cannot be driven LOW (reads HIGH in OUTPUT mode)");
+        LOG_E("SWD: This indicates pin is stuck HIGH or being driven by another source");
+        LOG_E("SWD: Possible causes: hardware fault, strong pull-up, or pin conflict");
+    } else if (swdio_low_input == 1) {
+        LOG_W("SWD: Pin can be driven LOW, but external pull-up keeps it HIGH when floating");
+        LOG_W("SWD: This is normal - pull-up ensures idle state for SWD communication");
+    } else {
+        LOG_I("SWD: Pin reset successful - SWDIO can be driven LOW");
+    }
+    
+    LOG_I("Reconfigured SWD pins as GPIO (SWDIO=GPIO%d, SWCLK=GPIO%d)", SWD_DIO_PIN, SWD_CLK_PIN);
+    
+    // Initialize SWD interface
+    PicoSWD swd(SWD_DIO_PIN, SWD_CLK_PIN, SWD_RESET_PIN);
+    
+    if (!swd.begin()) {
+        LOG_E("SWD connection failed");
+        broadcastLogLevel("error", "Update error: SWD connection failed");
+        broadcastOtaProgress(&_ws, "error", 0, "SWD connection failed");
+        
+        // CRITICAL: Always reset Pico even on failure to ensure it's not stuck
+        LOG_W("SWD: Resetting Pico after failed connection attempt...");
+        swd.end();  // Clean up SWD connection
+        swd.resetTarget();  // Reset Pico to ensure it boots normally
+        
+        // Reinitialize Serial1 UART on failure
+        Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
+        delay(10);
+        _picoUart.resume();  // Resume on failure
+        flashFile.close();
+        cleanupOtaFiles();
+        return false;
+    }
+    
+    broadcastOtaProgress(&_ws, "flash", 45, "Flashing firmware...");
+    feedWatchdog();
+    
+    // Flash firmware via SWD
+    bool success = swd.flashFirmware(flashFile, firmwareSize);
+    
+    // Clean up SWD connection
+    swd.end();
+    
+    flashFile.close();
+    
+    // Clean up temp file regardless of success
+    cleanupOtaFiles();
+    
+    if (!success) {
+        LOG_E("SWD firmware flashing failed");
+        broadcastLogLevel("error", "Update error: Installation failed");
+        broadcastOtaProgress(&_ws, "error", 0, "Installation failed");
+        
+        // CRITICAL: Always reset Pico even on failure to ensure it's not stuck
+        LOG_W("SWD: Resetting Pico after failed flash attempt...");
+        swd.end();  // Clean up SWD connection
+        swd.resetTarget();  // Reset Pico to ensure it boots normally
+        
+        // Reinitialize Serial1 UART on failure
+        Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
+        delay(10);
+        _picoUart.resume();  // Resume on failure
+        return false;
+    }
+    
+    // Reset Pico via SWD or hardware pin after successful flash
+    LOG_I("Resetting Pico after successful SWD flash...");
+    swd.end();  // Clean up SWD connection first
+    swd.resetTarget();  // Then reset
+    
+    broadcastOtaProgress(&_ws, "flash", 55, "Waiting for device restart...");
+    
+    // Reinitialize Serial1 UART after SWD is done
+    // SWD pins are now back to GPIO, but we need to reinitialize UART1 for Pico communication
+    Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
+    delay(10); // Allow UART to initialize
+    
+    // Resume packet processing to detect when Pico comes back
+    _picoUart.resume();
+    LOG_I("Resumed UART packet processing");
+    
+    // Clear connection state so we can detect when Pico actually reconnects
+    _picoUart.clearConnectionState();
+    
+#else
+    // =============================================================================
+    // UART BOOTLOADER METHOD (Default - SWD disabled until fixed)
     // =============================================================================
     
     // Send bootloader command
@@ -957,67 +1176,7 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     // Clear connection state so we can detect when Pico actually reconnects
     _picoUart.clearConnectionState();
     
-#else
-    // =============================================================================
-    // SWD METHOD (No-Screen Variant)
-    // =============================================================================
-    
-    broadcastOtaProgress(&_ws, "flash", 42, "Connecting via SWD...");
-    feedWatchdog();
-    
-    // Pause UART to prevent interference with SWD
-    _picoUart.pause();
-    LOG_I("Paused UART packet processing for SWD");
-    
-    // Initialize SWD interface
-    PicoSWD swd(SWD_DIO_PIN, SWD_CLK_PIN, SWD_RESET_PIN);
-    
-    if (!swd.begin()) {
-        LOG_E("SWD connection failed");
-        broadcastLogLevel("error", "Update error: SWD connection failed");
-        broadcastOtaProgress(&_ws, "error", 0, "SWD connection failed");
-        _picoUart.resume();  // Resume on failure
-        flashFile.close();
-        cleanupOtaFiles();
-        return false;
-    }
-    
-    broadcastOtaProgress(&_ws, "flash", 45, "Flashing firmware...");
-    feedWatchdog();
-    
-    // Flash firmware via SWD
-    bool success = swd.flashFirmware(flashFile, firmwareSize);
-    
-    // Clean up SWD connection
-    swd.end();
-    
-    flashFile.close();
-    
-    // Clean up temp file regardless of success
-    cleanupOtaFiles();
-    
-    if (!success) {
-        LOG_E("SWD firmware flashing failed");
-        broadcastLogLevel("error", "Update error: Installation failed");
-        broadcastOtaProgress(&_ws, "error", 0, "Installation failed");
-        _picoUart.resume();  // Resume on failure
-        return false;
-    }
-    
-    // Reset Pico via SWD or hardware pin
-    LOG_I("Resetting Pico after SWD flash...");
-    swd.resetTarget();
-    
-    broadcastOtaProgress(&_ws, "flash", 55, "Waiting for device restart...");
-    
-    // Resume packet processing to detect when Pico comes back
-    _picoUart.resume();
-    LOG_I("Resumed UART packet processing");
-    
-    // Clear connection state so we can detect when Pico actually reconnects
-    _picoUart.clearConnectionState();
-    
-#endif
+#endif // ENABLE_SWD
     
     // Wait for Pico to self-reset and reconnect
     // The bootloader copies firmware (~3-5s for 22 sectors * ~100ms each) then resets.
@@ -1220,16 +1379,29 @@ void BrewWebServer::startGitHubOTA(const String& version) {
         // Feed watchdog
         if (millis() - lastYield >= OTA_WATCHDOG_FEED_INTERVAL_MS) {
             feedWatchdog();
+            yield();
             lastYield = millis();
         }
         
         size_t available = stream->available();
         if (available > 0) {
             lastDataReceived = millis();  // Reset stall timer
-            size_t toRead = min(available, HEAP_BUFFER_SIZE);
+            
+            // Limit read size to prevent blocking main loop for too long
+            size_t maxChunkSize = min(available, (size_t)4096);  // Max 4KB per chunk
+            size_t toRead = min(maxChunkSize, HEAP_BUFFER_SIZE);
+            
+            // Yield before potentially blocking read operation
+            feedWatchdog();
+            yield();
+            
             size_t bytesRead = stream->readBytes(buffer.get(), toRead);
             
             if (bytesRead > 0) {
+                // Yield before potentially blocking write operation
+                feedWatchdog();
+                yield();
+                
                 size_t bytesWritten = Update.write(buffer.get(), bytesRead);
                 if (bytesWritten != bytesRead) {
                     LOG_E("Write error at %d", written);
@@ -1239,6 +1411,12 @@ void BrewWebServer::startGitHubOTA(const String& version) {
                     broadcastOtaProgress(&_ws, "error", 0, "Write failed");
                     return;
                 }
+                
+                // Yield after write to allow main loop to run
+                // This prevents blocking the main loop for >1 second
+                feedWatchdog();
+                yield();
+                vTaskDelay(pdMS_TO_TICKS(1));  // 1ms delay using FreeRTOS for better task scheduling
                 written += bytesWritten;
                 
                 // Log to console every 2 seconds (UI uses animation, not progress bar)
@@ -1392,21 +1570,39 @@ void BrewWebServer::updateLittleFS(const char* tag) {
     while (http.connected() && written < (size_t)contentLength && offset < partition->size) {
         if (millis() - lastYield >= OTA_WATCHDOG_FEED_INTERVAL_MS) {
             feedWatchdog();
+            yield();
             lastYield = millis();
         }
         
         size_t available = stream->available();
         if (available > 0) {
-            size_t toRead = min(available, HEAP_BUFFER_SIZE);
+            // Limit read size to prevent blocking main loop for too long
+            size_t maxChunkSize = min(available, (size_t)4096);  // Max 4KB per chunk
+            size_t toRead = min(maxChunkSize, HEAP_BUFFER_SIZE);
+            
+            // Yield before potentially blocking read operation
+            feedWatchdog();
+            yield();
+            
             size_t bytesRead = stream->readBytes(buffer.get(), toRead);
             
             if (bytesRead > 0) {
+                // Yield before potentially blocking write operation
+                feedWatchdog();
+                yield();
+                
                 if (esp_partition_write(partition, offset, buffer.get(), bytesRead) != ESP_OK) {
                     LOG_W("LittleFS write failed at offset %d", offset);
                     break;
                 }
                 written += bytesRead;
                 offset += bytesRead;
+                
+                // Yield after write to allow main loop to run
+                // This prevents blocking the main loop for >1 second
+                feedWatchdog();
+                yield();
+                vTaskDelay(pdMS_TO_TICKS(1));  // 1ms delay using FreeRTOS for better task scheduling
             }
         } else {
             yield();

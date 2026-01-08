@@ -201,7 +201,6 @@ void BrewWebServer::processCommand(JsonDocument& doc) {
             return;
         }
         
-        LOG_I("Sending full state to client (heap=%zu)", freeHeap);
         _pendingCloudStateBroadcast = false;
         // Send full status and device info
         // Note: broadcastFullStatus will send full status (not delta) on next call

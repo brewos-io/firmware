@@ -614,16 +614,35 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     // Note: isKeepaliveForced is declared as static at function scope above
     
     if (!sendFullStatus && (cloudChanged || localChanged) && !isFirstLocalMessage) {
-        // Check if this is a keepalive send - if keepalive was forced, send full status
+        // Check if this is a keepalive send - if keepalive was forced, send lightweight keepalive
         // Otherwise, try to build delta status
         if (isKeepaliveForced) {
-            // This is a keepalive - send full status to ensure client gets complete state
-            sendFullStatus = true;
+            // This is a keepalive - send lightweight message instead of expensive full status
+            // This prevents blocking the main loop with expensive operations when idle
+            doc.clear();
+            doc["type"] = "keepalive";
+            doc["seq"] = statusSequence;
+            doc["uptime"] = millis();
+            
+            // Serialize lightweight keepalive to MessagePack
+            size_t msgpackSize = MessagePackHelper::serialize(doc, g_statusBuffer, STATUS_BUFFER_SIZE);
+            if (msgpackSize > 0 && hasLocalClients) {
+                // Send lightweight keepalive to local clients
+                for (auto& client : _ws.getClients()) {
+                    if (client.status() == WS_CONNECTED && client.canSend()) {
+                        client.binary(g_statusBuffer, msgpackSize);
+                    }
+                }
+            }
+            // Skip expensive full status building for keepalive
+            return;
         } else {
             // Build delta status - use the changed fields from the appropriate detector
             ChangedFields changed = hasLocalClients ? localChangedFields : cloudChangedFields;
+            // Always include stats in delta if explicitly marked as changed
+            // (Stats changes are tracked externally when brews are recorded)
             if (buildDeltaStatus(state, changed, statusSequence, doc)) {
-                // Delta built successfully
+                // Delta built successfully - stats included if changed.stats is true
             } else {
                 // No changes detected, fall back to full status
                 sendFullStatus = true;
@@ -639,6 +658,12 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
         doc.clear();
         doc["type"] = "status";
         doc["seq"] = statusSequence;
+        
+        // Include stats in full status only for:
+        // 1. First connection (isFirstLocalMessage)
+        // 2. Periodic sync (fullStatusSyncDue)
+        // This avoids expensive stats calculation on every full status broadcast
+        bool includeStats = isFirstLocalMessage || fullStatusSyncDue;
     
     // Timestamps - track machine on time and last shot
     // Use Unix timestamps (milliseconds) for client compatibility
@@ -779,30 +804,14 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     
     // =========================================================================
     // Stats Section - Key metrics for dashboard
+    // NOTE: Stats are NOT included in full status broadcasts to avoid expensive
+    // calculations every 500ms. Stats are sent:
+    // 1. On first connection (via isFirstLocalMessage check below)
+    // 2. In delta updates when changed.stats is true
+    // 3. In periodic sync (every 5 minutes)
+    // 4. Via HTTP endpoint /api/stats
     // =========================================================================
-    JsonObject stats = doc["stats"].to<JsonObject>();
-    
-    // Get current statistics
-    BrewOS::FullStatistics fullStats;
-    Stats.getFullStatistics(fullStats);
-    
-    // Daily stats
-    JsonObject daily = stats["daily"].to<JsonObject>();
-    BrewOS::PeriodStats dailyStats;
-    Stats.getDailyStats(dailyStats);
-    daily["shotCount"] = dailyStats.shotCount;
-    daily["avgBrewTimeMs"] = dailyStats.avgBrewTimeMs;
-    daily["totalKwh"] = dailyStats.totalKwh;
-    
-    // Lifetime stats
-    JsonObject lifetime = stats["lifetime"].to<JsonObject>();
-    lifetime["totalShots"] = fullStats.lifetime.totalShots;
-    lifetime["avgBrewTimeMs"] = fullStats.lifetime.avgBrewTimeMs;
-    lifetime["totalKwh"] = fullStats.lifetime.totalKwh;
-    
-    // Session stats
-    stats["sessionShots"] = fullStats.sessionShots;
-    stats["shotsToday"] = dailyStats.shotCount;
+    // Stats are conditionally included below based on sendFullStatus and isFirstLocalMessage
     
     // =========================================================================
     // Cleaning Section
@@ -875,8 +884,13 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     wifi["rssi"] = state.wifi_rssi;
     
     // Get WiFi configuration from WiFiManager (gateway, subnet, DNS, static IP)
+    // Yield before WiFi status (involves multiple WiFi API calls)
+    yield();
     WiFiStatus wifiStatus = _wifiManager.getStatus();
     wifi["staticIp"] = wifiStatus.staticIp;
+    
+    // Yield after WiFi status (String operations can be slow)
+    yield();
     
     // Copy strings to stack buffers to avoid PSRAM issues
     char gatewayBuf[16];
@@ -917,6 +931,38 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     mqtt["broker"] = brokerBuf;
     mqtt["topic"] = topicBuf;
     
+    // =========================================================================
+    // Stats Section - Only included on first connection or periodic sync
+    // =========================================================================
+    if (includeStats) {
+        JsonObject stats = doc["stats"].to<JsonObject>();
+        
+        // Get current statistics
+        BrewOS::FullStatistics fullStats;
+        Stats.getFullStatistics(fullStats);
+        
+        // Yield after statistics gathering (can iterate through brew history)
+        yield();
+        
+        // Daily stats
+        JsonObject daily = stats["daily"].to<JsonObject>();
+        BrewOS::PeriodStats dailyStats;
+        Stats.getDailyStats(dailyStats);
+        daily["shotCount"] = dailyStats.shotCount;
+        daily["avgBrewTimeMs"] = dailyStats.avgBrewTimeMs;
+        daily["totalKwh"] = dailyStats.totalKwh;
+        
+        // Lifetime stats
+        JsonObject lifetime = stats["lifetime"].to<JsonObject>();
+        lifetime["totalShots"] = fullStats.lifetime.totalShots;
+        lifetime["avgBrewTimeMs"] = fullStats.lifetime.avgBrewTimeMs;
+        lifetime["totalKwh"] = fullStats.lifetime.totalKwh;
+        
+        // Session stats
+        stats["sessionShots"] = fullStats.sessionShots;
+        stats["shotsToday"] = dailyStats.shotCount;
+    }
+    
         // =========================================================================
         // ESP32 Info
         // =========================================================================
@@ -930,6 +976,9 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
             lastFullStatusSync = now;
         }
     }
+    
+    // Yield after building large JSON document to prevent blocking
+    yield();
     
     // Check for JSON overflow before serialization
     size_t jsonSize = measureJson(doc);
@@ -946,6 +995,10 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
     // Serialize to MessagePack binary format (much smaller than JSON)
     // Only do this expensive operation if we actually need to send
     size_t msgpackSize = MessagePackHelper::serialize(doc, g_statusBuffer, STATUS_BUFFER_SIZE);
+    
+    // Yield after expensive serialization to prevent blocking main loop
+    yield();
+    
     if (msgpackSize > 0) {
         // Send to WebSocket clients as binary (MessagePack format)
         // Status updates are only sent when something changes, on first connect,
@@ -973,7 +1026,14 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
             
             // Direct iteration over client list using getClients()
             // getClients() returns references, so use auto& and access with . not ->
+            size_t clientIndex = 0;
             for (auto& client : _ws.getClients()) {
+                // Yield periodically during client iteration to prevent blocking main loop
+                // This is critical when there are multiple clients or slow network
+                if (clientIndex > 0 && (clientIndex % 5 == 0)) {
+                    yield();
+                }
+                clientIndex++;
                 // Check connection status - always try to send if connected
                 // This ensures clients receive regular updates and don't mark connection as stale
                 if (client.status() == WS_CONNECTED) {
@@ -1024,6 +1084,8 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
         
         // Send to cloud if status changed or heartbeat due
         if (shouldSendToCloud) {
+            // Yield before cloud send to prevent blocking
+            yield();
             _cloudConnection->sendBinary(g_statusBuffer, msgpackSize);
             if (cloudHeartbeatDue) {
                 lastCloudHeartbeat = millis();
