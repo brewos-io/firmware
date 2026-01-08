@@ -39,6 +39,21 @@ void PicoUART::begin() {
     LOG_I("Pico RUN pin: GPIO%d", PICO_RUN_PIN);
 }
 
+void PicoUART::pause() {
+    // Stop loop() from processing packets
+    _paused = true;
+    // CRITICAL: Reset state machine to prevent partial packet parsing
+    // If we were in the middle of parsing a packet when pause() was called,
+    // the state machine would be in an inconsistent state. Bootloader data
+    // (like 0xAA 0x55) could then be misinterpreted as protocol packets.
+    _rxState = RxState::WAIT_START;
+    _rxIndex = 0;
+    _rxLength = 0;
+    // Note: We do NOT drain Serial1 buffer here because OTA process
+    // (waitForBootloaderAck, streamFirmwareChunk) actively reads from
+    // Serial1 while PicoUART is paused. Draining would steal data from OTA.
+}
+
 void PicoUART::loop() {
     // Skip processing if paused (during OTA)
     // This prevents the packet handler from consuming bootloader ACK bytes

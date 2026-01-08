@@ -47,7 +47,7 @@ public:
     bool waitForBootloaderAck(uint32_t timeoutMs = 1000);  // Wait for 0xAA 0x55 ACK from bootloader
     
     // Pause/resume packet processing (for OTA)
-    void pause() { _paused = true; }    // Stop loop() from processing packets
+    void pause();    // Stop loop() from processing packets and reset state machine
     void resume() { _paused = false; _rxState = RxState::WAIT_START; }  // Resume packet processing
     bool isPaused() { return _paused; }
     
