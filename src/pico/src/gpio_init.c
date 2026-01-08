@@ -61,8 +61,10 @@ void gpio_init_adc(void) {
         adc_gpio_init(pins->adc_pressure);
         // No pull resistor - pressure transducer uses external voltage divider
         // Disconnected sensor detection: sensors.c validates voltage < 0.2V
-        // If hardware requires pull-down for disconnected detection, add:
-        // gpio_pull_down(pins->adc_pressure);
+    }
+    if (PIN_VALID(pins->adc_5v_monitor)) {
+        adc_gpio_init(pins->adc_5v_monitor);
+        // No pull resistor - 5V monitor uses external voltage divider (R91/R92)
     }
     if (PIN_VALID(pins->adc_flow)) {
         adc_gpio_init(pins->adc_flow);
@@ -91,6 +93,12 @@ void gpio_init_spi(void) {
     }
     if (PIN_VALID(pins->spi_miso)) {
         gpio_set_function(pins->spi_miso, GPIO_FUNC_SPI);
+    } else if (pins->spi_miso == 16) {
+        // GPIO16 is available but unused (disconnected from J15, traces moved to SWD)
+        // Must configure as input with pull-down to prevent E9 errata (floating input risk)
+        gpio_init(16);
+        gpio_set_dir(16, GPIO_IN);
+        gpio_pull_down(16);
     }
     if (PIN_VALID(pins->spi_cs)) {
         gpio_init(pins->spi_cs);
@@ -176,11 +184,18 @@ void gpio_init_inputs(void) {
         gpio_set_dir(pins->input_weight_stop, GPIO_IN);
         gpio_pull_down(pins->input_weight_stop);
     }
-    // GPIO22 (SPARE) - no pull-up/down by default (reserved for future)
+    // GPIO22 (SPARE) - now available but unused (disconnected from J15, traces moved to SWD)
+    // Must configure with pull-down to prevent E9 errata (floating input risk)
     if (PIN_VALID(pins->input_spare)) {
         gpio_init(pins->input_spare);
         gpio_set_dir(pins->input_spare, GPIO_IN);
-        // No pull-up/pull-down - reserved for future use
+        gpio_pull_down(pins->input_spare);
+    } else {
+        // GPIO22 is available but unused (set to -1 in PCB config)
+        // Must configure with pull-down to prevent E9 errata (floating input risk)
+        gpio_init(22);
+        gpio_set_dir(22, GPIO_IN);
+        gpio_pull_down(22);
     }
     
     #undef INIT_INPUT_PULLUP

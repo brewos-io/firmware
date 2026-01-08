@@ -27,7 +27,7 @@
 #endif
 
 // ADC Configuration
-#define HW_ADC_VREF_VOLTAGE 3.3f        // Reference voltage (V)
+#define HW_ADC_VREF_VOLTAGE 3.0f        // Reference voltage (V) - buffered 3.0V precision reference (LM4040DIM3-3.0)
 #define HW_ADC_MAX_VALUE 4095           // 12-bit ADC (0-4095)
 #define HW_ADC_CHANNEL_COUNT 4          // ADC channels available
 

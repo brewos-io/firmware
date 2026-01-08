@@ -51,6 +51,7 @@ typedef struct {
     int8_t  adc_brew_ntc;        // ADC channel for brew boiler NTC thermistor
     int8_t  adc_steam_ntc;       // ADC channel for steam boiler NTC thermistor
     int8_t  adc_pressure;        // ADC channel for pressure transducer
+    int8_t  adc_5v_monitor;      // ADC channel for 5V rail monitor (ratiometric pressure compensation, GPIO29)
     int8_t  adc_flow;            // ADC channel for flow meter (if analog)
     int8_t  adc_inlet_temp;      // ADC channel for inlet water temperature
     
@@ -145,11 +146,14 @@ static const pcb_config_t PCB_ECM_V1 = {
         .adc_brew_ntc       = 26,  // GPIO26 = ADC0
         .adc_steam_ntc      = 27,  // GPIO27 = ADC1
         .adc_pressure       = 28,  // GPIO28 = ADC2
+        .adc_5v_monitor     = 29,  // GPIO29 = ADC3 (5V rail monitor for ratiometric pressure compensation)
         .adc_flow           = -1,  // Not used
         .adc_inlet_temp     = -1,  // Not used
         
         // SPI (reserved for future use)
-        .spi_miso           = 16,  // GPIO16 (SPI0 MISO)
+        // Note: GPIO16/22 are now available (disconnected from J15, traces moved to SWD)
+        // If unused, must have pull-down to prevent E9 errata (floating input risk)
+        .spi_miso           = -1,  // GPIO16 available but unused - set to -1 to prevent floating
         .spi_sck            = 18,  // GPIO18 (SPI0 SCK)
         .spi_mosi           = -1,  // Not used
         .spi_cs             = 17,  // GPIO17 (SPI0 CS, reserved)
@@ -163,7 +167,7 @@ static const pcb_config_t PCB_ECM_V1 = {
         .input_flow_pulse   = -1,  // Not used
         .input_emergency_stop = -1, // Not used
         .input_weight_stop  = 21,  // GPIO21 (WEIGHT_STOP from ESP32, J15 Pin 7)
-        .input_spare        = 22,  // GPIO22 (SPARE from ESP32, J15 Pin 8, reserved)
+        .input_spare        = -1,  // GPIO22 available but unused - set to -1 to prevent floating (was J15 Pin 8, now disconnected)
         
         // Relay outputs
         .relay_pump         = 11,  // GPIO11

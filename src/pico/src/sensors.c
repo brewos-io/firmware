@@ -235,11 +235,41 @@ static float read_pressure(void) {
     // YD4060 pressure transducer:
     // - 0.5V = 0 bar
     // - 4.5V = 16 bar
-    // - Voltage divider: 10kΩ / 15kΩ = 0.6 ratio
-    // So ADC sees: V_adc = V_transducer * 0.6
-    // V_transducer = V_adc / 0.6
+    // - Voltage divider: R3=10kΩ (pull-down), R4=5.6kΩ (series)
+    // - Ratio = R3/(R3+R4) = 10k/(10k+5.6k) = 10k/15.6k = 0.641
+    // So ADC sees: V_adc = V_transducer * 0.641
+    // V_transducer = V_adc / 0.641
     
-    float v_transducer = voltage / 0.6f;
+    // Pressure divider ratio (R3=10kΩ, R4=5.6kΩ)
+    #define PRESSURE_DIVIDER_RATIO 0.641f  // 10kΩ / (10kΩ + 5.6kΩ)
+    
+    float v_transducer_nominal = voltage / PRESSURE_DIVIDER_RATIO;
+    
+    // Ratiometric compensation: normalize to what sensor would read at 5.0V
+    // If 5V rail sags (e.g., to 4.5V), sensor output drops proportionally
+    // We must DIVIDE by the ratio (or multiply by inverse) to correct it
+    float v_transducer = v_transducer_nominal;
+    
+    const pcb_config_t* pcb_5v = pcb_config_get();
+    if (pcb_5v && pcb_5v->pins.adc_5v_monitor >= 0) {
+        // Read 5V rail monitor (GPIO29, ADC3)
+        uint8_t adc_5v_channel = pcb_5v->pins.adc_5v_monitor - 26;
+        if (adc_5v_channel <= 3) {
+            float v_adc_5v = hw_read_adc_voltage(adc_5v_channel);
+            
+            // Calculate actual 5V rail voltage (divider: R91=10kΩ, R92=5.6kΩ)
+            // V_5V_actual = V_adc_5v × (R91+R92)/R92 = V_adc_5v × 15.6k/5.6k = V_adc_5v × 2.786
+            float v_5v_actual = v_adc_5v * 2.786f;
+            
+            // Validate 5V rail reading (sanity check: 4.0V to 5.5V)
+            if (v_5v_actual >= 4.0f && v_5v_actual <= 5.5f) {
+                // Apply ratiometric compensation: multiply by inverse ratio
+                // Formula: V_sensor_actual = V_sensor_nominal × (5.0V / V_5V_actual)
+                v_transducer = v_transducer_nominal * (5.0f / v_5v_actual);
+            }
+            // If 5V reading is invalid, use nominal value (fallback)
+        }
+    }
     
     // Validate transducer voltage range
     if (v_transducer < 0.3f || v_transducer > 4.7f) {
