@@ -64,8 +64,6 @@
 | D_PRESSURE | PESD3V3S1BL | Pressure ADC hard clamp (3.3V TVS, low-leakage, parallel to D16) | SOD-323 |
 | D20        | SMBJ5.0A    | 5V rail TVS protection                                | SMB     |
 | D21        | SM712       | RS485 A/B line surge protection                       | SOT-23  |
-| D23        | BZT52C3V3   | Service port TX 3.3V clamp                            | SOD-123 |
-| D24        | BZT52C3V3   | Service port RX 3.3V clamp                            | SOD-123 |
 
 ---
 
@@ -140,20 +138,16 @@
 | R48 | 330Ω  | 5%        | LED7 (status LED)     |
 | R49 | 100Ω  | 5%        | Buzzer series         |
 
-#### Communication Interface Protection (R40-R47)
+#### Communication Interface Protection (R40-R41, R44)
 
 | Ref  | Value | Tolerance | Function                                                         |
 | ---- | ----- | --------- | ---------------------------------------------------------------- |
-| R40  | 33Ω   | 5%        | ESP32 UART TX series (ESD/ringing protection) + TVS (D_UART_TX)  |
-| R41  | 33Ω   | 5%        | ESP32 UART RX series (ESD/ringing protection) + TVS (D_UART_RX)  |
-| R42  | 33Ω   | 5%        | Service port TX series (ESD/ringing protection, shared with J15) |
-| R43  | 33Ω   | 5%        | Service port RX series (ESD/ringing protection, shared with J15) |
-| R44  | 33Ω   | 5%        | Power meter TX series                                            |
+| R40  | 1kΩ   | 5%        | ESP32 UART TX series (5V tolerance protection) + TVS (D_UART_TX)  |
+| R41  | 1kΩ   | 5%        | ESP32 UART RX series (5V tolerance protection) + TVS (D_UART_RX)  |
+| R44  | 1kΩ   | 5%        | Power meter TX series (5V tolerance protection)                   |
 | R45  | 2.2kΩ | 1%        | J17 RX level shift (upper)                                       |
 | R45A | 3.3kΩ | 1%        | J17 RX level shift (lower)                                       |
 | R45B | 33Ω   | 5%        | J17 RX series (post-divider)                                     |
-| R46  | 4.7kΩ | 5%        | I2C SDA pull-up                                                  |
-| R47  | 4.7kΩ | 5%        | I2C SCL pull-up                                                  |
 
 #### Control Signal Pull-ups (R71, R73)
 
@@ -270,9 +264,7 @@
 | Ref | Type              | Pins | Function                                      |
 | --- | ----------------- | ---- | --------------------------------------------- |
 | J15 | JST-XH 2.54mm     | 8    | ESP32 display + brew-by-weight                |
-| J16 | Pin header 2.54mm | 4    | Service/debug port (UART)                     |
 | J17 | JST-XH 2.54mm     | 6    | Power meter interface (LV)                    |
-| J23 | Pin header 2.54mm | 4    | I2C accessory port                            |
 | J24 | Screw terminal    | 2    | Power meter HV input (L, N only - PE removed) |
 | J26 | Screw terminal    | 18   | Unified LV terminal (sensors, SSRs)           |
 

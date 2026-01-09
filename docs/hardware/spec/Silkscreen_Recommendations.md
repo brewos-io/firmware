@@ -96,19 +96,6 @@ Use dual-row labeling: pin numbers above, function labels below.
 
 ---
 
-### J16 - Service/Debug Port (4-pin)
-
-| Pin | Label |
-| --- | ----- |
-| 1   | 3V3   |
-| 2   | G     |
-| 3   | TX    |
-| 4   | RX    |
-
-**Warning label:** Add "⚠ UNPLUG J15 TO FLASH" near connector
-
----
-
 ### J17 - Power Meter Interface (6-pin JST-XH)
 
 | Pin | Label |
@@ -122,16 +109,6 @@ Use dual-row labeling: pin numbers above, function labels below.
 
 ---
 
-### J23 - I2C Accessory Port (4-pin)
-
-| Pin | Label |
-| --- | ----- |
-| 1   | 3V3   |
-| 2   | G     |
-| 3   | SDA   |
-| 4   | SCL   |
-
----
 
 ### J5 - Chassis Reference (SRif) - 6.3mm Spade
 
@@ -257,8 +234,8 @@ Label critical test points for debugging:
 | TP6        | ADC0     | Brew NTC Signal (GPIO26)         | 0.5-2.5V       | Brew temp ADC            |
 | TP7        | ADC1     | Steam NTC Signal (GPIO27)        | 0.5-2.5V       | Steam temp ADC           |
 | TP8        | ADC2     | Pressure Signal (GPIO28)         | 0.32-2.88V     | Pressure ADC             |
-| TP9        | UART0_TX | Serial Debug TX (GPIO0)          | 3.3V idle      | Near J15/J16             |
-| TP10       | UART0_RX | Serial Debug RX (GPIO1)          | 3.3V idle      | Near J15/J16             |
+| TP9        | UART0_TX | ESP32 TX (GPIO0)                | 3.3V idle      | Near J15                 |
+| TP10       | UART0_RX | ESP32 RX (GPIO1)                | 3.3V idle      | Near J15                 |
 | TP11       | RS485_DE | RS485 Direction Control (GPIO20) | 0V/3.3V        | Near U8 (MAX3485)        |
 
 **Note:** Power rail test points (TP1-TP3) should be clearly labeled near power connectors for easy access during testing.
@@ -289,7 +266,7 @@ Create clear visual separation between high and low voltage areas:
 - Minimum 6mm creepage distance (label "CREEPAGE" or "MILLED SLOT" in gap area)
 - **Milled slot** must be visible on silkscreen (physical cutout between HV and LV sections)
 
-**Low Voltage Zone:** J5, J15, J16, J17, J23, J26
+**Low Voltage Zone:** J5, J15, J17, J26
 
 - Add "LOW VOLTAGE ZONE (5V/3.3V)" label
 - Add note near J5: "SRif - Chassis Reference (NOT Protective Earth)"
@@ -306,9 +283,7 @@ Create clear visual separation between high and low voltage areas:
 | J4         | Spade     | 1     | Relay K3 (Solenoid)          | Solenoid valve                     |
 | **J5**     | **Spade** | **1** | **Chassis Reference (SRif)** | **Connect to chassis/boiler bolt** |
 | J15        | JST-XH    | 8     | ESP32 display + SWD          | SWD on Pins 6/8 (factory flash)    |
-| J16        | Header    | 4     | Service/Debug UART           | Shared GPIO0/1 with J15            |
 | J17        | JST-XH    | 6     | Power meter interface        | TTL/RS485 selectable               |
-| J23        | Header    | 4     | I2C accessories              | GPIO8/9 (SDA/SCL)                  |
 | J24        | Screw     | **2** | Meter HV passthrough (L, N)  | **PE removed - HV floating**       |
 | J26        | Screw     | 18    | Unified LV terminal          | All sensors + SSR control          |
 

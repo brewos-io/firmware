@@ -130,26 +130,6 @@ The ESP32-S3 module **MUST** use an external antenna connected via u.FL/IPEX con
 
 ---
 
-## Service/Debug Port (J16)
-
-4-pin header for debug access. **Shares UART0 with J15 (ESP32).**
-
-| Pin | Signal     | Notes                                |
-| --- | ---------- | ------------------------------------ |
-| 1   | +3.3V      | 3.3V power                           |
-| 2   | GND        | Ground                               |
-| 3   | SERVICE_TX | GPIO0 via 1kΩ (R42, shared with J15) |
-| 4   | SERVICE_RX | GPIO1 via 1kΩ (R43, shared with J15) |
-
-**⚠️ Disconnect ESP32 cable when using service port for flashing!**
-
-**Protection:**
-
-- R42/R43: 1kΩ series resistors for 5V tolerance protection (shared with J15)
-- D23/D24: BZT52C3V3 Zener clamps for 5V TTL adapter overvoltage safety
-
----
-
 ## USB-C Programming Port (J_USB)
 
 USB-C connector for direct RP2354 programming and debugging via USB.
@@ -223,19 +203,6 @@ J17 Pin 4 (5V input) ──► R45 (2.2kΩ) ──► J17_DIV ──► R45A (3.
 - **5V Input:** V_out = 5V × R45A/(R45+R45A) = 5V × 3.3k/(2.2k+3.3k) = 3.0V ✓
 - **3.3V Input:** When JP3 is CLOSED, the divider is bypassed for 3.3V logic meters
 - **Series Protection:** R45B (33Ω) provides additional ESD/ringing protection after the divider
-
----
-
-## I2C Accessory Port (J23)
-
-4-pin header for I2C accessories (OLED display, EEPROM, etc.).
-
-| Pin | Signal   | Notes                    |
-| --- | -------- | ------------------------ |
-| 1   | +3.3V    | 3.3V power               |
-| 2   | GND      | Ground                   |
-| 3   | I2C0_SDA | GPIO8 with 4.7kΩ pull-up |
-| 4   | I2C0_SCL | GPIO9 with 4.7kΩ pull-up |
 
 ---
 

@@ -29,8 +29,6 @@ D16,Schottky_Diode,BAT54S,SOT-23,A1=GPIO28,A2=GND,K=+3.3V,Pressure ADC2 overvolt
 D_PRESSURE,TVS_Diode,PESD3V3S1BL,SOD-323,A=GND,K=GPIO28,,Pressure ADC2 hard clamp (3.3V TVS, low-leakage, parallel to D16 for redundant protection)
 D20,TVS_Diode,SMBJ5.0A,SMB,A=GND,K=+5V,,5V rail protection
 D21,TVS_Diode,SM712,SOT-23,1=RS485_A,2=GND,3=RS485_B,RS485 A/B line surge protection (-7V to +12V asymmetric)
-D23,Zener_Diode,BZT52C3V3,SOD-123,A=GND,K=J16_3,,Service port TX 3.3V clamp (protects from 5V TTL adapters)
-D24,Zener_Diode,BZT52C3V3,SOD-123,A=GND,K=J16_4,,Service port RX 3.3V clamp (protects from 5V TTL adapters)
 D_UART_TX,TVS_Diode,ESDALC6V1,SOD-323,A=GND,K=J15_3,,UART TX ESD protection (near J15 connector)
 D_UART_RX,TVS_Diode,ESDALC6V1,SOD-323,A=GND,K=J15_4,,UART RX ESD protection (near J15 connector)
 LED1,LED,Green_0805,0805,A=LED1_A,K=K1_COIL,,K1 indicator (parallel with relay coil)
@@ -78,14 +76,10 @@ R34,Resistor,330R,0805,1=GPIO13,2=LED5_A,,SSR1 LED current limit (logic side)
 R35,Resistor,330R,0805,1=GPIO14,2=LED6_A,,SSR2 LED current limit (logic side)
 R40,Resistor,1k,0805,1=GPIO0,2=J15_3,,UART0 TX series (5V tolerance protection, limits fault current to <500µA)
 R41,Resistor,1k,0805,1=GPIO1,2=J15_4,,UART0 RX series (5V tolerance protection, limits fault current to <500µA)
-R42,Resistor,1k,0805,1=GPIO0,2=J16_3,,Service TX (shared with J15 GPIO0, 5V tolerance protection)
-R43,Resistor,1k,0805,1=GPIO1,2=J16_4,,Service RX (shared with J15 GPIO1, 5V tolerance protection)
 R44,Resistor,1k,0805,1=GPIO6,2=U8_DI,,PZEM/RS485 TX series (5V tolerance protection, to MAX3485 DI)
 R45,Resistor,2.2k_1%,0805,1=J17_RX,2=J17_DIV,,J17 RX 5V→3.3V level shifter (upper divider)
 R45A,Resistor,3.3k_1%,0805,1=J17_DIV,2=GND,,J17 RX 5V→3.3V level shifter (lower divider)
 R45B,Resistor,33R,0805,1=J17_DIV,2=GPIO7,,J17 RX series protection (after divider)
-R46,Resistor,4.7k,0805,1=+3.3V,2=GPIO8,,I2C0 SDA pull-up
-R47,Resistor,4.7k,0805,1=+3.3V,2=GPIO9,,I2C0 SCL pull-up
 R48,Resistor,330R,0805,1=GPIO15,2=LED7_A,,Status LED current limit
 R49,Resistor,100R,0805,1=GPIO19,2=BZ1,,Buzzer series
 R71,Resistor,10k,0805,1=+3.3V,2=RP2354_RUN,,RP2354 RUN pull-up
@@ -163,10 +157,8 @@ J4,Connector,Terminal_2pos,6.3mm_Spade,1=J4_COM,2=J4_NO,,K3 output (Solenoid)
 J5,Connector,Terminal_1pos,6.3mm_Spade,1=J5,Chassis Reference (SRif) - connects to PCB GND via C-R network (R_SRif + C_SRif parallel)
 J15,Connector,JST-XH_8pos,2.54mm,1=+5V,2=GND,3=RP2354_TX,4=RP2354_RX,5=J15_RUN,6=SWDIO,7=WEIGHT_STOP,8=SWCLK,ESP32 display (v2.31: SWD on dedicated pins 6/8, not GPIO16/22) - Pin 5 via R_RUN_EXT to prevent short-circuit with SW1
 R_RUN_EXT,Resistor,1k,0805,1=J15_5,2=RP2354_RUN,,Series resistor for external reset (prevents short-circuit when SW1 pressed while ESP32 drives HIGH, limits current to ~3.3mA)
-J16,Connector,Header_4pos,2.54mm,1=+3.3V,2=GND,3=SERVICE_TX,4=SERVICE_RX,Service/debug (shared GPIO0/1 with J15)
 J17,Connector,JST-XH_6pos,2.54mm,1=+3.3V,2=+5V,3=GND,4=J17_RX,5=J17_TX,6=RS485_DERE,Power meter interface (TTL/RS485) - 6-pin per v2.21 spec
 J20,Connector,Header_2x20,2.54mm,,,,"Pico socket"
-J23,Connector,Header_4pos,2.54mm,1=+3.3V,2=GND,3=I2C0_SDA,4=I2C0_SCL,I2C accessory port (GPIO8/9)
 J24,Connector,Screw_2pos,5.08mm,1=L_FUSED,2=N,External power meter HV input (L/N only - PE removed, HV section floating)
 J26,Connector,Screw_18pos,5.08mm,1=GPIO2,2=GND,3=GPIO3,4=GND,5=PROBE,6=GPIO5,7=GND,8=ADC0,9=GND,10=ADC1,11=GND,12=+5V,13=GND,14=PRESS_SIG,15=+5V,16=SSR1_NEG,17=+5V,18=SSR2_NEG,Unified LV terminal 18-pos (switches + NTCs + pressure + SSRs)
 J_USB,Connector,USB-C_2.0,USB-C,1=VBUS,2=USB_DP_CONN,3=USB_DM_CONN,4=GND,5=CC1,6=CC2,RP2354 USB-C programming/debug port (VBUS→VSYS via F_USB/D_VBUS, D+/D- to RP2354 USB pins via R_USB_DP/DM)

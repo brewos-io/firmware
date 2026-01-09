@@ -47,7 +47,7 @@ All 9 schematic sheets are embedded in the [Schematic Reference](schematics/Sche
 | 3 - [Relay Drivers](schematics/SCH_Schematic1_3-Relay%20Drivers_2025-12-22.png)                                            | K1-K3 driver circuits                          |
 | 4 - [SSR Drivers](schematics/SCH_Schematic1_4-SSR%20Drivers_2025-12-22.png)                                                | Heater SSR triggers                            |
 | 5 - [Sensor Inputs](schematics/SCH_Schematic1_5-Sensor%20Inputs_2025-12-22.png)                                            | NTC, pressure, level probe                     |
-| 6 - [Communication](schematics/SCH_Schematic1_6-Communication%20Interfaces_2025-12-22.png)                                 | ESP32, RS485, debug port                       |
+| 6 - [Communication](schematics/SCH_Schematic1_6-Communication%20Interfaces_2025-12-22.png)                                 | ESP32, RS485                                  |
 | 7 - [User Interface](schematics/SCH_Schematic1_7-User%20Interface_2025-12-22.png)                                          | LEDs, buzzer, reset                            |
 | 8 - [Power Metering](schematics/SCH_Schematic1_8-Power%20Metering%20%28Universal%20External%20Interface%29_2025-12-22.png) | External meter interface                       |
 | 9 - [Protection](schematics/SCH_Schematic1_9-Protection%20%26%20Filtering_2025-12-22.png)                                  | TVS, ESD, filtering                            |

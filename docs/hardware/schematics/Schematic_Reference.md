@@ -61,7 +61,7 @@ NTC thermistors, pressure transducer, level probe
 
 ### Sheet 6: Communication Interfaces
 
-ESP32, RS485, service port, I2C
+ESP32, RS485
 
 ![Communication Interfaces Schematic](SCH_Schematic1_6-Communication%20Interfaces_2025-12-22.png)
 
@@ -487,8 +487,8 @@ pull-up resistors. An op-amp buffer (U9A) provides the current drive capability.
     GP5  = Brew Handle Switch                 GP21 = WEIGHT_STOP ← ESP32 GPIO19/6 (J15-7, screen/noscreen variant)
     GP6  = Meter TX (UART1)                   GP20 = RS485 DE/RE
     GP7  = Meter RX (UART1)                   GP19 = Buzzer (PWM)
-    GP8  = I2C0 SDA (Accessory)               GP18 = SPI_SCK (available)
-    GP9  = I2C0 SCL (Accessory)               GP17 = SPI_CS (available)
+    GP8  = Available                           GP18 = SPI_SCK (available)
+    GP9  = Available                           GP17 = SPI_CS (available)
     GP10 = Relay K1 (Lamp)                    GP16 = AVAILABLE (v2.31: disconnected from J15, SWD moved to dedicated pins)
     GP11 = Relay K2 (Pump)                    GP15 = Status LED
     GP12 = Relay K3 (Solenoid)                GP14 = SSR2 (Steam)
@@ -558,7 +558,7 @@ pull-up resistors. An op-amp buffer (U9A) provides the current drive capability.
                │                                              ┌────┴────┐
           ┌────┴────┐                                         │   LED   │
           │  D1/2/3 │ ◄── Flyback diode                       │  Green  │
-          │ 1N4007  │                                         │ LED1-3  │
+          │ UF4007  │    (protects transistor from coil spike)│ LED1-3  │
           └────┬────┘                                         └────┬────┘
                │                                                   │
                └───────────────────────┬───────────────────────────┤
@@ -1645,84 +1645,13 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     R73:       4.7kΩ 5%, 0805 (WEIGHT_STOP pull-down, RP2350 E9)
     R_SWDIO:   47Ω 5%, 0805 (SWDIO series protection, J15 Pin 6)
     R_SWCLK:   47Ω 5%, 0805 (SWCLK series protection, J15 Pin 8)
-    
+
     **Note:** SWD lines (SWDIO/SWCLK) use dedicated pins and do NOT require pull-down resistors.
     The RP2350 E9 errata affects GPIO inputs only, not the dedicated Debug Port interface.
     C13:       100µF 10V, Electrolytic (ESP32 power decoupling)
 
     **Note:** R74 and R75 are DNP (Do Not Populate) in v2.31 - GPIO16/22 are no longer used for SWD.
 ```
-
-## 6.2 Service/Debug Port
-
-```
-                        SERVICE/DEBUG PORT
-    ════════════════════════════════════════════════════════════════════════════
-
-    J16: 4-pin 2.54mm header
-
-                            +3.3V
-                              │
-    J16 Pin 1 (3V3) ──────────┴───────────────────────────────────────────────
-
-    J16 Pin 2 (GND) ──────────────────────────────────────────────────── GND
-
-    SERVICE PORT (J16) - Shared with ESP32 on GPIO0/1:
-    ─────────────────────────────────────────────────
-    ⚠️ DISCONNECT ESP32 (J15) BEFORE USING SERVICE PORT
-
-                                    ┌────┐
-    GPIO0 ──────────────────────────┤ 33Ω├──┬──────────────── J15 Pin 3 (ESP32 RX)
-    (UART0_TX)                      │R42 │  │ (33Ω ESD/ringing protection)
-                                    └────┘  ├──────────────── J16 Pin 3 (Service TX)
-                                            │
-                                       ┌────┴────┐
-                                       │  D23    │  3.3V Zener
-                                       │BZT52C3V3│
-                                       └────┬────┘
-                                           ─┴─
-                                           GND
-
-                                    ┌────┐
-    GPIO1 ◄─────────────────────────┤ 33Ω├──┬──────────────── J15 Pin 4 (ESP32 TX)
-    (UART0_RX)                      │R43 │  │ (33Ω ESD/ringing protection)
-                                    └────┘  ├──────────────── J16 Pin 4 (Service RX)
-                                            │
-                                       ┌────┴────┐
-                                       │  D24    │  3.3V Zener
-                                       │BZT52C3V3│
-                                       └────┬────┘
-                                           ─┴─
-                                           GND
-
-    I2C ACCESSORY PORT (J23) - GPIO8/9:
-    ────────────────────────────────────
-                  3.3V
-                   │
-            ┌──────┴──────┐
-         [4.7kΩ]       [4.7kΩ]
-          R50           R51
-            │             │
-    GPIO8 ──┴─────────────┼─────────────── J23 Pin 3 (SDA)
-    (I2C0_SDA)            │
-    GPIO9 ────────────────┴─────────────── J23 Pin 4 (SCL)
-    (I2C0_SCL)
-
-    Configuration:
-    ──────────────
-    Default baud rate: 115200, 8N1
-
-    Component Values:
-    ─────────────────
-    R42:  33Ω 5%, 0805 (Service TX series - ESD/ringing protection, shared with J15)
-    R43:  33Ω 5%, 0805 (Service RX series - ESD/ringing protection, shared with J15)
-    D23:  BZT52C3V3 3.3V Zener, SOD-123 (TX overvoltage clamp)
-    D24:  BZT52C3V3 3.3V Zener, SOD-123 (RX overvoltage clamp)
-
-    Silkscreen: "3V3 GND TX RX" or "DEBUG"
-```
-
----
 
 # Sheet 7: User Interface
 
@@ -2402,8 +2331,8 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
     GPIO5  → BREW_SW (J26-6, S4)
     GPIO6  → METER_TX (UART to meter RX / RS485 DI, J17-5)
     GPIO7  → METER_RX (UART from meter TX / RS485 RO, J17-4)
-    GPIO8  → I2C0_SDA (J23-3, with 4.7kΩ pull-up)
-    GPIO9  → I2C0_SCL (J23-4, with 4.7kΩ pull-up)
+    GPIO8  → Available (unused)
+    GPIO9  → Available (unused)
     GPIO10 → K1_DRIVE (relay coil, output to J2 spade - 220V)
     GPIO11 → K2_DRIVE (relay coil, output to J3 spade - 220V)
     GPIO12 → K3_DRIVE (relay coil, output to J4 spade - 220V)

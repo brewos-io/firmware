@@ -73,18 +73,6 @@
 │  │  └── SWCLK (Dedicated Pin) ↔── ESP32 RX2 (J15 Pin 8, SWD interface)     │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────────────────┐  │
-│  │  SERVICE/DEBUG PORT (4-pin header) - Shared with ESP32 on GPIO0/1       │  │
-│  │  ├── GPIO0 (UART0 TX) ─── J15 (ESP32) + J16 (Service) - 33Ω + TVS protected  │  │
-│  │  └── GPIO1 (UART0 RX) ─── J15 (ESP32) + J16 (Service) - 33Ω + TVS protected  │  │
-│  │  ⚠️ Disconnect ESP32 cable when using service port for flashing         │  │
-│  └─────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────────────────┐  │
-│  │  I2C0 - ACCESSORY PORT (4-pin header)                                   │  │
-│  │  ├── GPIO8 (I2C0 SDA) ─── Accessory data (4.7kΩ pull-up)               │  │
-│  │  └── GPIO9 (I2C0 SCL) ─── Accessory clock (4.7kΩ pull-up)              │  │
-│  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
 │  │  USER INTERFACE                                                          │  │
@@ -114,7 +102,8 @@
 │  │  └── RUN Pin ─── Reset Button (SMD tactile, to GND)                    │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
-│  GPIO UTILIZATION: 26/30 used (GPIO16,22,23,24,25 available)                    │
+│  GPIO UTILIZATION: 22/30 used (GPIO8,9,16,22,23,24,25 available)              │
+│  ✅ GPIO8,9: NOW AVAILABLE (I2C accessory port removed)                      │
 │  ✅ GPIO16,22: NOW AVAILABLE (disconnected from J15, traces to SWD)          │
 │  ✅ GPIO23-25: NOW AVAILABLE (previously internal to Pico module)            │
 │  ✅ GPIO29: ADC3 - 5V_MONITOR (ratiometric pressure compensation)            │
@@ -134,8 +123,8 @@
 | 5      | Brew Handle Switch              | Input     | Digital     | Internal PU   | ESD clamp                                          |
 | 6      | Meter TX (UART1)                | Output    | Digital     | None          | 1kΩ series R44 (5V tolerance protection)           |
 | 7      | Meter RX (UART1)                | Input     | Digital     | None          | 5V→3.3V divider (R45/R45A) + 33Ω R45B (ESD/ringing protection) |
-| 8      | I2C0 SDA (Accessory)            | I/O       | Digital     | 4.7kΩ ext. PU | Accessory expansion                                |
-| 9      | I2C0 SCL (Accessory)            | Output    | Digital     | 4.7kΩ ext. PU | Accessory expansion                                |
+| 8      | **Available**                   | **I/O**   | **Digital** | **None**      | **Unused GPIO**                                    |
+| 9      | **Available**                   | **I/O**   | **Digital** | **None**      | **Unused GPIO**                                    |
 | 10     | Relay K1 + LED                  | Output    | Digital     | None          | -                                                  |
 | 11     | Relay K2 + LED                  | Output    | Digital     | None          | -                                                  |
 | 12     | Relay K3 + LED                  | Output    | Digital     | None          | -                                                  |

@@ -64,7 +64,7 @@
 
 ### Connector Placement Exception
 
-Connectors (J1-J5, J15-J17, J24, J26) may be placed at the board edge, but:
+Connectors (J1-J5, J15, J17, J24, J26) may be placed at the board edge, but:
 
 - **Connector body:** May extend to or slightly beyond board edge
 - **Connector pads:** Must maintain ≥2mm clearance from board edge
@@ -98,8 +98,7 @@ When generating Gerber files, ensure DRC rules include:
 
 If all connectors cannot fit on the bottom edge:
 
-- **Bottom edge:** All HV connectors (J1-J4, J24) + J26 (sensor screw terminal) + J5 (SRif)
-- **One side edge:** LV JST connectors (J15, J17)
+- **Bottom edge:** All HV connectors (J1-J4, J24) + J26 (sensor screw terminal) + J5 (SRif) + J15 (ESP32) + J17 (Power meter)
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -136,10 +135,10 @@ If all connectors cannot fit on the bottom edge:
 │   └─────────┘  └────────┘  └─────────────────────────────────────────────┘ │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-  ║   ║   ║   ║   ║       ║         ║                    ║          ║
- J1  J2  J3  J4  J24     J26       J15                  J17        J16
- L/N LED PMP SOL MTR-HV SENSORS   ESP32              METER-LV    DEBUG
- ↑_____↑___↑___↑___↑______↑________↑___________________↑___________↑
+  ║   ║   ║   ║   ║       ║         ║                    ║
+ J1  J2  J3  J4  J24     J26       J15                  J17
+ L/N LED PMP SOL MTR-HV SENSORS   ESP32              METER-LV
+ ↑_____↑___↑___↑___↑______↑________↑___________________↑
                     ALL CONNECTORS ON BOTTOM EDGE
 ```
 
@@ -284,11 +283,11 @@ If cost constraints require 2-layer, the following stackup is acceptable but wit
 │    │        SLOT         ║                                                │   │
 │    ════════════════════════════════════════════════════════════════════════    │
 │    BOTTOM EDGE - ALL CONNECTORS (enclosure opening)                             │
-│    ┌───┬───┬───┬───┬─────┬──────────────────┬────────┬────────┬──────┬────┬──────┐ │
-│    │J1 │J2 │J3 │J4 │ J24 │       J26        │  J15   │  J17   │ J16  │ J5 │J_USB │ │
-│    │L/N│LED│PMP│SOL│MTR  │    SENSORS       │ ESP32  │ METER  │DEBUG │SRif│ USB-C│ │
-│    │   │   │   │   │ HV  │    (18-pos)      │(8-pin) │(6-pin) │(4pin)│    │      │ │
-│    └───┴───┴───┴───┴─────┴──────────────────┴────────┴────────┴──────┴────┴──────┘ │
+│    ┌───┬───┬───┬───┬─────┬──────────────────┬────────┬────────┬────┬──────┐ │
+│    │J1 │J2 │J3 │J4 │ J24 │       J26        │  J15   │  J17   │ J5 │J_USB │ │
+│    │L/N│LED│PMP│SOL│MTR  │    SENSORS       │ ESP32  │ METER  │SRif│ USB-C│ │
+│    │   │   │   │   │ HV  │    (18-pos)      │(8-pin) │(6-pin) │    │      │ │
+│    └───┴───┴───┴───┴─────┴──────────────────┴────────┴────────┴────┴──────┘ │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -326,7 +325,7 @@ J17─┤            │
      BOTTOM (HV + Sensors)
 ```
 
-**Rule:** HV connectors (J1-J4, J24) MUST be on bottom edge. LV connectors (J15, J17) may move to left edge if required.
+**Rule:** HV connectors (J1-J4, J24) MUST be on bottom edge. LV connectors (J15, J17) should be on bottom edge if space allows, otherwise may move to left edge.
 
 ---
 

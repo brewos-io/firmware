@@ -19,7 +19,7 @@ This specification defines a custom control PCB to replace the factory GICAR con
 | Connectivity        | ESP32 display module for WiFi, MQTT, Web API       |
 | Power Monitoring    | Total machine power consumption metering           |
 | User Feedback       | Status LEDs, buzzer for alerts                     |
-| Serviceability      | Debug port, accessible test points                 |
+| Serviceability      | Accessible test points                             |
 
 ## System Architecture
 
@@ -145,8 +145,6 @@ This specification defines a custom control PCB to replace the factory GICAR con
 | Interface | Type       | Purpose                               | Connector |
 | --------- | ---------- | ------------------------------------- | --------- |
 | ESP32     | UART0      | Display module, WiFi, user interface  | J15       |
-| Service   | UART0      | Debug/programming (shared with ESP32) | J16       |
-| I2C       | I2C0       | Accessory expansion                   | J23       |
 | Meter     | UART/RS485 | External power meter communication    | J17       |
 
 ### User Interface (Onboard)

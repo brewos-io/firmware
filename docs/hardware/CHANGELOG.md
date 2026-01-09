@@ -111,35 +111,62 @@ ESP32 firmware MUST support SWD flashing (porting a DAP implementation) as this 
 
 **Recommendation:** Implement SWD wiring on PCB **now**. It costs nothing and enables factory flash capability.
 
-#### 7. Reset Button
+#### 7. Connector Removal
+
+**Removed Connectors:**
+
+| Connector | Previous Function                 | Reason for Removal                                                       |
+| --------- | --------------------------------- | ------------------------------------------------------------------------ |
+| **J16**   | Service/Debug Port (4-pin header) | Redundant with J15 ESP32 interface. UART0 is already accessible via J15. |
+| **J23**   | I2C Accessory Port (4-pin header) | Unused in production design. GPIO8/9 now available for future expansion. |
+
+**Removed Components:**
+
+- **D23, D24:** BZT52C3V3 Zener clamps (service port protection)
+- **R42, R43:** 1kΩ series resistors (service port UART lines, shared with J15)
+- **R46, R47:** 4.7kΩ pull-up resistors (I2C SDA/SCL)
+
+**Impact:**
+
+- **GPIO8, GPIO9:** Now available for future expansion
+- **Simplified BOM:** Removes 6 components (2 connectors + 4 passives)
+- **Reduced PCB complexity:** Fewer connectors to route and place
+
+#### 8. Reset Button
 
 Keep `SW1` from BOM, but ensure it pulls the RP2354 `RUN` pin to ground (same as Pico 2).
 
-#### 8. 5V Tolerance Protection
+#### 9. 5V Tolerance Protection
 
 **CRITICAL:** The RP2354 GPIOs are **NOT 5V tolerant** (and fail safely only if IOVDD is powered). Ensure current limiting resistors (`R40`, `R41`, etc.) are kept in the new layout to protect the chip from 5V peripherals (relay drivers, external sensors).
 
 ### BOM Impact
 
-| Change Type                    | Count   | Est. Cost Impact                   |
-| ------------------------------ | ------- | ---------------------------------- |
-| MCU change (module → chip)     | 1       | **-$2-3** (module premium removed) |
-| New components (crystal, caps) | ~10     | **+$1.00**                         |
-| Removed (J20 socket)           | 1       | **-$0.50**                         |
-| **Total BOM Δ**                | **~11** | **~-$1.50 savings**                |
+| Change Type                            | Count   | Est. Cost Impact                   |
+| -------------------------------------- | ------- | ---------------------------------- |
+| MCU change (module → chip)             | 1       | **-$2-3** (module premium removed) |
+| New components (crystal, caps)         | ~10     | **+$1.00**                         |
+| Removed (J20 socket)                   | 1       | **-$0.50**                         |
+| Removed (J16, J23 connectors)          | 2       | **-$0.20**                         |
+| Removed (D23, D24, R42, R43, R46, R47) | 6       | **-$0.15**                         |
+| **Total BOM Δ**                        | **~19** | **~-$1.85 savings**                |
 
 ### Files Modified
 
-| File                         | Changes                                                                      |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| `spec/07-BOM.md`             | Replaced Pico 2 module with RP2354, added crystal, inductor, decoupling caps |
-| `spec/02-GPIO-Allocation.md` | Updated MCU spec, noted GPIO23-29 now available                              |
-| `spec/03-Power-Supply.md`    | Added RP2354 power architecture (VREG, DVDD, IOVDD)                          |
-| `spec/06-Connectors.md`      | Updated J15 for SWD, removed J20                                             |
-| `spec/08-PCB-Layout.md`      | Updated footprint requirements                                               |
-| `spec/01-Overview.md`        | Updated MCU specification to RP2354                                          |
-| `README.md`                  | Updated version and MCU reference                                            |
-| `CHANGELOG.md`               | This entry                                                                   |
+| File                                      | Changes                                                                                                                      |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `spec/07-BOM.md`                          | Replaced Pico 2 module with RP2354, added crystal, inductor, decoupling caps; removed J16, J23, D23, D24, R42, R43, R46, R47 |
+| `spec/02-GPIO-Allocation.md`              | Updated MCU spec, noted GPIO8,9,16,22,23-29 now available                                                                    |
+| `spec/03-Power-Supply.md`                 | Added RP2354 power architecture (VREG, DVDD, IOVDD)                                                                          |
+| `spec/06-Connectors.md`                   | Updated J15 for SWD, removed J16, J23, and J20                                                                               |
+| `spec/08-PCB-Layout.md`                   | Updated footprint requirements, removed J16/J23 from layout diagrams                                                         |
+| `spec/01-Overview.md`                     | Updated MCU specification to RP2354, removed J16/J23 from interfaces                                                         |
+| `schematics/netlist.csv`                  | Removed J16, J23, D23, D24, R42, R43, R46, R47 entries                                                                       |
+| `schematics/Schematic_Reference.md`       | Removed Service/Debug Port and I2C Accessory Port sections                                                                   |
+| `schematics/Component_Reference_Guide.md` | Removed J16, J23, D23, D24, R42, R43, R46, R47 references                                                                    |
+| `spec/Silkscreen_Recommendations.md`      | Removed J16 and J23 silkscreen sections                                                                                      |
+| `README.md`                               | Updated version and MCU reference                                                                                            |
+| `CHANGELOG.md`                            | This entry                                                                                                                   |
 
 ### Design Verdict
 
