@@ -619,13 +619,15 @@ void LogManager::loop() {
     
     unsigned long now = millis();
     
-    // Auto-save every 30 seconds
+    // Auto-save every 30 seconds normally
     const unsigned long AUTO_SAVE_INTERVAL_MS = 30000;  // 30 seconds
+    // Minimum interval between saves even if full (prevents loop blocking)
+    const unsigned long MIN_SAVE_INTERVAL_MS = 5000;  // 5 seconds minimum
     
-    // Check if buffer is 50% full (trigger immediate save)
+    // Check if buffer is 50% full
     bool bufferNearlyFull = false;
     if (_wrapped) {
-        // Buffer is full, always save
+        // Buffer is full
         bufferNearlyFull = true;
     } else {
         // Check if buffer is 50% full
@@ -633,16 +635,29 @@ void LogManager::loop() {
         bufferNearlyFull = (fillPercent >= 50);
     }
     
-    // Check if it's time to save (time-based or buffer full)
+    // Determine if we should save
     bool shouldSave = false;
-    if (bufferNearlyFull) {
-        shouldSave = true;
-    } else if (_lastSaveTime == 0) {
-        // First time, initialize save time (don't save immediately)
+    
+    // If never saved, just initialize timer
+    if (_lastSaveTime == 0) {
         _lastSaveTime = now;
         return;
-    } else if (now - _lastSaveTime >= AUTO_SAVE_INTERVAL_MS) {
-        shouldSave = true;
+    }
+    
+    // Calculate time since last save
+    unsigned long timeSinceSave = now - _lastSaveTime;
+    
+    if (bufferNearlyFull) {
+        // If full, save more frequently but NOT every loop
+        // Enforce minimum interval to prevent blocking
+        if (timeSinceSave >= MIN_SAVE_INTERVAL_MS) {
+            shouldSave = true;
+        }
+    } else {
+        // Normal auto-save interval
+        if (timeSinceSave >= AUTO_SAVE_INTERVAL_MS) {
+            shouldSave = true;
+        }
     }
     
     if (shouldSave && _size > 0) {
@@ -652,6 +667,8 @@ void LogManager::loop() {
             // Log the save (but don't use LOG macros to avoid recursion)
             // Just update the timestamp, user can see it in the logs
         }
+        // Note: if save fails, we naturally retry next loop 
+        // because _lastSaveTime wasn't updated
     }
 }
 
