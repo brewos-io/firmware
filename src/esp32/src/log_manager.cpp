@@ -619,56 +619,28 @@ void LogManager::loop() {
     
     unsigned long now = millis();
     
-    // Auto-save every 30 seconds normally
-    const unsigned long AUTO_SAVE_INTERVAL_MS = 30000;  // 30 seconds
-    // Minimum interval between saves even if full (prevents loop blocking)
-    const unsigned long MIN_SAVE_INTERVAL_MS = 5000;  // 5 seconds minimum
+    // SAVE INTERVAL: 60 seconds
+    // Writing 50KB to flash takes ~1.2s and blocks the CPU.
+    // For a circular buffer, being full is the normal steady state.
+    // We don't need aggressive saving - periodic saves are sufficient.
+    const unsigned long AUTO_SAVE_INTERVAL_MS = 60000;  // 60 seconds
     
-    // Check if buffer is 50% full
-    bool bufferNearlyFull = false;
-    if (_wrapped) {
-        // Buffer is full
-        bufferNearlyFull = true;
-    } else {
-        // Check if buffer is 50% full
-        size_t fillPercent = (_head * 100) / LOG_BUFFER_SIZE;
-        bufferNearlyFull = (fillPercent >= 50);
-    }
-    
-    // Determine if we should save
-    bool shouldSave = false;
-    
-    // If never saved, just initialize timer
+    // Initialize timer on first run
     if (_lastSaveTime == 0) {
         _lastSaveTime = now;
         return;
     }
     
-    // Calculate time since last save
-    unsigned long timeSinceSave = now - _lastSaveTime;
-    
-    if (bufferNearlyFull) {
-        // If full, save more frequently but NOT every loop
-        // Enforce minimum interval to prevent blocking
-        if (timeSinceSave >= MIN_SAVE_INTERVAL_MS) {
-            shouldSave = true;
+    // Only save periodically - don't check buffer fill level
+    // A wrapped buffer is normal for circular logging and doesn't require emergency saves
+    if (now - _lastSaveTime >= AUTO_SAVE_INTERVAL_MS) {
+        if (_size > 0) {
+            // Save to flash (non-blocking, uses mutex with timeout)
+            if (saveToFlash()) {
+                _lastSaveTime = now;
+            }
+            // If save fails, we'll try again next interval
         }
-    } else {
-        // Normal auto-save interval
-        if (timeSinceSave >= AUTO_SAVE_INTERVAL_MS) {
-            shouldSave = true;
-        }
-    }
-    
-    if (shouldSave && _size > 0) {
-        // Save to flash (non-blocking, uses mutex with timeout)
-        if (saveToFlash()) {
-            _lastSaveTime = now;
-            // Log the save (but don't use LOG macros to avoid recursion)
-            // Just update the timestamp, user can see it in the logs
-        }
-        // Note: if save fails, we naturally retry next loop 
-        // because _lastSaveTime wasn't updated
     }
 }
 
