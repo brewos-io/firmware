@@ -1,8 +1,8 @@
 #include "web_server.h"
 #include "config.h"
 #include "pico_uart.h"
-#if !ENABLE_SCREEN
-#include "pico_swd.h"
+#if SWD_SUPPORTED
+#include "pico_swd.h"  // SWD support (only when SWD pins are physically wired)
 #endif
 #include "cloud_connection.h"
 #include "mqtt_client.h"
@@ -294,6 +294,8 @@ static void pauseServicesForOTA(CloudConnection* cloudConnection, AsyncWebSocket
     if (cloudConnection) {
         LOG_I("  - Stopping cloud connection (freeing task)...");
         cloudConnection->end();  // This stops the task and frees memory
+        // CRITICAL: After end(), the object may be in an invalid state
+        // The caller must set _cloudConnection = nullptr to prevent crashes
     }
     
     // 2. Disconnect MQTT (task still runs but disconnected saves buffer memory)
@@ -921,13 +923,14 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     }
     
     // Flash to Pico
-    // Method selection controlled by ENABLE_SWD in config.h (single configuration point)
-    // NOTE: SWD method is only available for no-screen variant (!ENABLE_SCREEN)
-#if ENABLE_SWD && !ENABLE_SCREEN
+    // Method selection: SWD if hardware supports it (SWD_SUPPORTED), otherwise UART bootloader
+    // Screen variant: SWD pins not wired → uses UART bootloader
+    // No-screen variant: SWD pins wired → can use SWD or UART bootloader
+#if SWD_SUPPORTED
     // SWD method: Uses GPIO 21 (SWDIO) and GPIO 45 (SWCLK) for direct flash programming
     broadcastOtaProgress(&_ws, "flash", 40, "Installing Pico firmware (SWD)...");
 #else
-    // UART bootloader method: Uses existing UART connection (GPIO 41/42) for firmware transfer
+    // UART bootloader method: Uses existing UART connection for firmware transfer
     broadcastOtaProgress(&_ws, "flash", 40, "Installing Pico firmware (UART)...");
 #endif
     
@@ -940,10 +943,10 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
         return false;
     }
     
-#if ENABLE_SWD && !ENABLE_SCREEN
+#if SWD_SUPPORTED
     // =============================================================================
-    // SWD METHOD (Currently disabled - kept for future development)
-    // NOTE: SWD is only available for no-screen variant (!ENABLE_SCREEN)
+    // SWD METHOD
+    // Available only on no-screen variant (SWD pins are physically wired)
     // =============================================================================
     
     broadcastOtaProgress(&_ws, "flash", 42, "Connecting via SWD...");
@@ -1292,7 +1295,7 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     // Clear connection state so we can detect when Pico actually reconnects
     _picoUart.clearConnectionState();
     
-#endif // ENABLE_SWD && !ENABLE_SCREEN
+#endif // SWD_SUPPORTED
     
     // Wait for Pico to self-reset and reconnect
     // The bootloader copies firmware (~3-5s for 22 sectors * ~100ms each) then resets.
@@ -1814,6 +1817,15 @@ void BrewWebServer::startCombinedOTA(const String& version, bool isPendingOTA) {
     // Pause ALL background services to prevent interference during OTA
     // This includes: cloud (SSL), MQTT, BLE scale, power meter HTTP polling, WebSocket clients
     pauseServicesForOTA(_cloudConnection, &_ws);
+    
+    // CRITICAL: Set _cloudConnection to nullptr after stopping it
+    // This prevents crashes when broadcastLogLevel() tries to use it
+    // The object may be in an invalid state after end() is called
+    if (_cloudConnection) {
+        _cloudConnection = nullptr;
+        LOG_D("Set _cloudConnection to nullptr after stopping");
+    }
+    
     feedWatchdog();
     
     // Suppress non-essential broadcasts during OTA

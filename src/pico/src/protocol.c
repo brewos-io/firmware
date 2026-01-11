@@ -704,7 +704,18 @@ void protocol_process(void) {
     process_pending_commands();
     
     // Process all available bytes
+    // CRITICAL: Check bootloader_is_active() INSIDE the loop, not just at the start
+    // This prevents race conditions where bootloader becomes active while we're processing bytes
     while (uart_is_readable(ESP32_UART_ID)) {
+        // Re-check bootloader status on each iteration to handle mid-loop transitions
+        if (bootloader_is_active()) {
+            // Bootloader became active - drain remaining bytes and exit immediately
+            // Don't process these bytes as they belong to bootloader
+            while (uart_is_readable(ESP32_UART_ID)) {
+                (void)uart_getc(ESP32_UART_ID);
+            }
+            return;
+        }
         uint8_t byte = uart_getc(ESP32_UART_ID);
         process_byte(byte);
     }
@@ -727,6 +738,16 @@ void protocol_reset_error_counters(void) {
     g_stats.packet_errors = 0;
     g_stats.timeout_errors = 0;
     g_stats.sequence_errors = 0;
+}
+
+void protocol_reset_state(void) {
+    // Reset protocol state machine to prevent parsing bootloader data as protocol packets
+    g_rx_state = RX_WAIT_SYNC;
+    g_rx_index = 0;
+    g_rx_length = 0;
+    g_rx_last_byte_time = 0;
+    // Clear buffer to prevent stale data
+    memset(g_rx_buffer, 0, sizeof(g_rx_buffer));
 }
 
 void protocol_get_stats(protocol_stats_t* stats) {

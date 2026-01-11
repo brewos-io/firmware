@@ -6,7 +6,8 @@
  #include "bootloader.h"
  #include "config.h"
  #include "flash_safe.h"       
- #include "safety.h"           
+ #include "safety.h"
+ #include "protocol.h"  // For protocol_reset_state()           
  #include <string.h>
  #include <stdio.h>
  #include "pico/stdlib.h"
@@ -70,14 +71,60 @@
      return g_bootloader_active;
  }
  
- void bootloader_prepare(void) {
-     LOG_PRINT("Bootloader: Entering safe state (heaters OFF)\n");
-     safety_enter_safe_state();
-     g_bootloader_active = true;
-     __dmb();
-     sleep_ms(100);
-     LOG_PRINT("Bootloader: System paused, safe to proceed\n");
- }
+void bootloader_prepare(void) {
+    // Idempotency check: if already active, just return
+    // This prevents double-initialization and race conditions
+    if (g_bootloader_active) {
+        LOG_PRINT("Bootloader: Already active, skipping prepare\n");
+        return;
+    }
+    
+    LOG_PRINT("Bootloader: Entering safe state (heaters OFF)\n");
+    safety_enter_safe_state();
+    
+    // CRITICAL: Drain UART FIFO completely BEFORE resetting protocol state
+    // This prevents any bytes in the FIFO from being processed by protocol handler
+    // We must drain while protocol is still active, then reset state, then set flag
+    // Drain multiple times to ensure FIFO is completely empty
+    int drain_count = 0;
+    while (uart_is_readable(ESP32_UART_ID)) {
+        (void)uart_getc(ESP32_UART_ID);
+        drain_count++;
+    }
+    if (drain_count > 0) {
+        LOG_PRINT("Bootloader: Drained %d bytes from UART FIFO\n", drain_count);
+    }
+    
+    // CRITICAL: Reset protocol state machine to prevent parsing bootloader data as protocol packets
+    // Bootloader data (0x55AA chunks) will be misinterpreted as protocol packets if state is not reset
+    protocol_reset_state();
+    
+    // Memory barrier to ensure protocol_reset_state() completes before setting flag
+    __dmb();
+    
+    // CRITICAL: Set bootloader_active flag AFTER draining UART and resetting state
+    // This ensures protocol_process() won't consume any bytes after this point
+    g_bootloader_active = true;
+    
+    // Full memory barrier to ensure flag is visible to all cores immediately
+    __dmb();
+    
+    // Small delay to ensure all cores see the flag change and protocol_process() exits
+    sleep_ms(100);
+    
+    // Final drain to catch any bytes that arrived during the delay or transition
+    // This is critical - bytes could arrive between setting flag and protocol_process() checking it
+    drain_count = 0;
+    while (uart_is_readable(ESP32_UART_ID)) {
+        (void)uart_getc(ESP32_UART_ID);
+        drain_count++;
+    }
+    if (drain_count > 0) {
+        LOG_PRINT("Bootloader: Drained %d additional bytes after transition\n", drain_count);
+    }
+    
+    LOG_PRINT("Bootloader: System paused, safe to proceed\n");
+}
  
  void bootloader_exit(void) {
      g_bootloader_active = false;
@@ -219,13 +266,14 @@
  // Main Receive Loop
  // -----------------------------------------------------------------------------
  
- bootloader_result_t bootloader_receive_firmware(void) {
-     g_receiving = true;
-     g_received_size = 0;
-     g_chunk_count = 0;
-     
-     // Flush UART
-     while (uart_is_readable(ESP32_UART_ID)) (void)uart_getc(ESP32_UART_ID);
+bootloader_result_t bootloader_receive_firmware(void) {
+    g_receiving = true;
+    g_received_size = 0;
+    g_chunk_count = 0;
+    
+    // UART should already be drained by bootloader_prepare(), but drain again for safety
+    // This ensures no stale bytes remain from the transition period
+    while (uart_is_readable(ESP32_UART_ID)) (void)uart_getc(ESP32_UART_ID);
      
      // Send ACK
      static const uint8_t BOOT_ACK[] = {0xB0, 0x07, 0xAC, 0x4B};

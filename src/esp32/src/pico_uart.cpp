@@ -2,15 +2,13 @@
 #include "config.h"
 #include <driver/gpio.h>  // For ESP-IDF GPIO functions (SWD pin stabilization)
 
-// Fallback SWD pin definitions if not defined in config.h (for no-screen variant)
+// Fallback SWD pin definitions if not defined in config.h
 // Some hardware may use GPIO 16/17 instead of GPIO 21/45
-#if !ENABLE_SCREEN
-    #ifndef SWD_DIO_PIN
-        #define SWD_DIO_PIN 17  // Fallback: GPIO 17 for SWDIO (no-screen variant)
-    #endif
-    #ifndef SWD_CLK_PIN
-        #define SWD_CLK_PIN 16  // Fallback: GPIO 16 for SWCLK (no-screen variant)
-    #endif
+#ifndef SWD_DIO_PIN
+    #define SWD_DIO_PIN 17  // Fallback: GPIO 17 for SWDIO
+#endif
+#ifndef SWD_CLK_PIN
+    #define SWD_CLK_PIN 16  // Fallback: GPIO 16 for SWCLK
 #endif
 
 PicoUART::PicoUART(HardwareSerial& serial)
@@ -31,11 +29,12 @@ PicoUART::PicoUART(HardwareSerial& serial)
 void PicoUART::begin() {
     LOG_I("Initializing Pico UART at %d baud", PICO_UART_BAUD);
     
-#if !ENABLE_SCREEN
+#if SWD_SUPPORTED
     // CRITICAL: Drive SWCLK HIGH (Output) to kill noise
     // Internal pull-ups (~45kΩ) are too weak to fight EMI from pumps/solenoids.
     // OUTPUT mode creates low-impedance connection that physically forces line to 3.3V.
     // NOTE: This is safe here because begin() is called AFTER reset is released in recovery sequence
+    // Only configure SWD pins if they are actually wired (SWD_SUPPORTED = 1)
     gpio_reset_pin((gpio_num_t)SWD_CLK_PIN);
     gpio_set_level((gpio_num_t)SWD_CLK_PIN, 1);
     gpio_set_direction((gpio_num_t)SWD_CLK_PIN, GPIO_MODE_OUTPUT);
@@ -45,7 +44,7 @@ void PicoUART::begin() {
     gpio_set_direction((gpio_num_t)SWD_DIO_PIN, GPIO_MODE_INPUT);
     gpio_set_pull_mode((gpio_num_t)SWD_DIO_PIN, GPIO_PULLUP_ONLY);
     LOG_D("SWD pins stabilized (Strong Drive)");
-#endif // !ENABLE_SCREEN
+#endif // SWD_SUPPORTED
     
     // Configure RX pin with pull-down to prevent floating when Pico is not connected
     // This prevents noise from being interpreted as data
@@ -302,29 +301,33 @@ bool PicoUART::enterBootloader() {
 void PicoUART::resetPico() {
     LOG_I("Resetting Pico via GPIO%d...", PICO_RUN_PIN);
     
-#if !ENABLE_SCREEN
     // ---------------------------------------------------------------------
     // STEP 1: NEUTRALIZE ALL PINS (SWD + UART) - RP2350 Latch-up Prevention
     // ---------------------------------------------------------------------
     // RP2350 A0 Errata: Driving ANY GPIO high while RUN is LOW causes latch-up.
     // We must float ALL pins connected to Pico (SWD + UART) before asserting reset.
     
-    // Float SWD pins
+    // CRITICAL: End Serial1 UART to release UART pins before floating them
+    // This prevents UART from driving pins HIGH during reset
+    Serial1.end();
+    delay(10); // Allow UART to fully stop
+    
+#if SWD_SUPPORTED
+    // Float SWD pins (only if SWD is supported)
     gpio_set_direction((gpio_num_t)SWD_DIO_PIN, GPIO_MODE_INPUT);
     gpio_set_direction((gpio_num_t)SWD_CLK_PIN, GPIO_MODE_INPUT);
     gpio_set_pull_mode((gpio_num_t)SWD_DIO_PIN, GPIO_FLOATING);
     gpio_set_pull_mode((gpio_num_t)SWD_CLK_PIN, GPIO_FLOATING);
+#endif
     
     // CRITICAL: Float UART pins too (UART TX stays HIGH in idle, causing latch-up)
+    // We already ended Serial1, but we need to explicitly float the pins
     gpio_set_direction((gpio_num_t)PICO_UART_TX_PIN, GPIO_MODE_INPUT);
     gpio_set_direction((gpio_num_t)PICO_UART_RX_PIN, GPIO_MODE_INPUT);
     gpio_set_pull_mode((gpio_num_t)PICO_UART_TX_PIN, GPIO_FLOATING);
     gpio_set_pull_mode((gpio_num_t)PICO_UART_RX_PIN, GPIO_FLOATING);
     
     delay(10); // Wait for parasitic capacitance to discharge
-    
-    // After reset, we'll restore SWD pins to strong drive
-#endif
 
     // ---------------------------------------------------------------------
     // STEP 2: RESET SEQUENCE
@@ -341,8 +344,17 @@ void PicoUART::resetPico() {
     pinMode(PICO_RUN_PIN, INPUT);  // Release reset (let internal pull-up do the work)
     delay(300);
     
-#if !ENABLE_SCREEN
-    // Restore SWD pins to strong drive after reset release
+    // ---------------------------------------------------------------------
+    // STEP 4: RESTORE UART PINS AND REINITIALIZE SERIAL1
+    // ---------------------------------------------------------------------
+    // CRITICAL: Restore UART pins and reinitialize Serial1 after reset
+    // This is essential for UART communication to work after reset
+    pinMode(PICO_UART_RX_PIN, INPUT_PULLDOWN);  // Restore RX pin configuration
+    Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
+    delay(10); // Allow UART to initialize
+    
+#if SWD_SUPPORTED
+    // Restore SWD pins to strong drive after reset release (only if SWD is supported)
     gpio_reset_pin((gpio_num_t)SWD_CLK_PIN);
     gpio_set_level((gpio_num_t)SWD_CLK_PIN, 1);
     gpio_set_direction((gpio_num_t)SWD_CLK_PIN, GPIO_MODE_OUTPUT);
@@ -353,7 +365,7 @@ void PicoUART::resetPico() {
     LOG_D("SWD pins restored (Strong Drive)");
 #endif
     
-    LOG_I("Pico reset complete");
+    LOG_I("Pico reset complete - UART reinitialized");
 }
 
 void PicoUART::holdBootsel(bool hold) {
@@ -391,8 +403,9 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
     // Bootloader sends 4-byte ACK: 0xB0 0x07 0xAC 0x4B ("BOOT-ACK" pattern)
     // This unique sequence cannot be confused with protocol packets (which start with 0xAA)
     // The bootloader ACK comes AFTER the protocol ACK packet, so we may see:
-    // 1. Protocol ACK packet (0xAA ... with CRC)
-    // 2. Raw bootloader ACK (0xB0 0x07 0xAC 0x4B)
+    // 1. Protocol ACK packet (0xAA ... with CRC) - ~10 bytes
+    // 2. ~150ms delay (Pico processing: 50ms sleep + 100ms bootloader_prepare)
+    // 3. Raw bootloader ACK (0xB0 0x07 0xAC 0x4B)
     
     static const uint8_t BOOT_ACK[] = {0xB0, 0x07, 0xAC, 0x4B};  // "BOOT-ACK"
     static const size_t BOOT_ACK_LEN = sizeof(BOOT_ACK);
@@ -400,6 +413,7 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
     unsigned long startTime = millis();
     uint8_t index = 0;
     int bytesRead = 0;
+    int protocolBytesDrained = 0;
     
     // Reset packet state machine to avoid interference
     RxState savedState = _rxState;
@@ -407,18 +421,30 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
     
     LOG_I("Waiting for bootloader ACK (0xB0 0x07 0xAC 0x4B)...");
     
-    // Look for the 4-byte ACK pattern in incoming data
+    // CRITICAL: We must look for the bootloader ACK pattern WHILE draining protocol ACK bytes
+    // The bootloader ACK can arrive as early as ~150ms after the protocol ACK
+    // If we drain blindly, we might consume the bootloader ACK!
+    // Strategy:
+    // 1. Drain protocol ACK bytes (up to ~10 bytes, but look for bootloader ACK pattern)
+    // 2. Continue looking for bootloader ACK pattern (it may arrive during or after drain)
+    // 3. Timeout if not found within timeoutMs
+    
+    unsigned long lastByteTime = millis();
+    bool protocolAckComplete = false;
+    
     while ((millis() - startTime) < timeoutMs) {
         if (Serial1.available()) {
             uint8_t byte = Serial1.read();
             bytesRead++;
+            lastByteTime = millis();
             
+            // Look for bootloader ACK pattern in ALL incoming bytes
             if (byte == BOOT_ACK[index]) {
                 index++;
                 if (index == BOOT_ACK_LEN) {
                     // Got complete bootloader ACK!
-                    LOG_I("Bootloader ACK received after %d bytes, %lu ms", 
-                          bytesRead, millis() - startTime);
+                    LOG_I("Bootloader ACK received after %d bytes (%d protocol bytes), %lu ms", 
+                          bytesRead, protocolBytesDrained, millis() - startTime);
                     _rxState = savedState;
                     return true;
                 }
@@ -428,14 +454,36 @@ bool PicoUART::waitForBootloaderAck(uint32_t timeoutMs) {
             } else {
                 // Reset matching
                 index = 0;
+                
+                // Track protocol ACK bytes (starts with 0xAA)
+                // Protocol ACK is: 0xAA (sync) + type (1) + length (1) + seq (1) + payload (4) + CRC (2) = ~10 bytes
+                if (!protocolAckComplete && bytesRead <= 15) {
+                    // Still in protocol ACK range, count these as protocol bytes
+                    if (bytesRead == 1 && byte == 0xAA) {
+                        // This is the protocol sync byte
+                        protocolBytesDrained++;
+                    } else if (bytesRead > 1 && bytesRead <= 10) {
+                        // Likely part of protocol ACK packet
+                        protocolBytesDrained++;
+                    } else {
+                        // Past protocol ACK range
+                        protocolAckComplete = true;
+                    }
+                }
             }
         } else {
+            // No data available
+            // If we've received some bytes and no new data for 50ms, protocol ACK is likely complete
+            if (bytesRead > 0 && (millis() - lastByteTime) > 50) {
+                protocolAckComplete = true;
+            }
             delay(1);
         }
     }
     
     _rxState = savedState;
-    LOG_E("Bootloader ACK timeout after %d ms (read %d bytes total)", timeoutMs, bytesRead);
+    LOG_E("Bootloader ACK timeout after %d ms (read %d bytes total, %d protocol bytes)", 
+          timeoutMs, bytesRead, protocolBytesDrained);
     return false;
 }
 

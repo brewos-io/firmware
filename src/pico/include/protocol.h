@@ -291,6 +291,7 @@ bool protocol_send_diag_result(const diag_result_payload_t* result);
 uint32_t protocol_get_crc_errors(void);
 uint32_t protocol_get_packet_errors(void);
 void protocol_reset_error_counters(void);
+void protocol_reset_state(void);  // Reset protocol state machine (call when entering bootloader)
 
 // Protocol diagnostics
 void protocol_get_stats(protocol_stats_t* stats);

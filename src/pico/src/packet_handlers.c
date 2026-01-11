@@ -471,10 +471,16 @@ void handle_cmd_bootloader(const packet_t* packet) {
     LOG_INFO("Entering bootloader mode\n");
     protocol_send_ack(MSG_CMD_BOOTLOADER, packet->seq, ACK_SUCCESS);
     
-    // Small delay to ensure ACK is sent
+    // Small delay to ensure ACK is fully transmitted before entering bootloader
+    // This prevents the ACK from being corrupted by the bootloader transition
     sleep_ms(50);
     
-    // Signal bootloader mode - pauses Core 0 control loop and protocol processing
+    // CRITICAL: Signal bootloader mode - pauses Core 0 control loop and protocol processing
+    // bootloader_prepare() will:
+    // 1. Drain UART FIFO completely
+    // 2. Reset protocol state machine
+    // 3. Set bootloader_active flag with memory barriers
+    // 4. Final drain to catch any race condition bytes
     bootloader_prepare();
     LOG_INFO("Bootloader: System paused, starting firmware receive\n");
     

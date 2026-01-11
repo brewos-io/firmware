@@ -267,6 +267,9 @@ void PicoSWD::sendDormantSequence() {
     swdIdle();
     
     LOG_I("SWD: Dormant Wakeup Sequence complete");
+    
+    // Small delay to ensure target is ready for TARGETSEL
+    delay(10);
 }
 
 // --- Packet Layer (FIXED: EVEN PARITY) ---
@@ -437,6 +440,22 @@ bool PicoSWD::connectToTarget() {
     pinMode(g_pin_swclk, OUTPUT);
     if (_reset >= 0) { pinMode(_reset, OUTPUT); digitalWrite(_reset, HIGH); }
 
+    // CRITICAL: Verify SWD pins are actually working before attempting connection
+    // Test that we can drive SWDIO LOW and it stays LOW (not being overridden)
+    LOG_D("SWD: Verifying pin control before connection...");
+    digitalWrite(g_pin_swdio, LOW);
+    delayMicroseconds(100);
+    bool swdio_driven_low = (digitalRead(g_pin_swdio) == LOW);
+    digitalWrite(g_pin_swdio, HIGH);
+    delayMicroseconds(100);
+    
+    if (!swdio_driven_low) {
+        LOG_E("SWD: CRITICAL - Cannot drive SWDIO LOW! Pin may be stuck or hardware issue.");
+        LOG_E("SWD: This will prevent SWD communication. Check hardware connections.");
+        return false;
+    }
+    LOG_D("SWD: Pin control verified - SWDIO can be driven LOW");
+
     // List of Target IDs to try: Standard first, then Rescue
     // Rescue ID is needed if the chip is in a locked/dormant/bad state
     uint32_t targetIds[] = { ID_RP2350_TARGET, ID_RP2350_RESCUE };
@@ -448,54 +467,80 @@ bool PicoSWD::connectToTarget() {
 
         // CRITICAL: RP2350 defaults to Dormant state upon Power-On Reset
         // We MUST ALWAYS perform the dormant wake-up sequence first
+        // The dormant sequence ends with a line reset, so we're already in reset state
         sendDormantSequence();
         
-        // TARGETSEL must be the FIRST packet after wake-up
-        LOG_D("SWD: Sending TARGETSEL...");
-        swd_error_t err = writeDP(DP_TARGETSEL, currentTargetId, true);
+        // Per OpenOCD: For ADIv6 multidrop, TARGETSEL must be written FIRST after dormant sequence
+        // TARGETSEL write keeps the connection in reset state (per ARM IHI 0074C ADIv6.0)
+        LOG_D("SWD: Sending TARGETSEL (0x%08X)...", currentTargetId);
+        swd_error_t err = writeDP(DP_TARGETSEL, currentTargetId, true); // ignoreAck=true (no ACK for TARGETSEL)
         
-        // Allow time for selection to latch
-        delay(100);
+        // CRITICAL: Per OpenOCD, read DPIDR IMMEDIATELY after TARGETSEL with NO delay
+        // Reading DPIDR is what takes the connection out of reset state
+        // The dormant sequence already ended with a line reset, so we're ready
+        // OpenOCD does: TARGETSEL write -> immediate DPIDR read -> then ABORT write
+        uint32_t dpidr = 0;
+        LOG_D("SWD: Reading DPIDR immediately (takes connection out of reset)...");
         
-        // Soft reset to sync protocol
-        swdLineResetSoft();
-        swdIdle();
-        delay(20);
+        // Read DPIDR immediately (no delay) - matching OpenOCD's exact sequence
+        err = readDP(DP_IDCODE, &dpidr); // DPIDR is at same address as IDCODE (0x0)
         
-        // Clear any sticky errors immediately before trying to read IDCODE
-        // This is crucial if the previous attempt left the DAP in a FAULT state
-        // ABORT register is at DP address 0x0 (write-only, same address as IDCODE read)
-        writeDP(DP_IDCODE, 0x1E, true); // Write ABORT (0x1E clears all error flags)
-        
-        // Now verify connection by reading IDCODE
-        uint32_t id = 0;
-        LOG_D("SWD: Reading IDCODE...");
-        
-        // Retry logic for the read itself
-        for (int retry = 0; retry < 3; retry++) {
-            err = readDP(DP_IDCODE, &id);
-            
-            if (err == SWD_OK && id != 0 && id != 0xFFFFFFFF) {
-                // We got a valid ID!
-                if (id == ID_RP2350_EXPECTED) {
-                    LOG_I("SWD: CONNECTED! IDCODE: 0x%08X (RP2350 verified)", id);
-                    _connected = true;
-                    _lastErrorStr = "None";
-                    return true;
-                } else {
-                    LOG_W("SWD: Connected with unexpected IDCODE: 0x%08X (expected 0x%08X)", id, ID_RP2350_EXPECTED);
-                    _connected = true;
-                    _lastErrorStr = "None";
-                    return true;
-                }
+        // If first read fails, retry with ABORT clear (per OpenOCD retry logic)
+        for (int retry = 0; retry < 4 && (err != SWD_OK || dpidr == 0 || dpidr == 0xFFFFFFFF); retry++) {
+            if (retry > 0) {
+                LOG_D("SWD: DPIDR read retry %d/4...", retry);
+                // Write ABORT to clear error flags (per OpenOCD: STKCMPCLR | STKERRCLR | WDERRCLR | ORUNERRCLR)
+                // ABORT register is at address 0x0 (same as IDCODE, but write-only)
+                writeDP(DP_IDCODE, 0x1E, true); // 0x1E = all error clear bits
+                delay(1);  // Minimal delay for ABORT to take effect
+                err = readDP(DP_IDCODE, &dpidr);
             }
             
+            // Validate DPIDR if read was successful
+            if (err == SWD_OK && dpidr != 0 && dpidr != 0xFFFFFFFF) {
+                // Check DPIDR bit 0 must be 1 (per ARM spec and OpenOCD check)
+                if ((dpidr & 0x1) == 0) {
+                    LOG_W("SWD: DPIDR bit 0 is 0 (invalid), got 0x%08X", dpidr);
+                    err = SWD_ERROR_PROTOCOL; // Force retry
+                    continue;
+                }
+                
+                // Check DP version (bits 15:12) - RP2350 should be DPv2 or DPv3
+                uint32_t dp_ver = (dpidr >> 12) & 0xF;
+                LOG_D("SWD: DPIDR: 0x%08X, DP version: %d", dpidr, dp_ver);
+                
+                // For ADIv6 multidrop, we need DPv2 or higher (per OpenOCD check)
+                if (dp_ver < 2) {
+                    LOG_W("SWD: DP version %d < 2 (not multidrop capable)", dp_ver);
+                    err = SWD_ERROR_PROTOCOL; // Force retry
+                    continue;
+                }
+                
+                // We got a valid DPIDR! Connection successful
+                // Per OpenOCD: Now write ABORT to clear any sticky errors, then read DLPIDR
+                LOG_D("SWD: DPIDR valid, clearing ABORT and reading DLPIDR...");
+                // ABORT register is at address 0x0 (same as IDCODE, but write-only)
+                writeDP(DP_IDCODE, 0x1E, true); // Clear all error flags
+                delay(1);
+                
+                // Read DLPIDR (Debug Link Port ID Register) - required for multidrop validation
+                uint32_t dlpidr = 0;
+                swd_error_t dlpidr_err = readDP(0x4, &dlpidr); // DLPIDR is at DP register 0x4
+                if (dlpidr_err == SWD_OK) {
+                    LOG_D("SWD: DLPIDR: 0x%08X", dlpidr);
+                }
+                
+                LOG_I("SWD: CONNECTED! DPIDR: 0x%08X (DPv%d)", dpidr, dp_ver);
+                _connected = true;
+                _lastErrorStr = "None";
+                return true;
+            }
+            
+            // Log error for debugging
             if (err == SWD_ERROR_FAULT) {
-                LOG_W("SWD: IDCODE FAULT (attempt %d/3). Clearing ABORT...", retry + 1);
-                writeDP(DP_IDCODE, 0x1E, true); // Write ABORT to clear error flags
-                delay(10);
-            } else {
-                delay(10);
+                LOG_W("SWD: DPIDR read FAULT (attempt %d/4)", retry + 1);
+            } else if (err != SWD_OK) {
+                LOG_D("SWD: DPIDR read error: %s (attempt %d/4)", errorToString(err), retry + 1);
             }
         }
         
@@ -930,22 +975,42 @@ bool PicoSWD::begin() {
         LOG_D("SWD: Using safe GPIO pins - SWDIO=GPIO%d, SWCLK=GPIO%d (no PSRAM conflicts)", _swdio, _swclk);
     }
     
+    // FIX: Use the safe resetTarget() which floats pins to prevent latch-up
+    // This prevents the RP2350 A0 Errata latch-up condition (RUN=LOW + GPIO=HIGH)
     if (_reset >= 0) {
-        LOG_I("SWD: Resetting target via RESET pin (GPIO%d)", _reset);
-        pinMode(_reset, OUTPUT); 
-        digitalWrite(_reset, LOW); 
-        delay(50);  // Increased reset hold time for more reliable reset
-        LOG_D("SWD: RESET pin LOW for 50ms");
-        digitalWrite(_reset, HIGH); 
-        delay(200);  // Increased stabilization time after reset
-        LOG_D("SWD: RESET pin HIGH, waiting 200ms for target to stabilize");
+        LOG_I("SWD: Resetting target safely (floating pins to prevent latch-up)...");
+        if (!resetTarget()) {
+            LOG_E("SWD: Failed to reset target at start");
+            return false;
+        }
     } else {
         LOG_D("SWD: No RESET pin configured");
     }
     
     LOG_I("SWD: Connecting to target...");
-    if (!connectToTarget()) {
-        LOG_E("SWD: Connection failed: %s", _lastErrorStr);
+    // Retry connection with hardware reset between attempts
+    const int max_connection_retries = 3;
+    bool connected = false;
+    for (int attempt = 0; attempt < max_connection_retries; attempt++) {
+        if (attempt > 0) {
+            LOG_W("SWD: Connection attempt %d/%d failed, retrying with hardware reset...", attempt, max_connection_retries);
+            // FIX: Use safe resetTarget() here too to prevent latch-up on retries
+            if (_reset >= 0) {
+                resetTarget();  // Safe reset that floats pins before asserting RUN=LOW
+            }
+        }
+        
+        if (connectToTarget()) {
+            LOG_I("SWD: Connection successful on attempt %d", attempt + 1);
+            connected = true;
+            break;
+        }
+        
+        delay(200);  // Brief delay before retry
+    }
+    
+    if (!connected) {
+        LOG_E("SWD: Connection failed after %d attempts: %s", max_connection_retries, _lastErrorStr);
         return false;
     }
     
@@ -1019,8 +1084,11 @@ bool PicoSWD::initRP2350DebugModule() {
     }
     
     // Step 2: Configure CSW for 32-bit word access
-    uint32_t csw = 0xA2000002;  // Standard CSW value (from reference)
-    LOG_D("SWD: Configuring CSW=0x%08X", csw);
+    // CRITICAL: RP2350 requires CSW.PROT = 0x23 to access SRAM/FLASH (per Raspberry Pi forum)
+    // Unlike RP2040, RP2350 needs explicit PROT setting or SRAM/FLASH accesses will fail
+    // Reference: https://forums.raspberrypi.com/viewtopic.php?t=380245
+    uint32_t csw = 0x23000002;  // PROT=0x23, SIZE=32-bit (RP2350 specific requirement)
+    LOG_D("SWD: Configuring CSW=0x%08X (PROT=0x23 for RP2350 SRAM/FLASH access)", csw);
     err = writeAP(AP_CSW, csw, AP_RISCV);
     if (err != SWD_OK) {
         LOG_E("SWD: Failed to configure CSW: %s", errorToString(err));
@@ -1146,7 +1214,9 @@ bool PicoSWD::initDebugModule() {
     }
     
     // Configure CSW (32-bit, auto-inc off)
-    err = writeAP(AP_CSW, 0xA2000002, AP_RISCV);
+    // CRITICAL: RP2350 requires CSW.PROT = 0x23 to access SRAM/FLASH
+    // Reference: https://forums.raspberrypi.com/viewtopic.php?t=380245
+    err = writeAP(AP_CSW, 0x23000002, AP_RISCV);  // PROT=0x23 for RP2350
     if (err != SWD_OK) {
         LOG_W("SWD: Failed to configure CSW: %s (continuing anyway)", errorToString(err));
     }
@@ -1491,9 +1561,14 @@ bool PicoSWD::resetTarget() {
         // This prevents parasitic powering if RP2350 is unpowered
         // The RP2350 has an internal pull-up that will pull RUN high when ready
         pinMode(_reset, INPUT);  // Release reset (open-drain - let internal pull-up do the work)
-        delay(500);  // Wait longer (500ms) for Pico to fully boot and initialize flash
         
-        LOG_I("SWD: Hardware reset complete - Pico should boot normally");
+        // CRITICAL: For SWD to work, we need to connect IMMEDIATELY after reset release
+        // The RP2350's SWD interface is available immediately after reset, but firmware
+        // may disable it during boot. We want to connect before firmware initialization.
+        // Minimal delay - just enough for reset to propagate (10-20ms)
+        delay(20);  // Minimal delay for reset to release
+        
+        LOG_I("SWD: Hardware reset complete - ready for immediate SWD connection");
         _lastErrorStr = "None";
         return true;
     }

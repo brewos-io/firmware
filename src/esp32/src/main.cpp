@@ -29,22 +29,20 @@
 #include <driver/gpio.h>    // For early GPIO initialization
 #include "config.h"
 
-// Fallback SWD pin definitions if not defined in config.h (for no-screen variant)
+// Fallback SWD pin definitions if not defined in config.h
 // Some hardware may use GPIO 16/17 instead of GPIO 21/45
-#if !ENABLE_SCREEN
-    #ifndef SWD_DIO_PIN
-        #define SWD_DIO_PIN 17  // Fallback: GPIO 17 for SWDIO (no-screen variant)
-    #endif
-    #ifndef SWD_CLK_PIN
-        #define SWD_CLK_PIN 16  // Fallback: GPIO 16 for SWCLK (no-screen variant)
-    #endif
+#ifndef SWD_DIO_PIN
+    #define SWD_DIO_PIN 17  // Fallback: GPIO 17 for SWDIO
+#endif
+#ifndef SWD_CLK_PIN
+    #define SWD_CLK_PIN 16  // Fallback: GPIO 16 for SWCLK
 #endif
 #include "memory_utils.h"   // For heap fragmentation monitoring
 #include "wifi_manager.h"
 #include "web_server.h"
 #include "pico_uart.h"
-#if !ENABLE_SCREEN
-#include "pico_swd.h"  // Only needed for no-screen variant (SWD pins connected)
+#if SWD_SUPPORTED
+#include "pico_swd.h"  // SWD support (only available on no-screen variant where pins are wired)
 #endif
 #include "log_manager.h"
 
@@ -737,11 +735,11 @@ static void setupEarlyInitialization() {
     pinMode(PICO_RUN_PIN, INPUT);  // Release reset (open-drain - let internal pull-up do the work)
     delay(10); // Give pin time to stabilize
     
-    // SWD pins are only connected in no-screen variant, so this logic only runs here.
+    // SWD pins are only available on no-screen variant (SWD_SUPPORTED = 1).
     // Immediately set SWD pins to INPUT_PULLUP to prevent ESP32 from driving 
     // these lines low/high during boot, which can confuse the Pico or cause 
     // parasitic power latch-up.
-    #if defined(SWD_CLK_PIN) && defined(SWD_DIO_PIN)
+    #if SWD_SUPPORTED && defined(SWD_CLK_PIN) && defined(SWD_DIO_PIN)
         gpio_reset_pin((gpio_num_t)SWD_CLK_PIN);
         gpio_reset_pin((gpio_num_t)SWD_DIO_PIN);
         gpio_set_direction((gpio_num_t)SWD_CLK_PIN, GPIO_MODE_INPUT);
@@ -978,10 +976,10 @@ static void setupEarlyInitialization() {
         prefs.end();
     }
     
-#if !ENABLE_SCREEN
+#if SWD_SUPPORTED
     // SWD pins are already initialized at the very beginning of setupEarlyInitialization()
-    // (no-screen variant only) to prevent Pico from entering debug mode during power-on boot sequence
-    Serial.printf("SWD enabled: GPIO%d (SWDIO), GPIO%d (SWCLK) with pull-ups\n", 
+    // (no-screen variant only, where SWD pins are physically wired) to prevent Pico from entering debug mode during power-on boot sequence
+    Serial.printf("SWD supported: GPIO%d (SWDIO), GPIO%d (SWCLK) with pull-ups\n", 
                   SWD_DIO_PIN, SWD_CLK_PIN);
 #endif
 }
@@ -2380,16 +2378,22 @@ static void loopPeriodicTasks() {
             gpio_set_pull_mode((gpio_num_t)PICO_UART_RX_PIN, GPIO_FLOATING);
 
             // 2. Kill SWD Drivers - completely floating (CRITICAL: before reset)
+            // Only if SWD pins are actually wired
+#if SWD_SUPPORTED
             gpio_set_direction((gpio_num_t)SWD_CLK_PIN, GPIO_MODE_INPUT);
             gpio_set_direction((gpio_num_t)SWD_DIO_PIN, GPIO_MODE_INPUT);
             gpio_set_pull_mode((gpio_num_t)SWD_CLK_PIN, GPIO_FLOATING);
             gpio_set_pull_mode((gpio_num_t)SWD_DIO_PIN, GPIO_FLOATING);
+#endif // SWD_SUPPORTED
             
             // 3. CRITICAL: Wait for pins to fully float before asserting reset
             // This ensures no back-powering occurs when RUN goes LOW
             delay(50); // Give time for drivers to fully release
             
             // === PHASE 2: SWD-BASED RECOVERY (Break out of debug halt) ===
+            // Only available if SWD pins are wired (SWD_SUPPORTED = 1)
+            bool swdRecoverySuccess = false;
+#if SWD_SUPPORTED
             Serial.println("[Watchdog] Phase 2: Attempting SWD recovery from debug halt...");
             
             // Try to use SWD to break Pico out of debug halt
@@ -2399,7 +2403,6 @@ static void loopPeriodicTasks() {
                 picoSwd = new PicoSWD(SWD_DIO_PIN, SWD_CLK_PIN, PICO_RUN_PIN);
             }
             
-            bool swdRecoverySuccess = false;
             if (picoSwd->begin()) {
                 Serial.println("[Watchdog] SWD connected! Attempting to resume core from debug halt...");
                 
@@ -2420,12 +2423,15 @@ static void loopPeriodicTasks() {
                     }
                 }
                 picoSwd->end();
-                } else {
-                    Serial.println("[Watchdog] ⚠ SWD connection failed - Pico may not be in debug halt");
-                    // Run diagnostics to understand device state
-                    Serial.println("[Watchdog] Running device diagnostics...");
-                    picoSwd->diagnoseDevice();
-                }
+            } else {
+                Serial.println("[Watchdog] ⚠ SWD connection failed - Pico may not be in debug halt");
+                // Run diagnostics to understand device state
+                Serial.println("[Watchdog] Running device diagnostics...");
+                picoSwd->diagnoseDevice();
+            }
+#else
+            Serial.println("[Watchdog] Phase 2: SWD not available (pins not wired), skipping SWD recovery...");
+#endif // SWD_SUPPORTED
             
             // === PHASE 2B: HARDWARE RESET (Always do this after SWD attempt) ===
             // CRITICAL: Per forum post, we must ensure ALL GPIO are floating BEFORE asserting RUN LOW
