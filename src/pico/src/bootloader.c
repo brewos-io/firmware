@@ -304,15 +304,18 @@ void bootloader_prepare(void) {
  static uint8_t g_sector_buffer[FLASH_SECTOR_SIZE] __attribute__((aligned(16)));
  
  /**
-  * Copy firmware using ONLY BootROM functions.
+  * Copy firmware using SDK flash APIs (RP2350 only).
   * - Runs entirely from RAM
   * - Disables interrupts
   * - [FIX] No verification loop to avoid crashes during XIP readback
   * - [FIX] Uses Watchdog Reset instead of AIRCR
+  * - Uses SDK hardware/flash APIs which handle XIP state automatically
   */
  static void __no_inline_not_in_flash_func(copy_firmware_to_main)(const boot_rom_funcs_t* rom, uint32_t firmware_size) {
+     // rom parameter is unused for RP2350 - we use SDK functions directly
+     (void)rom;
      // 1. DISABLE INTERRUPTS GLOBALLY
-     save_and_disable_interrupts();
+     uint32_t irq_state = save_and_disable_interrupts();
      
      // Calculate iterations
      uint32_t size_sectors = (firmware_size + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
@@ -325,27 +328,83 @@ void bootloader_prepare(void) {
          uint32_t offset = sector * FLASH_SECTOR_SIZE;
          
          // [READ] Copy from Staging to RAM buffer
-         for (int i = 0; i < FLASH_SECTOR_SIZE; i++) {
+         // CRITICAL: Validate we're not reading beyond firmware size
+         // This prevents copying garbage data if firmware_size is wrong
+         uint32_t copy_size = FLASH_SECTOR_SIZE;
+         if (offset + FLASH_SECTOR_SIZE > firmware_size) {
+             copy_size = firmware_size - offset;
+             // Pad remainder with 0xFF (erased flash) for partial sectors
+             for (uint32_t i = copy_size; i < FLASH_SECTOR_SIZE; i++) {
+                 g_sector_buffer[i] = 0xFF;
+             }
+         }
+         
+         // Copy firmware data from staging area
+         for (uint32_t i = 0; i < copy_size; i++) {
              g_sector_buffer[i] = staging_base[offset + i];
          }
  
-         // [WRITE] Single pass - no retry/verify loop (risky readback removed)
-         rom->connect_internal_flash();
-         rom->flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE, 0x20);
-         rom->flash_range_program(FLASH_MAIN_OFFSET + offset, g_sector_buffer, FLASH_SECTOR_SIZE);
-         rom->flash_flush_cache();
-        rom->flash_exit_xip();
+        // [WRITE] Single pass - no retry/verify loop (risky readback removed)
+        // RP2350: SDK functions handle XIP exit/entry automatically
+        // SDK flash_range_erase signature: (uint32_t offset, size_t count)
+        // SDK flash_range_program signature: (uint32_t offset, const uint8_t* data, size_t count)
+        flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE);
+        flash_range_program(FLASH_MAIN_OFFSET + offset, g_sector_buffer, FLASH_SECTOR_SIZE);
+        flash_flush_cache();
     }
 
-    // 4. Force System Reset via AIRCR (Application Interrupt and Reset Control Register)
-    // This is the standard ARM Cortex-M method to reset the system.
-    // SCB->AIRCR = 0x05FA0004 (VECTKEY | SYSRESETREQ)
+    // 4. Force System Reset
+    // After flash operations, we need to ensure a clean reset
+    // Note: We validated the staging area before copying, so main flash should be valid
+    LOG_PRINT("Bootloader: Firmware copy complete (%lu bytes), resetting Pico...\n", (unsigned long)firmware_size);
+    
+    // CRITICAL: Restore interrupts before reset
+    // Reset functions may not work properly with interrupts disabled
+    restore_interrupts(irq_state);
+    
+    // Small delay to ensure interrupts are restored and log message is sent
+    // Also allows UART to flush the log message
+    sleep_ms(100);
+    
+    // CRITICAL: Flush flash cache before reset to ensure consistency
+    // This ensures all flash operations are complete before reset
+    // RP2350: SDK functions handle XIP state automatically
+    flash_flush_cache();
+    
+    // Small delay after cache flush to ensure cache is fully flushed
+    sleep_ms(50);
+    
+    // CRITICAL: Use NVIC_SystemReset() which is more reliable than direct register access
+    // This function handles all the necessary steps for a clean reset
+    // It's part of the CMSIS core and is the recommended method
+    LOG_PRINT("Bootloader: Triggering system reset...\n");
+    
+    // Use NVIC_SystemReset if available, otherwise use AIRCR directly
+    // For RP2040, we need to use the hardware directly
     #define AIRCR_VECTKEY_MASK    0x05FA0000
     #define AIRCR_SYSRESETREQ_MASK 0x00000004
     
+    // Write to AIRCR to trigger system reset
     scb_hw->aircr = AIRCR_VECTKEY_MASK | AIRCR_SYSRESETREQ_MASK;
     
-    while(1) __asm volatile("nop");
+    // Wait a bit - reset should happen within microseconds
+    // If we're still here after 100ms, something is wrong
+    sleep_ms(100);
+    
+    // Fallback: Try watchdog reset if AIRCR didn't work
+    LOG_PRINT("Bootloader: WARNING - AIRCR reset did not trigger, using watchdog fallback...\n");
+    
+    // Disable watchdog first
+    watchdog_hw->ctrl = 0;
+    // Re-enable with very short timeout to force immediate reset
+    watchdog_enable(1, 1);  // 1ms timeout, pause on debug
+    watchdog_update();  // This will trigger reset immediately
+    
+    // Should never reach here, but just in case
+    while(1) {
+        __asm volatile("nop");
+        sleep_ms(1);
+    }
 }
  
  // -----------------------------------------------------------------------------
@@ -489,22 +548,72 @@ bootloader_result_t bootloader_receive_firmware(void) {
      
     const uint8_t* staged = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
     
-    // [VALIDATION] Check for valid ARM Cortex-M Vector Table
+    // [VALIDATION] Check for valid ARM Cortex-M Vector Table BEFORE copying
     // Word 0: Initial Stack Pointer (Must be in RAM: 0x20xxxxxx)
     // Word 1: Reset Vector (Must be in Flash: 0x10xxxxxx)
+    // This prevents copying corrupted firmware to main flash
     uint32_t* staged_vectors = (uint32_t*)staged;
     bool valid_sp = (staged_vectors[0] & 0xFF000000) == 0x20000000;
     bool valid_pc = (staged_vectors[1] & 0xFF000000) == 0x10000000;
     
     if (!valid_sp || !valid_pc) {
-        LOG_PRINT("Bootloader: Invalid firmware image (SP=%08lX, PC=%08lX)\n", 
+        LOG_PRINT("Bootloader: CRITICAL - Invalid firmware image in staging area (SP=%08lX, PC=%08lX)\n", 
                  staged_vectors[0], staged_vectors[1]);
-        uart_write_byte(0xFF); uart_write_byte(BOOTLOADER_ERROR_INVALID_SIZE); // Re-use generic error
+        LOG_PRINT("Bootloader: Aborting copy - firmware may be corrupted\n");
+        uart_write_byte(0xFF); uart_write_byte(BOOTLOADER_ERROR_INVALID_SIZE);
         return BOOTLOADER_ERROR_INVALID_SIZE;
     }
     
+    LOG_PRINT("Bootloader: Staging area validation OK (SP=%08lX, PC=%08lX)\n", 
+             staged_vectors[0], staged_vectors[1]);
+    
     uint32_t crc = crc32_calculate(staged, g_received_size);
     LOG_PRINT("Bootloader: CRC32=0x%08lX (size=%lu)\n", (unsigned long)crc, (unsigned long)g_received_size);
+    
+    // Wait for expected CRC32 from ESP32 (optional - sent after end marker)
+    // Format: [0xAA 0x55] [CRC32: 4 bytes LE]
+    uint32_t expectedCRC32 = 0;
+    bool receivedExpectedCRC = false;
+    absolute_time_t crcTimeout = make_timeout_time_ms(2000);  // 2 second timeout
+    
+    while (!time_reached(crcTimeout)) {
+        watchdog_update();
+        if (uart_is_readable(ESP32_UART_ID)) {
+            uint8_t b1 = uart_getc(ESP32_UART_ID);
+            if (b1 == 0xAA) {
+                if (uart_is_readable(ESP32_UART_ID)) {
+                    uint8_t b2 = uart_getc(ESP32_UART_ID);
+                    if (b2 == 0x55) {
+                        // Read CRC32 (4 bytes, little-endian)
+                        uint8_t crcBytes[4];
+                        if (uart_read_bytes_timeout(crcBytes, 4, 1000)) {
+                            expectedCRC32 = crcBytes[0] | (crcBytes[1] << 8) | 
+                                          (crcBytes[2] << 16) | (crcBytes[3] << 24);
+                            receivedExpectedCRC = true;
+                            LOG_PRINT("Bootloader: Received expected CRC32: 0x%08lX\n", (unsigned long)expectedCRC32);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        sleep_us(1000);  // 1ms delay
+    }
+    
+    // Verify CRC32 if we received expected value
+    if (receivedExpectedCRC) {
+        if (crc != expectedCRC32) {
+            LOG_PRINT("Bootloader: CRC32 MISMATCH! Calculated: 0x%08lX, Expected: 0x%08lX\n", 
+                     (unsigned long)crc, (unsigned long)expectedCRC32);
+            LOG_PRINT("Bootloader: Firmware integrity check FAILED - aborting\n");
+            uart_write_byte(0xFF); uart_write_byte(BOOTLOADER_ERROR_CHECKSUM);
+            return BOOTLOADER_ERROR_CHECKSUM;
+        } else {
+            LOG_PRINT("Bootloader: CRC32 verified OK: 0x%08lX\n", (unsigned long)crc);
+        }
+    } else {
+        LOG_PRINT("Bootloader: No expected CRC32 received (ESP32 may not support it) - skipping verification\n");
+    }
     
     uart_write_byte(0xAA); uart_write_byte(0x55); uart_write_byte(0x00);
      sleep_ms(50);
@@ -512,23 +621,16 @@ bootloader_result_t bootloader_receive_firmware(void) {
      LOG_PRINT("Bootloader: Starting flash copy. USB will disconnect...\n");
      sleep_ms(50);
      
-     // Resolve ROM Pointers
-     boot_rom_funcs_t rom_funcs;
-     rom_funcs.connect_internal_flash = (rom_connect_internal_flash_fn)rom_func_lookup(ROM_FUNC_CONNECT_INTERNAL_FLASH);
-     rom_funcs.flash_exit_xip = (rom_flash_exit_xip_fn)rom_func_lookup(ROM_FUNC_FLASH_EXIT_XIP);
-     rom_funcs.flash_range_erase = (rom_flash_range_erase_fn)rom_func_lookup(ROM_FUNC_FLASH_RANGE_ERASE);
-     rom_funcs.flash_range_program = (rom_flash_range_program_fn)rom_func_lookup(ROM_FUNC_FLASH_RANGE_PROGRAM);
-     rom_funcs.flash_flush_cache = (rom_flash_flush_cache_fn)rom_func_lookup(ROM_FUNC_FLASH_FLUSH_CACHE);
- 
-     if (!rom_funcs.connect_internal_flash || !rom_funcs.flash_range_erase || !rom_funcs.flash_range_program) {
-         LOG_PRINT("CRITICAL: Failed to resolve BootROM functions!\n");
-         return BOOTLOADER_ERROR_FAILED;
-     }
- 
+     // RP2350 (Pico 2) - Use SDK hardware/flash APIs directly
+     // The SDK hardware/flash APIs handle architecture differences automatically
+     // These functions are RAM-safe when interrupts are disabled (which we do in copy_firmware_to_main)
+     LOG_PRINT("Bootloader: Using SDK flash APIs for RP2350\n");
+     
      watchdog_enable(8300, 1);
      
      // Transfer control to RAM - NO RETURN
-     copy_firmware_to_main(&rom_funcs, g_received_size);
+     // Pass NULL for rom_funcs since we'll use SDK functions directly
+     copy_firmware_to_main(NULL, g_received_size);
      
      return BOOTLOADER_SUCCESS;
  }

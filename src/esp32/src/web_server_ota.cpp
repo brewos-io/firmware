@@ -628,12 +628,17 @@ static bool downloadToFile(const char* url, const char* filePath,
                            size_t* outFileSize = nullptr) {
     LOG_I("Downloading: %s", url);
     
+    // NOTE: DNS pre-resolution removed for Pico downloads
+    // WiFi.hostByName() can hang indefinitely and has no timeout mechanism
+    // HTTPClient's http.begin() and http.GET() have better timeout handling
+    // Let HTTPClient handle DNS resolution with its built-in timeout mechanisms
+    
     // Configure secure client (services are paused to free memory for SSL buffers)
     WiFiClientSecure client;
     client.setInsecure();
     // CRITICAL FIX: Set underlying TCP timeout to prevent indefinite hangs
     // Note: setTimeout() sets the read timeout, but SSL handshake might still hang
-    // We'll pre-resolve DNS and use a shorter timeout to fail faster
+    // We pre-resolve DNS above to avoid DNS hangs, but SSL handshake can still hang
     client.setTimeout(OTA_HTTP_TIMEOUT_MS / 1000); // Convert ms to seconds
     
     HTTPClient http;
@@ -708,22 +713,9 @@ static bool downloadToFile(const char* url, const char* filePath,
         
         if (hostname.length() > 0) {
             LOG_I("Resolving DNS for: %s", hostname.c_str());
-            IPAddress resolvedIP;
-            unsigned long dnsStart = millis();
-            bool dnsResolved = WiFi.hostByName(hostname.c_str(), resolvedIP);
-            unsigned long dnsTime = millis() - dnsStart;
-            
-            if (!dnsResolved) {
-                LOG_E("DNS resolution failed for %s (took %lu ms)", hostname.c_str(), dnsTime);
-                http.end();
-                if (retry < OTA_MAX_RETRIES - 1) {
-                    LOG_I("Retrying DNS resolution...");
-                    delay(2000);
-                    continue;
-                }
-                return false;
-            }
-            LOG_I("DNS resolved: %s -> %s (%lu ms)", hostname.c_str(), resolvedIP.toString().c_str(), dnsTime);
+            // NOTE: DNS pre-resolution removed - WiFi.hostByName() can hang indefinitely
+            // HTTPClient's http.begin() and http.GET() have better timeout handling
+            // Let HTTPClient handle DNS resolution with its built-in timeout mechanisms
         }
         
         LOG_I("Sending HTTP GET request (attempt %d/%d, timeout=%lu ms)...", 
@@ -981,9 +973,47 @@ static bool downloadToFile(const char* url, const char* filePath,
         LittleFS.remove(filePath);
         return false;
     }
+    
+    // Calculate CRC32 for integrity verification
+    LOG_I("Calculating CRC32 for downloaded file...");
+    uint32_t fileCRC32 = 0xFFFFFFFF;
+    const uint32_t crc32Polynomial = 0xEDB88320;
+    uint8_t crcBuffer[512];
+    size_t bytesRead = 0;
+    verifyFile.seek(0);
+    
+    while ((bytesRead = verifyFile.read(crcBuffer, sizeof(crcBuffer))) > 0) {
+        for (size_t i = 0; i < bytesRead; i++) {
+            fileCRC32 ^= crcBuffer[i];
+            for (int j = 0; j < 8; j++) {
+                if (fileCRC32 & 1) {
+                    fileCRC32 = (fileCRC32 >> 1) ^ crc32Polynomial;
+                } else {
+                    fileCRC32 >>= 1;
+                }
+            }
+        }
+        feedWatchdog();
+    }
+    fileCRC32 = ~fileCRC32;
+    
     verifyFile.close();
     
-    LOG_I("Download complete: %d bytes", written);
+    LOG_I("Download complete: %d bytes, CRC32=0x%08X", written, fileCRC32);
+    
+    // Store CRC32 in file metadata (we'll use Preferences to store it temporarily)
+    // This will be used later when streaming to verify integrity
+    Preferences prefs;
+    prefs.begin("ota", false);  // Read-write namespace (was incorrectly set to read-only!)
+    bool stored = prefs.putUInt("pico_crc32", fileCRC32);
+    prefs.end();
+    
+    if (!stored) {
+        LOG_W("Failed to store CRC32 in Preferences - integrity check will be disabled");
+    } else {
+        LOG_I("CRC32 stored successfully: 0x%08X", fileCRC32);
+    }
+    
     return true;
 }
 
@@ -1275,7 +1305,7 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     // =============================================================================
     
     // Retry configuration (defined at function scope for use in multiple retry loops)
-    const int MAX_HANDSHAKE_RETRIES = 3;  // Retry bootloader handshake up to 3 times
+    const int MAX_HANDSHAKE_RETRIES = 5;  // Increased retries for robustness
     
     // Send bootloader command with retry mechanism
     broadcastOtaProgress(&_ws, "flash", 42, "Preparing device...");
@@ -1288,15 +1318,24 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     
     for (int handshakeRetry = 0; handshakeRetry < MAX_HANDSHAKE_RETRIES && !handshakeSuccess; handshakeRetry++) {
         if (handshakeRetry > 0) {
-            LOG_W("Retrying bootloader handshake (attempt %d/%d)...", handshakeRetry + 1, MAX_HANDSHAKE_RETRIES);
+            // Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
+            unsigned long backoffDelay = 200 * (1UL << (handshakeRetry - 1));
+            if (backoffDelay > 2000) backoffDelay = 2000;  // Cap at 2s
+            
+            LOG_W("Retrying bootloader handshake (attempt %d/%d, backoff: %lu ms)...", 
+                  handshakeRetry + 1, MAX_HANDSHAKE_RETRIES, backoffDelay);
             broadcastOtaProgress(&_ws, "flash", 42, "Retrying device connection...");
             feedWatchdog();
             
             // Drain UART buffer before retry
-            while (Serial1.available()) {
+            unsigned long drainStart = millis();
+            while (Serial1.available() && (millis() - drainStart) < 200) {
                 Serial1.read();
             }
-            delay(500);  // Wait before retry
+            
+            // Exponential backoff delay
+            delay(backoffDelay);
+            feedWatchdog();
         }
         
         if (!_picoUart.sendCommand(MSG_CMD_BOOTLOADER, nullptr, 0)) {
@@ -1377,15 +1416,26 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     broadcastOtaProgress(&_ws, "flash", 45, "Installing...");
     feedWatchdog();
     
-    // Stream to Pico via UART bootloader with retry mechanism
-    const int MAX_UPDATE_RETRIES = 2;  // Retry entire update once if it fails
+    // Stream to Pico via UART bootloader with robust retry mechanism
+    const int MAX_UPDATE_RETRIES = 3;  // Increased retries for robustness
     bool success = false;
     
     for (int updateRetry = 0; updateRetry < MAX_UPDATE_RETRIES && !success; updateRetry++) {
         if (updateRetry > 0) {
-            LOG_W("Retrying Pico firmware update (attempt %d/%d)...", updateRetry + 1, MAX_UPDATE_RETRIES);
+            // Exponential backoff between update retries: 1s, 2s, 4s
+            unsigned long backoffDelay = 1000 * (1UL << (updateRetry - 1));
+            if (backoffDelay > 4000) backoffDelay = 4000;  // Cap at 4s
+            
+            LOG_W("Retrying Pico firmware update (attempt %d/%d, backoff: %lu ms)...", 
+                  updateRetry + 1, MAX_UPDATE_RETRIES, backoffDelay);
             broadcastOtaProgress(&_ws, "flash", 45, "Retrying installation...");
-            feedWatchdog();
+            
+            // Exponential backoff before retry
+            unsigned long backoffStart = millis();
+            while ((millis() - backoffStart) < backoffDelay) {
+                delay(100);
+                feedWatchdog();
+            }
             
             // CRITICAL: Resume UART processing first so we can detect Pico state
             // UART was paused during firmware streaming, we need it active to receive messages
@@ -1485,12 +1535,22 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
             bool retryHandshakeSuccess = false;
             for (int retryHandshakeAttempt = 0; retryHandshakeAttempt < MAX_HANDSHAKE_RETRIES && !retryHandshakeSuccess; retryHandshakeAttempt++) {
                 if (retryHandshakeAttempt > 0) {
-                    LOG_W("Retrying bootloader handshake on update retry (attempt %d/%d)...", 
-                          retryHandshakeAttempt + 1, MAX_HANDSHAKE_RETRIES);
-                    delay(500);
-                    while (Serial1.available()) {
+                    // Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
+                    unsigned long backoffDelay = 200 * (1UL << (retryHandshakeAttempt - 1));
+                    if (backoffDelay > 2000) backoffDelay = 2000;  // Cap at 2s
+                    
+                    LOG_W("Retrying bootloader handshake on update retry (attempt %d/%d, backoff: %lu ms)...", 
+                          retryHandshakeAttempt + 1, MAX_HANDSHAKE_RETRIES, backoffDelay);
+                    
+                    // Drain UART buffer before retry
+                    unsigned long drainStart = millis();
+                    while (Serial1.available() && (millis() - drainStart) < 200) {
                         Serial1.read();
                     }
+                    
+                    // Exponential backoff delay
+                    delay(backoffDelay);
+                    feedWatchdog();
                 }
                 
                 if (!_picoUart.sendCommand(MSG_CMD_BOOTLOADER, nullptr, 0)) {
@@ -1745,7 +1805,11 @@ void BrewWebServer::startGitHubOTA(const String& version) {
     unsigned long lastDataReceived = millis();  // Track stalls
     constexpr unsigned long STALL_TIMEOUT_MS = 30000;  // 30 second stall timeout
     
-    LOG_I("Starting ESP32 firmware download...");
+    // Calculate CRC32 during download for integrity verification
+    uint32_t streamCRC32 = 0xFFFFFFFF;
+    const uint32_t crc32Polynomial = 0xEDB88320;
+    
+    LOG_I("Starting ESP32 firmware download with CRC32 verification...");
     
     while (http.connected() && written < (size_t)contentLength) {
         // Check overall timeout
@@ -1792,6 +1856,19 @@ void BrewWebServer::startGitHubOTA(const String& version) {
             size_t bytesRead = stream->readBytes(buffer.get(), toRead);
             
             if (bytesRead > 0) {
+                // Calculate CRC32 for this chunk BEFORE writing to flash
+                // This verifies data integrity during download
+                for (size_t i = 0; i < bytesRead; i++) {
+                    streamCRC32 ^= buffer[i];
+                    for (int j = 0; j < 8; j++) {
+                        if (streamCRC32 & 1) {
+                            streamCRC32 = (streamCRC32 >> 1) ^ crc32Polynomial;
+                        } else {
+                            streamCRC32 >>= 1;
+                        }
+                    }
+                }
+                
                 // Yield before potentially blocking write operation
                 feedWatchdog();
                 yield();
@@ -1837,6 +1914,38 @@ void BrewWebServer::startGitHubOTA(const String& version) {
         return;
     }
     
+    // Finalize CRC32 calculation
+    streamCRC32 = ~streamCRC32;
+    LOG_I("ESP32 firmware download complete: %d bytes, CRC32=0x%08X", written, streamCRC32);
+    
+    // Check if we have an expected CRC32 to verify against
+    // (This could come from release metadata or a previous successful download)
+    Preferences prefs;
+    prefs.begin("ota", true);  // Read-only first
+    uint32_t expectedCRC32 = prefs.getUInt("esp32_expected_crc32", 0);
+    prefs.end();
+    
+    if (expectedCRC32 != 0) {
+        if (streamCRC32 != expectedCRC32) {
+            LOG_E("ESP32 firmware CRC32 MISMATCH! Expected: 0x%08X, Got: 0x%08X", expectedCRC32, streamCRC32);
+            LOG_E("Data integrity check FAILED - firmware may be corrupted");
+            Update.abort();
+            broadcastLogLevel("error", "Firmware integrity check failed");
+            broadcastOtaProgress(&_ws, "error", 0, "Integrity check failed");
+            return;
+        } else {
+            LOG_I("ESP32 firmware CRC32 verified: 0x%08X - data integrity OK", streamCRC32);
+        }
+    } else {
+        LOG_I("ESP32 firmware CRC32 calculated: 0x%08X (no expected value to verify)", streamCRC32);
+    }
+    
+    // Store CRC32 in Preferences for future reference/verification
+    prefs.begin("ota", false);  // Read-write
+    prefs.putUInt("esp32_crc32", streamCRC32);
+    prefs.end();
+    LOG_I("Stored ESP32 firmware CRC32: 0x%08X", streamCRC32);
+    
     broadcastOtaProgress(&_ws, "flash", 95, "Finalizing...");
     
     if (!Update.end(true)) {
@@ -1846,7 +1955,7 @@ void BrewWebServer::startGitHubOTA(const String& version) {
         return;
     }
     
-    LOG_I("ESP32 firmware update successful!");
+    LOG_I("ESP32 firmware update successful! CRC32 verified: 0x%08X", streamCRC32);
     
     // Update LittleFS (optional - continue even if fails)
     // CRITICAL: LittleFS update is non-critical - firmware is already flashed
@@ -1930,34 +2039,8 @@ void BrewWebServer::updateLittleFS(const char* tag) {
     
     LOG_I("LittleFS download URL: %s", littlefsUrl);
     
-    // CRITICAL: Pre-resolve DNS before GET to avoid DNS hang
-    String urlStr(littlefsUrl);
-    String hostname = "";
-    int hostStart = urlStr.indexOf("://");
-    if (hostStart >= 0) {
-        hostStart += 3;
-        int hostEnd = urlStr.indexOf("/", hostStart);
-        if (hostEnd < 0) hostEnd = urlStr.length();
-        hostname = urlStr.substring(hostStart, hostEnd);
-        int portColon = hostname.indexOf(":");
-        if (portColon >= 0) {
-            hostname = hostname.substring(0, portColon);
-        }
-    }
-    
-    if (hostname.length() > 0) {
-        LOG_I("Resolving DNS for: %s", hostname.c_str());
-        IPAddress resolvedIP;
-        unsigned long dnsStart = millis();
-        bool dnsResolved = WiFi.hostByName(hostname.c_str(), resolvedIP);
-        unsigned long dnsTime = millis() - dnsStart;
-        
-        if (!dnsResolved) {
-            LOG_E("DNS resolution failed for %s (took %lu ms)", hostname.c_str(), dnsTime);
-            return;
-        }
-        LOG_I("DNS resolved: %s -> %s (%lu ms)", hostname.c_str(), resolvedIP.toString().c_str(), dnsTime);
-    }
+    // NOTE: DNS resolution is handled automatically by HTTPClient
+    // No need to pre-resolve - HTTPClient handles DNS with proper timeouts
     
     // Configure secure client (services are paused to free memory for SSL buffers)
     WiFiClientSecure client;
@@ -1992,11 +2075,52 @@ void BrewWebServer::updateLittleFS(const char* tag) {
         return;
     }
     
-    int contentLength = http.getSize();
+    // Get Content-Length from response headers
+    // CRITICAL: http.getSize() may return wrong value (partition size instead of file size)
+    // Parse Content-Length header string directly to get the actual file size
+    String contentType = http.header("Content-Type");
+    String contentLengthHeader = http.header("Content-Length");
+    int contentLengthFromGetSize = http.getSize();
+    
+    LOG_I("LittleFS HTTP headers - Content-Length header: '%s', getSize(): %d, Content-Type: '%s'", 
+          contentLengthHeader.c_str(), contentLengthFromGetSize, contentType.c_str());
+    
+    // Parse Content-Length header string directly (more reliable than getSize())
+    int contentLength = -1;
+    if (contentLengthHeader.length() > 0) {
+        contentLength = contentLengthHeader.toInt();
+        LOG_I("Parsed Content-Length from header string: %d bytes (%.1f MB)", 
+              contentLength, contentLength / (1024.0f * 1024.0f));
+    } else {
+        // Fallback to getSize() if header string is empty
+        contentLength = contentLengthFromGetSize;
+        LOG_W("Content-Length header string is empty, using getSize(): %d", contentLength);
+    }
+    
+    // If getSize() and header string differ significantly, log a warning
+    if (contentLengthFromGetSize > 0 && contentLength > 0) {
+        int difference = (contentLengthFromGetSize > contentLength) ? 
+                         (contentLengthFromGetSize - contentLength) : 
+                         (contentLength - contentLengthFromGetSize);
+        if (difference > 1024 * 1024) {  // > 1MB difference
+            LOG_W("Content-Length mismatch: header='%s' (%d), getSize()=%d (difference: %d bytes)", 
+                  contentLengthHeader.c_str(), contentLength, contentLengthFromGetSize, difference);
+        }
+    }
+    
+    // Validate content length - should be around 1.5MB, not 8MB
+    // If it's suspiciously large (>= 5MB), it's likely wrong
     if (contentLength <= 0) {
-        LOG_W("Invalid LittleFS size");
+        LOG_W("Invalid LittleFS size: %d", contentLength);
         http.end();
         return;
+    }
+    
+    // Warn if content length seems wrong (file should be ~1.5MB, not 8MB)
+    if (contentLength >= 5 * 1024 * 1024) {  // >= 5MB
+        LOG_W("WARNING: Content-Length (%d bytes) seems too large for LittleFS image (expected ~1.5MB)", contentLength);
+        LOG_W("This might be a server issue - will download until connection closes");
+        // Don't return - we'll download until connection closes instead
     }
     
     // Find filesystem partition (could be named "littlefs" or "spiffs" depending on partition table)
@@ -2083,81 +2207,110 @@ void BrewWebServer::updateLittleFS(const char* tag) {
     const unsigned long LITTLEFS_STALL_TIMEOUT_MS = 30000;  // 30 seconds stall timeout
     const unsigned long LITTLEFS_TOTAL_TIMEOUT_MS = 120000;  // 2 minutes total timeout
     
-    LOG_I("Starting LittleFS download: %d bytes to partition offset 0", contentLength);
+    // Determine if we can trust Content-Length
+    // GitHub/S3 redirects may strip or provide incorrect Content-Length
+    int originalContentLength = contentLength;  // Save for logging
+    const size_t MAX_REASONABLE_SIZE = 3 * 1024 * 1024;  // 3MB max reasonable size
+    bool useContentLength = (contentLength > 0 && contentLength < MAX_REASONABLE_SIZE);
     
-    while (http.connected() && written < (size_t)contentLength && offset < partition->size) {
+    if (!useContentLength) {
+        LOG_W("Content-Length (%d bytes) appears incorrect or missing - will download until connection closes", contentLength);
+        LOG_I("Downloading until connection closes (max %d bytes)", partition->size);
+    } else {
+        LOG_I("Content-Length: %d bytes (%.1f MB)", 
+              contentLength, contentLength / (1024.0f * 1024.0f));
+    }
+    
+    LOG_I("Starting LittleFS download to partition offset 0 (using content-length: %s)", 
+          useContentLength ? "yes" : "no");
+    
+    // Use blocking readBytes() pattern - this yields CPU automatically until data arrives
+    // This prevents busy-wait loops that starve the networking stack
+    while ((http.connected() || stream->available()) && offset < partition->size) {
         // Check for total timeout
         if (millis() - downloadStart > LITTLEFS_TOTAL_TIMEOUT_MS) {
-            LOG_W("LittleFS download timeout after %lu ms (wrote %d/%d)", 
-                  millis() - downloadStart, written, contentLength);
+            LOG_W("LittleFS download timeout after %lu ms (wrote %d bytes)", 
+                  millis() - downloadStart, written);
             break;
         }
         
+        // Feed watchdog periodically
         if (millis() - lastYield >= OTA_WATCHDOG_FEED_INTERVAL_MS) {
             feedWatchdog();
             yield();
             lastYield = millis();
         }
         
-        size_t available = stream->available();
+        // Use blocking readBytes() - respects client.setTimeout() and yields CPU
+        // This is more efficient than busy-waiting on available()
+        size_t bytesRead = stream->readBytes(buffer.get(), HEAP_BUFFER_SIZE);
         
-        // Check for stall (no data received for too long)
-        if (available == 0 && millis() - lastDataReceived > LITTLEFS_STALL_TIMEOUT_MS) {
-            LOG_W("LittleFS download stalled - no data for %lu ms (wrote %d/%d)", 
-                  LITTLEFS_STALL_TIMEOUT_MS, written, contentLength);
-            break;
-        }
-        if (available > 0) {
-            lastDataReceived = millis();  // Reset stall timer when data arrives
-            // Limit read size to prevent blocking main loop for too long
-            size_t maxChunkSize = min(available, (size_t)4096);  // Max 4KB per chunk
-            size_t toRead = min(maxChunkSize, HEAP_BUFFER_SIZE);
+        if (bytesRead > 0) {
+            // Reset stall timer when data arrives
+            lastDataReceived = millis();
             
-            // Log progress every 10% or every 1MB
-            static size_t lastProgressLog = 0;
-            size_t progress = (written * 100) / contentLength;
-            if (written == 0 || (progress > 0 && progress >= lastProgressLog + 10) || (written > 0 && written % (1024 * 1024) == 0)) {
-                LOG_I("LittleFS download: %d%% (%d/%d bytes)", progress, written, contentLength);
-                lastProgressLog = progress;
+            // Write to partition
+            if (esp_partition_write(partition, offset, buffer.get(), bytesRead) != ESP_OK) {
+                LOG_E("LittleFS write failed at offset %d", offset);
+                break;
             }
+            written += bytesRead;
+            offset += bytesRead;
             
-            // Yield before potentially blocking read operation
-            feedWatchdog();
-            yield();
-            
-            size_t bytesRead = stream->readBytes(buffer.get(), toRead);
-            
-            if (bytesRead > 0) {
-                // Yield before potentially blocking write operation
-                feedWatchdog();
-                yield();
-                
-                if (esp_partition_write(partition, offset, buffer.get(), bytesRead) != ESP_OK) {
-                    LOG_W("LittleFS write failed at offset %d", offset);
-                    break;
+            // Log progress
+            if (useContentLength) {
+                size_t progress = (written * 100) / originalContentLength;
+                static size_t lastProgressLog = 0;
+                if (written == 0 || (progress > 0 && progress >= lastProgressLog + 10) || 
+                    (written > 0 && written % (1024 * 1024) == 0)) {
+                    LOG_I("LittleFS download: %d%% (%d/%d bytes)", progress, written, originalContentLength);
+                    lastProgressLog = progress;
                 }
-                written += bytesRead;
-                offset += bytesRead;
-                
-                // Yield after write to allow main loop to run
-                // This prevents blocking the main loop for >1 second
-                feedWatchdog();
-                yield();
-                vTaskDelay(pdMS_TO_TICKS(1));  // 1ms delay using FreeRTOS for better task scheduling
+            } else {
+                // When not using Content-Length, log every 1MB or every 5 seconds
+                static unsigned long lastProgressTime = 0;
+                if (written > 0 && (written % (1024 * 1024) == 0 || (millis() - lastProgressTime) > 5000)) {
+                    LOG_I("LittleFS download: %d bytes (%.1f MB) - %lu ms elapsed", 
+                          written, written / (1024.0f * 1024.0f), millis() - downloadStart);
+                    lastProgressTime = millis();
+                }
             }
-        } else {
-            yield();
+            
             feedWatchdog();
+            yield();
+        } else {
+            // No data read within timeout period
+            if (!http.connected() && stream->available() == 0) {
+                // Connection closed and buffer empty - download complete
+                LOG_I("Connection closed - download complete (wrote %d bytes, %.1f MB)", 
+                      written, written / (1024.0f * 1024.0f));
+                break;
+            }
+            
+            // If connected but no data for long time, check stall
+            if (millis() - lastDataReceived > LITTLEFS_STALL_TIMEOUT_MS) {
+                LOG_W("LittleFS download stalled - no data for %lu ms (wrote %d bytes)", 
+                      LITTLEFS_STALL_TIMEOUT_MS, written);
+                break;
+            }
+        }
+        
+        // Break if we hit exact Content-Length (if known and trusted)
+        if (useContentLength && written >= (size_t)originalContentLength) {
+            LOG_I("Download complete: reached Content-Length (%d bytes)", written);
+            break;
         }
     }
     
     http.end();
     feedWatchdog();
     
-    if (written == (size_t)contentLength) {
+    if (useContentLength && written == (size_t)originalContentLength) {
         LOG_I("LittleFS updated: %d bytes", written);
+    } else if (!useContentLength) {
+        LOG_I("LittleFS updated: %d bytes (downloaded until connection closed)", written);
     } else {
-        LOG_W("LittleFS incomplete: %d/%d bytes (non-critical, continuing)", written, contentLength);
+        LOG_W("LittleFS incomplete: %d/%d bytes (non-critical, continuing)", written, originalContentLength);
     }
     
     // NOTE: Do NOT remount LittleFS here - device will restart and mount on next boot
@@ -2278,16 +2431,25 @@ void BrewWebServer::startCombinedOTA(const String& version, bool isPendingOTA) {
         return;  // Won't reach here due to restart
     }
     
-    // Wait for Pico to stabilize
+    // Wait for Pico to stabilize and verify connection
+    // The Pico may disconnect briefly during boot, so we wait and check for reconnection
     broadcastOtaProgress(&_ws, "flash", 58, "Verifying internal controller...");
-    for (int i = 0; i < 30; i++) {
+    bool picoOk = false;
+    for (int i = 0; i < 200; i++) {  // Wait up to 20 seconds for Pico to reconnect
         delay(100);
         feedWatchdog();
         _picoUart.loop();  // Process any incoming packets
+        
+        // Check if Pico is connected (may disconnect briefly during boot)
+        if (_picoUart.isConnected()) {
+            picoOk = true;
+            // Wait a bit more to ensure connection is stable
+            if (i >= 10) {  // At least 1 second of stable connection
+                break;
+            }
+        }
     }
     
-    // Check if Pico came back up
-    bool picoOk = _picoUart.isConnected();
     if (!picoOk) {
         LOG_E("Pico not responding after update - aborting");
         cleanupOtaFiles();

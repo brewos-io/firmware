@@ -766,10 +766,11 @@ static void setupEarlyInitialization() {
     
     // SWD pins already set to INPUT_PULLUP above, but ensure they're truly floating
     // (We'll set pull-up later, but for now float them to prevent back-power)
-    #if defined(SWD_CLK_PIN) && defined(SWD_DIO_PIN)
-        gpio_set_pull_mode((gpio_num_t)SWD_CLK_PIN, GPIO_FLOATING);
-        gpio_set_pull_mode((gpio_num_t)SWD_DIO_PIN, GPIO_FLOATING);
-    #endif
+    // Only if SWD pins are actually wired (SWD_SUPPORTED = 1)
+#if SWD_SUPPORTED && defined(SWD_CLK_PIN) && defined(SWD_DIO_PIN)
+    gpio_set_pull_mode((gpio_num_t)SWD_CLK_PIN, GPIO_FLOATING);
+    gpio_set_pull_mode((gpio_num_t)SWD_DIO_PIN, GPIO_FLOATING);
+#endif
     
     delay(10); // Give pins time to fully float
     
@@ -788,6 +789,8 @@ static void setupEarlyInitialization() {
     // 4. ENABLE STRONG DRIVE ON SWCLK (While Reset is still LOW)
     // Drive SWCLK HIGH to prevent EMI noise from triggering debug mode
     // Since Reset is held LOW, Pico ignores this and won't enter debug mode
+    // Only configure SWD pins if they are actually wired (SWD_SUPPORTED = 1)
+#if SWD_SUPPORTED
     gpio_reset_pin((gpio_num_t)SWD_CLK_PIN);
     gpio_set_level((gpio_num_t)SWD_CLK_PIN, 1);
     gpio_set_direction((gpio_num_t)SWD_CLK_PIN, GPIO_MODE_OUTPUT);
@@ -796,6 +799,7 @@ static void setupEarlyInitialization() {
     gpio_reset_pin((gpio_num_t)SWD_DIO_PIN);
     gpio_set_direction((gpio_num_t)SWD_DIO_PIN, GPIO_MODE_INPUT);
     gpio_set_pull_mode((gpio_num_t)SWD_DIO_PIN, GPIO_PULLUP_ONLY);
+#endif // SWD_SUPPORTED
     
     delay(50); // Electrical stabilization
 
@@ -2472,8 +2476,10 @@ static void loopPeriodicTasks() {
             
             Serial.printf("[Watchdog] Phase 3: Discharging for %lums (attempt #%d)...\n", 
                          dischargeTime, recoveryAttemptCount);
+#if SWD_SUPPORTED
             Serial.println("[Watchdog] NOTE: Device appears stuck (driving SWDIO HIGH but not responding).");
             Serial.println("[Watchdog] Extended discharge may help clear latch-up state.");
+#endif // SWD_SUPPORTED
             
             // Check for Pico recovery during discharge (break into smaller delays)
             unsigned long dischargeStart = millis();
@@ -2508,6 +2514,8 @@ static void loopPeriodicTasks() {
             // Now that Pico is effectively "off", we set up the Strong Drive
             // *before* we release reset. This prevents noise from triggering
             // debug mode during the boot process.
+            // Only configure SWD pins if they are actually wired (SWD_SUPPORTED = 1)
+#if SWD_SUPPORTED
             Serial.println("[Watchdog] Phase 4: Preparing SWD pins for boot...");
             
             // Drive SWCLK High (Strong) - but ONLY while reset is still LOW
@@ -2521,6 +2529,10 @@ static void loopPeriodicTasks() {
             gpio_set_pull_mode((gpio_num_t)SWD_DIO_PIN, GPIO_PULLUP_ONLY);
             
             delay(50); // Longer stabilization time
+#else
+            // SWD pins not available - skip SWD pin configuration
+            delay(50); // Still wait for stabilization
+#endif // SWD_SUPPORTED
 
             // === PHASE 5: RELEASE RESET (Boot - Open-Drain Method) ===
             // Use Open-Drain: Set to INPUT instead of driving HIGH

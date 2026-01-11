@@ -2644,10 +2644,28 @@ String BrewWebServer::getContentType(const String& filename) {
 
 bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize) {
     const size_t CHUNK_SIZE = 200;  // Bootloader protocol supports up to 256 bytes per chunk
-    const int MAX_CHUNK_RETRIES = 3;  // Retry failed chunks up to 3 times
+    const int MAX_CHUNK_RETRIES = 5;  // Increased retries for robustness
+    const int MAX_CONSECUTIVE_FAILURES = 3;  // Max consecutive chunk failures before abort
     uint8_t buffer[CHUNK_SIZE];
     size_t bytesSent = 0;
     uint32_t chunkNumber = 0;
+    int consecutiveFailures = 0;  // Track consecutive failures
+    
+    // Get expected CRC32 from download
+    Preferences prefs;
+    prefs.begin("ota", true);  // Read-only
+    uint32_t expectedCRC32 = prefs.getUInt("pico_crc32", 0);
+    prefs.end();  // Close read-only session
+    
+    if (expectedCRC32 == 0) {
+        LOG_W("No CRC32 stored for firmware - integrity check disabled");
+    } else {
+        LOG_I("Expected CRC32: 0x%08X - will verify during streaming", expectedCRC32);
+    }
+    
+    // Calculate CRC32 while streaming to verify data integrity
+    uint32_t streamCRC32 = 0xFFFFFFFF;
+    const uint32_t crc32Polynomial = 0xEDB88320;
     
     firmwareFile.seek(0);  // Start from beginning
     
@@ -2662,18 +2680,42 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
             return false;
         }
         
-        // Retry loop for individual chunks
+        // Update CRC32 for this chunk
+        for (size_t i = 0; i < bytesRead; i++) {
+            streamCRC32 ^= buffer[i];
+            for (int j = 0; j < 8; j++) {
+                if (streamCRC32 & 1) {
+                    streamCRC32 = (streamCRC32 >> 1) ^ crc32Polynomial;
+                } else {
+                    streamCRC32 >>= 1;
+                }
+            }
+        }
+        
+        // Retry loop for individual chunks with exponential backoff
         bool chunkSuccess = false;
         int chunkRetry = 0;
         
         while (!chunkSuccess && chunkRetry < MAX_CHUNK_RETRIES) {
             if (chunkRetry > 0) {
-                LOG_W("Retrying chunk %d (attempt %d/%d)...", chunkNumber, chunkRetry + 1, MAX_CHUNK_RETRIES);
+                // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
+                unsigned long backoffDelay = 50 * (1UL << (chunkRetry - 1));
+                if (backoffDelay > 800) backoffDelay = 800;  // Cap at 800ms
+                
+                LOG_W("Retrying chunk %d (attempt %d/%d, backoff: %lu ms)...", 
+                      chunkNumber, chunkRetry + 1, MAX_CHUNK_RETRIES, backoffDelay);
+                
                 // Drain any leftover bytes from previous attempt
-                while (Serial1.available()) {
+                unsigned long drainStart = millis();
+                while (Serial1.available() && (millis() - drainStart) < 100) {
                     Serial1.read();
                 }
-                delay(50);  // Small delay before retry
+                
+                // Exponential backoff delay
+                delay(backoffDelay);
+                
+                // Feed watchdog during backoff (yield to prevent watchdog reset)
+                yield();
             }
             
             // Stream chunk via bootloader protocol (raw UART, not packet protocol)
@@ -2701,12 +2743,22 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
                         chunkSuccess = true;  // Chunk succeeded
                         break;
                     } else if (byte == 0xFF) {
-                        // Error marker from Pico
+                        // Error marker from Pico - read error code immediately
                         if (Serial1.available()) {
                             errorCode = Serial1.read();
+                        } else {
+                            // Wait a bit for error code to arrive
+                            unsigned long errorWaitStart = millis();
+                            while ((millis() - errorWaitStart) < 100 && !Serial1.available()) {
+                                delay(1);
+                            }
+                            if (Serial1.available()) {
+                                errorCode = Serial1.read();
+                            }
                         }
-                        // Don't break here - wait for timeout to ensure we read all error bytes
-                        // But mark that we got an error
+                        // Break immediately on error - Pico bootloader exits after sending error
+                        // We need to restart bootloader handshake, not just retry chunk
+                        break;
                     }
                     // Ignore other bytes (could be debug output on wrong line)
                 }
@@ -2715,6 +2767,10 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
             
             if (!ackReceived) {
                 if (errorCode != 0) {
+                    // CRITICAL: When Pico sends ANY error code, it immediately exits bootloader mode
+                    // The bootloader function returns, so we cannot retry at chunk level
+                    // We MUST restart the bootloader handshake to continue
+                    
                     // Map error codes to human-readable messages
                     const char* errorMsg = "Unknown error";
                     switch (errorCode) {
@@ -2727,21 +2783,54 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
                         case 7: errorMsg = "Flash erase failed"; break;
                         default: errorMsg = "Unknown error"; break;
                     }
-                    LOG_W("Pico reported error 0x%02X (%s) during chunk %d", errorCode, errorMsg, chunkNumber);
+                    
+                    LOG_W("Pico reported error 0x%02X (%s) during chunk %d - bootloader has exited", 
+                          errorCode, errorMsg, chunkNumber);
+                    LOG_I("Cannot retry chunk - bootloader is no longer active. Will restart bootloader handshake.");
+                    
+                    // Return false immediately to trigger higher-level retry that restarts bootloader
+                    // The higher-level retry will:
+                    // 1. Wait for Pico to exit bootloader mode (or reset it)
+                    // 2. Restart bootloader handshake
+                    // 3. Stream firmware from the beginning
+                    return false;
                 } else {
-                    LOG_W("Timeout waiting for ACK after chunk %d", chunkNumber);
+                    // Timeout (no error code) - Pico might still be in bootloader mode
+                    // This could be a transient issue (slow flash operation, UART delay)
+                    // Try retrying the chunk with exponential backoff
+                    LOG_W("Timeout waiting for ACK after chunk %d (attempt %d/%d)", 
+                          chunkNumber, chunkRetry + 1, MAX_CHUNK_RETRIES);
+                    chunkRetry++;
+                    if (chunkRetry < MAX_CHUNK_RETRIES) {
+                        LOG_I("Will retry chunk %d with exponential backoff (Pico may still be processing)...", chunkNumber);
+                        continue;  // Retry with backoff - bootloader might still be active
+                    } else {
+                        LOG_E("Chunk %d failed after %d retries (timeout) - bootloader may have exited", 
+                              chunkNumber, MAX_CHUNK_RETRIES);
+                        LOG_I("Triggering bootloader restart to recover...");
+                        return false;  // Trigger higher-level retry
+                    }
                 }
-                
-                chunkRetry++;
-                if (chunkRetry < MAX_CHUNK_RETRIES) {
-                    LOG_I("Will retry chunk %d...", chunkNumber);
-                }
+            } else {
+                // Success - reset consecutive failure counter
+                consecutiveFailures = 0;
             }
         }
         
         // If chunk failed after all retries, abort
         if (!chunkSuccess) {
-            LOG_E("Chunk %d failed after %d retries", chunkNumber, MAX_CHUNK_RETRIES);
+            consecutiveFailures++;
+            LOG_E("Chunk %d failed after %d retries (consecutive failures: %d/%d)", 
+                  chunkNumber, MAX_CHUNK_RETRIES, consecutiveFailures, MAX_CONSECUTIVE_FAILURES);
+            
+            // If too many consecutive failures, abort immediately
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                LOG_E("Too many consecutive chunk failures (%d) - aborting update", consecutiveFailures);
+                broadcastLogLevel("error", "Too many consecutive failures at chunk %d", chunkNumber);
+                return false;
+            }
+            
+            // Otherwise, trigger bootloader restart to recover
             broadcastLogLevel("error", "Firmware streaming failed at chunk %d", chunkNumber);
             return false;
         }
@@ -2785,6 +2874,23 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
         // The ACK wait above ensures proper flow control regardless of flash timing.
     }
     
+    // Finalize CRC32
+    streamCRC32 = ~streamCRC32;
+    
+    // Verify CRC32 matches expected value
+    if (expectedCRC32 != 0) {
+        if (streamCRC32 != expectedCRC32) {
+            LOG_E("CRC32 MISMATCH! Streamed: 0x%08X, Expected: 0x%08X", streamCRC32, expectedCRC32);
+            LOG_E("Data integrity check FAILED - firmware may be corrupted");
+            broadcastLogLevel("error", "Data integrity check failed");
+            return false;
+        } else {
+            LOG_I("CRC32 verified: 0x%08X - data integrity OK", streamCRC32);
+        }
+    } else {
+        LOG_I("CRC32 calculated: 0x%08X (no expected value to verify)", streamCRC32);
+    }
+    
     // Send end marker (chunk number 0xFFFFFFFF signals end of firmware)
     uint8_t endMarker[2] = {0xAA, 0x55};  // Bootloader end magic
     size_t sent = _picoUart.streamFirmwareChunk(endMarker, 2, 0xFFFFFFFF);
@@ -2794,8 +2900,31 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
         return false;
     }
     
-    LOG_I("Firmware streaming complete: %d bytes in %d chunks", bytesSent, chunkNumber);
+    // Send expected CRC32 to Pico bootloader for verification
+    // Format: [0xAA 0x55] [CRC32: 4 bytes LE]
+    if (expectedCRC32 != 0) {
+        uint8_t crcPacket[6];
+        crcPacket[0] = 0xAA;
+        crcPacket[1] = 0x55;
+        crcPacket[2] = expectedCRC32 & 0xFF;
+        crcPacket[3] = (expectedCRC32 >> 8) & 0xFF;
+        crcPacket[4] = (expectedCRC32 >> 16) & 0xFF;
+        crcPacket[5] = (expectedCRC32 >> 24) & 0xFF;
+        
+        Serial1.write(crcPacket, 6);
+        Serial1.flush();
+        LOG_I("Sent expected CRC32 to Pico: 0x%08X", expectedCRC32);
+    }
+    
+    LOG_I("Firmware streaming complete: %d bytes in %d chunks, CRC32=0x%08X", 
+          bytesSent, chunkNumber, streamCRC32);
     broadcastLog("Firmware streaming complete: %zu bytes in %d chunks", bytesSent, chunkNumber);
+    
+    // Clean up stored CRC32 (reuse prefs variable)
+    prefs.begin("ota", false);  // Read-write
+    prefs.remove("pico_crc32");
+    prefs.end();
+    
     return true;
 }
 
