@@ -628,42 +628,38 @@ static bool downloadToFile(const char* url, const char* filePath,
                            size_t* outFileSize = nullptr) {
     LOG_I("Downloading: %s", url);
     
-    // NOTE: DNS pre-resolution removed for Pico downloads
-    // WiFi.hostByName() can hang indefinitely and has no timeout mechanism
-    // HTTPClient's http.begin() and http.GET() have better timeout handling
-    // Let HTTPClient handle DNS resolution with its built-in timeout mechanisms
+    String currentUrl = String(url);
     
-    // Configure secure client (services are paused to free memory for SSL buffers)
+    // We need to handle up to 3 redirects (GitHub -> AWS S3 usually takes 1)
+    for (int redirect = 0; redirect < 3; redirect++) {
+        
+        // 1. Setup Client
     WiFiClientSecure client;
-    client.setInsecure();
-    // CRITICAL FIX: Set underlying TCP timeout to prevent indefinite hangs
-    // Note: setTimeout() sets the read timeout, but SSL handshake might still hang
-    // We pre-resolve DNS above to avoid DNS hangs, but SSL handshake can still hang
-    client.setTimeout(OTA_HTTP_TIMEOUT_MS / 1000); // Convert ms to seconds
+        client.setInsecure(); // Skip cert verification
+        client.setTimeout(15); // 15s TCP timeout
     
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    // Set timeout - this applies to HTTP request, but DNS/SSL can still block
-    // We pre-resolve DNS above to avoid DNS hangs, but SSL handshake can still hang
+        // CRITICAL: Do NOT follow redirects automatically. We do it manually to clean up SSL context.
+        http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS); 
     http.setTimeout(OTA_HTTP_TIMEOUT_MS);
     
-    int httpCode = 0;
-    unsigned long downloadStart = millis();
+        // CRITICAL: Force HTTPClient to collect headers even when redirects are disabled
+        // This ensures header() method works for redirect responses
+        const char* headers[] = {"Location"};
+        http.collectHeaders(headers, 1);
+    
+        LOG_I("Connecting to: %s", currentUrl.c_str());
     
     // Retry loop for transient errors
+        int httpCode = 0;
     for (int retry = 0; retry < OTA_MAX_RETRIES; retry++) {
         feedWatchdog();
         
-        LOG_D("HTTP begin attempt %d/%d for URL: %s", retry + 1, OTA_MAX_RETRIES, url);
-        unsigned long beginStart = millis();
-        bool beginResult = http.begin(client, url);
-        unsigned long beginTime = millis() - beginStart;
-        LOG_D("HTTP begin completed: result=%d, time=%lu ms", beginResult, beginTime);
-        
-        if (!beginResult) {
-            LOG_E("HTTP begin failed (attempt %d/%d, time=%lu ms)", retry + 1, OTA_MAX_RETRIES, beginTime);
+            // 2. Begin Connection
+            if (!http.begin(client, currentUrl)) {
+            LOG_E("HTTP begin failed (attempt %d/%d)", retry + 1, OTA_MAX_RETRIES);
             if (retry < OTA_MAX_RETRIES - 1) {
-                LOG_D("Retrying HTTP begin in 3 seconds...");
+                    LOG_D("Retrying HTTP begin in 3 seconds...");
                 for (int i = 0; i < 30; i++) { delay(100); feedWatchdog(); }
                 continue;
             }
@@ -672,89 +668,51 @@ static bool downloadToFile(const char* url, const char* filePath,
         
         http.addHeader("User-Agent", "BrewOS-ESP32/" ESP32_VERSION);
         
-        // CRITICAL: Check WiFi status before attempting GET
-        // If WiFi is disconnected, GET will hang indefinitely
-        if (WiFi.status() != WL_CONNECTED) {
-            LOG_E("WiFi disconnected before HTTP GET (attempt %d/%d)", retry + 1, OTA_MAX_RETRIES);
-            http.end();
-            if (retry < OTA_MAX_RETRIES - 1) {
-                LOG_I("Waiting for WiFi reconnection before retry...");
-                for (int i = 0; i < 50; i++) {  // Wait up to 5 seconds for WiFi
-                    delay(100);
-                    feedWatchdog();
-                    if (WiFi.status() == WL_CONNECTED) {
-                        LOG_I("WiFi reconnected, retrying HTTP GET...");
-                        break;
+            // CRITICAL: Check WiFi status before attempting GET
+            if (WiFi.status() != WL_CONNECTED) {
+                LOG_E("WiFi disconnected before HTTP GET (attempt %d/%d)", retry + 1, OTA_MAX_RETRIES);
+                http.end();
+                if (retry < OTA_MAX_RETRIES - 1) {
+                    LOG_I("Waiting for WiFi reconnection before retry...");
+                    for (int i = 0; i < 50; i++) {  // Wait up to 5 seconds for WiFi
+                        delay(100);
+        feedWatchdog();
+                        if (WiFi.status() == WL_CONNECTED) {
+                            LOG_I("WiFi reconnected, retrying HTTP GET...");
+                            break;
+                        }
                     }
+                    continue;
                 }
-                continue;
+                return false;
             }
-            return false;
-        }
-        
-        feedWatchdog();
-        
-        // CRITICAL: Pre-resolve DNS before GET to avoid DNS hang
-        // Extract hostname from URL (e.g., "github.com" from "https://github.com/path")
-        String urlStr(url);  // Convert const char* to String for parsing
-        String hostname = "";
-        int hostStart = urlStr.indexOf("://");
-        if (hostStart >= 0) {
-            hostStart += 3;
-            int hostEnd = urlStr.indexOf("/", hostStart);
-            if (hostEnd < 0) hostEnd = urlStr.length();
-            hostname = urlStr.substring(hostStart, hostEnd);
-            // Remove port if present (e.g., "github.com:443" -> "github.com")
-            int portColon = hostname.indexOf(":");
-            if (portColon >= 0) {
-                hostname = hostname.substring(0, portColon);
-            }
-        }
-        
-        if (hostname.length() > 0) {
-            LOG_I("Resolving DNS for: %s", hostname.c_str());
-            // NOTE: DNS pre-resolution removed - WiFi.hostByName() can hang indefinitely
-            // HTTPClient's http.begin() and http.GET() have better timeout handling
-            // Let HTTPClient handle DNS resolution with its built-in timeout mechanisms
-        }
-        
-        LOG_I("Sending HTTP GET request (attempt %d/%d, timeout=%lu ms)...", 
-              retry + 1, OTA_MAX_RETRIES, OTA_HTTP_TIMEOUT_MS);
-        LOG_I("WiFi status: %d, IP: %s", WiFi.status(), WiFi.localIP().toString().c_str());
-        
-        feedWatchdog();
-        unsigned long getStart = millis();
-        
-        // CRITICAL: http.GET() can hang indefinitely on DNS/SSL even with timeout set
-        // The timeout only applies to the HTTP request, not DNS resolution or SSL handshake
-        // We've already resolved DNS above, but SSL handshake can still hang
-        // If GET takes longer than timeout + 5s, we'll abort and retry
+            
+            feedWatchdog();
+            LOG_I("Sending HTTP GET request (attempt %d/%d, timeout=%lu ms)...", 
+                  retry + 1, OTA_MAX_RETRIES, OTA_HTTP_TIMEOUT_MS);
+            LOG_I("WiFi status: %d, IP: %s", WiFi.status(), WiFi.localIP().toString().c_str());
+            
+            // 3. GET Request
+            feedWatchdog();
+            unsigned long getStart = millis();
         httpCode = http.GET();
-        unsigned long getTime = millis() - getStart;
+            unsigned long getTime = millis() - getStart;
         feedWatchdog();
         
-        LOG_I("HTTP GET completed: code=%d, time=%lu ms", httpCode, getTime);
-        
-        // CRITICAL: Check if GET hung (took way too long)
-        // If GET took longer than timeout, the timeout mechanism failed
-        // This usually indicates SSL handshake hung (DNS was already resolved above)
-        if (getTime > OTA_HTTP_TIMEOUT_MS + 5000) {  // Allow 5s margin
-            LOG_E("HTTP GET took %lu ms (exceeded timeout of %lu ms by %lu ms) - timeout failed!", 
-                  getTime, OTA_HTTP_TIMEOUT_MS, getTime - OTA_HTTP_TIMEOUT_MS);
-            LOG_E("This indicates SSL handshake may be hanging - DNS was already resolved");
-            http.end();
-            if (retry < OTA_MAX_RETRIES - 1) {
-                LOG_I("Retrying with fresh connection...");
-                delay(2000);  // Wait before retry
-                continue;
+            LOG_I("HTTP GET completed: code=%d, time=%lu ms", httpCode, getTime);
+            
+            // Check if GET hung
+            if (getTime > OTA_HTTP_TIMEOUT_MS + 5000) {
+                LOG_E("HTTP GET took %lu ms (exceeded timeout) - retrying...", getTime);
+                http.end();
+                if (retry < OTA_MAX_RETRIES - 1) {
+                    delay(2000);
+                    continue;
+                }
+                return false;
             }
-            return false;
-        } else if (getTime > OTA_HTTP_TIMEOUT_MS) {
-            LOG_W("HTTP GET took %lu ms (slightly exceeded timeout of %lu ms)", 
-                  getTime, OTA_HTTP_TIMEOUT_MS);
-        }
-        
-        if (httpCode == HTTP_CODE_OK) {
+            
+            if (httpCode == HTTP_CODE_OK || httpCode == 301 || httpCode == 302 || httpCode == 307) {
             break;
         }
         
@@ -774,19 +732,150 @@ static bool downloadToFile(const char* url, const char* filePath,
         return false;
     }
     
-    if (httpCode != HTTP_CODE_OK) {
-        LOG_E("HTTP failed after retries: %d", httpCode);
+        // 4. Handle Redirects (301, 302, 307)
+        if (httpCode == 301 || httpCode == 302 || httpCode == 307) {
+            // Try HTTPClient's header() method first (should work with collectHeaders())
+            String newUrl = http.header("Location");
+            if (newUrl.length() == 0) {
+                newUrl = http.header("location");  // Try lowercase
+            }
+            if (newUrl.length() == 0) {
+                newUrl = http.header("LOCATION");  // Try uppercase
+            }
+            
+            LOG_I("Redirect detected (code=%d), Location header length: %d", httpCode, newUrl.length());
+            
+            // If header() didn't work, try reading from stream (fallback for HTTP/2 or edge cases)
+            if (newUrl.length() == 0) {
+                LOG_W("Location header not found via header() method, trying stream read...");
+                WiFiClient* stream = http.getStreamPtr();
+                
+                if (stream && stream->available() > 0) {
+                    LOG_I("Stream available: %d bytes", stream->available());
+                    // Read response headers line by line
+                    String headerLine;
+                    bool foundLocation = false;
+                    int bytesRead = 0;
+                    const int MAX_HEADER_BYTES = 4096;  // Support very long URLs
+                    
+                    while (stream->available() > 0 && bytesRead < MAX_HEADER_BYTES && !foundLocation) {
+                        char c = stream->read();
+                        bytesRead++;
+                        
+                        if (c == '\n') {
+                            headerLine.trim();
+                            if (headerLine.length() == 0) {
+                                break;  // End of headers
+                            }
+                            
+                            // Check if this is the Location header (case-insensitive)
+                            if (headerLine.startsWith("Location:") || headerLine.startsWith("location:")) {
+                                int colonIdx = headerLine.indexOf(':');
+                                if (colonIdx >= 0) {
+                                    newUrl = headerLine.substring(colonIdx + 1);
+                                    newUrl.trim();
+                                    
+                                    // Handle HTTP header folding (continuation lines start with space/tab)
+                                    while (stream->available() > 0 && bytesRead < MAX_HEADER_BYTES) {
+                                        char peek = stream->peek();
+                                        if (peek == ' ' || peek == '\t') {
+                                            // Continuation line - read and append
+                                            String continuation;
+                                            while (stream->available() > 0 && bytesRead < MAX_HEADER_BYTES) {
+                                                char contChar = stream->read();
+                                                bytesRead++;
+                                                if (contChar == '\n') {
+                                                    continuation.trim();
+                                                    if (continuation.length() > 0) {
+                                                        newUrl += continuation;
+                                                        newUrl.trim();
+                                                    }
+                                                    break;
+                                                } else if (contChar != '\r') {
+                                                    continuation += contChar;
+                                                }
+                                            }
+                                        } else {
+                                            break;  // Next header line
+                                        }
+                                    }
+                                    
+                                    foundLocation = true;
+                                    LOG_I("Found Location header in stream: %s", newUrl.length() > 100 ? (newUrl.substring(0, 100) + "...").c_str() : newUrl.c_str());
+                                    break;
+                                }
+                            }
+                            headerLine = "";
+                        } else if (c != '\r') {
+                            headerLine += c;
+                        }
+                    }
+                    
+                    if (!foundLocation) {
+                        LOG_E("Location header not found in stream (read %d bytes)", bytesRead);
+                    }
+                } else {
+                    LOG_E("Stream not available (stream=%p, available=%d)", stream, stream ? stream->available() : 0);
+                }
+            }
+            
+            LOG_I("Redirect to: %s", newUrl.length() > 0 ? (newUrl.length() > 100 ? (newUrl.substring(0, 100) + "...").c_str() : newUrl.c_str()) : "(empty)");
+            
+            if (newUrl.length() == 0) {
+                LOG_E("Redirect with no Location header - cannot follow redirect");
+                http.end();
         return false;
     }
     
+            // Handle relative URLs (if Location doesn't start with http:// or https://)
+            if (!newUrl.startsWith("http://") && !newUrl.startsWith("https://")) {
+                // Extract base URL from currentUrl
+                int schemeEnd = currentUrl.indexOf("://");
+                if (schemeEnd >= 0) {
+                    int pathStart = currentUrl.indexOf("/", schemeEnd + 3);
+                    if (pathStart >= 0) {
+                        String baseUrl = currentUrl.substring(0, pathStart);
+                        if (newUrl.startsWith("/")) {
+                            newUrl = baseUrl + newUrl;
+                        } else {
+                            // Relative path - append to current path's directory
+                            int lastSlash = currentUrl.lastIndexOf("/");
+                            if (lastSlash > schemeEnd + 3) {
+                                String basePath = currentUrl.substring(0, lastSlash + 1);
+                                newUrl = basePath + newUrl;
+                            } else {
+                                newUrl = baseUrl + "/" + newUrl;
+                            }
+                        }
+                        LOG_I("Resolved relative URL to: %s", newUrl.c_str());
+                    }
+                }
+            }
+            
+            // CRITICAL: End the current connection completely to free SSL buffers
+            http.end();
+            client.stop();
+            
+            // Update URL and loop to try again with fresh connection
+            currentUrl = newUrl;
+            
+            // Small delay to let heap settle
+            delay(100);
+            continue; 
+        }
+        
+        // 5. Handle Success (200 OK)
+        if (httpCode == HTTP_CODE_OK) {
+            // Check Content Length
     int contentLength = http.getSize();
+            LOG_I("Content Length: %d", contentLength);
+            
     if (contentLength <= 0 || contentLength > OTA_MAX_SIZE) {
-        LOG_E("Invalid content length: %d", contentLength);
+                LOG_E("Invalid size");
         http.end();
         return false;
     }
     
-    LOG_I("Content length: %d bytes", contentLength);
     if (outFileSize) *outFileSize = contentLength;
     
     // Check available space
@@ -797,224 +886,124 @@ static bool downloadToFile(const char* url, const char* filePath,
         return false;
     }
     
-    // Delete existing file
-    if (LittleFS.exists(filePath)) {
-        LittleFS.remove(filePath);
-        feedWatchdog();
-    }
-    
-    // Create file
+            // Prepare File
+            if (LittleFS.exists(filePath)) LittleFS.remove(filePath);
     File file = LittleFS.open(filePath, "w");
-    feedWatchdog();
     if (!file) {
-        LOG_E("Failed to create file: %s", filePath);
+                LOG_E("Failed to open file: %s", filePath);
         http.end();
         return false;
     }
     
-    // Download to file
+            // 6. Download Loop
     WiFiClient* stream = http.getStreamPtr();
-    if (!stream) {
-        LOG_E("Failed to get HTTP stream pointer");
-        file.close();
-        LittleFS.remove(filePath);
-        http.end();
-        return false;
-    }
-    
-    // FIX: Allocate buffer on HEAP, not stack.
-    // WiFiClientSecure uses a lot of stack; a stack buffer increases crash risk.
     std::unique_ptr<uint8_t[]> buffer(new (std::nothrow) uint8_t[OTA_BUFFER_SIZE]);
+            
     if (!buffer) {
-        LOG_E("Failed to allocate buffer");
+                LOG_E("OOM: Buffer alloc failed");
         file.close();
         http.end();
         return false;
     }
     
     size_t written = 0;
-    unsigned long lastYield = millis();
-    unsigned long lastDataReceived = millis();
-    unsigned long lastConsoleLog = millis();
-    unsigned long lastConnectionCheck = millis();
-    // FIX: Increased stall timeout for slow GitHub connections
-    constexpr unsigned long STALL_TIMEOUT_MS = 30000;  // 30 seconds
-    constexpr unsigned long CONNECTION_CHECK_INTERVAL_MS = 2000;  // Check connection health every 2s
-    unsigned long noDataCount = 0;
-    
-    while (written < (size_t)contentLength) {
-        // Check for overall timeout
+            unsigned long lastData = millis();
+            unsigned long downloadStart = millis();
+            
+            while (http.connected() && written < (size_t)contentLength) {
+                // Check overall timeout
         if (millis() - downloadStart > OTA_DOWNLOAD_TIMEOUT_MS) {
-            LOG_E("Download timeout after %lu ms (wrote %d/%d)", millis() - downloadStart, written, contentLength);
-            file.close();
-            LittleFS.remove(filePath);
-            http.end();
-            return false;
-        }
-        
-        // Check connection health periodically
-        if (millis() - lastConnectionCheck > CONNECTION_CHECK_INTERVAL_MS) {
-            bool httpConnected = http.connected();
-            bool streamConnected = stream->connected();
-            
-            if (!httpConnected || !streamConnected) {
-                LOG_E("Connection lost: http=%d stream=%d (wrote %d/%d)", httpConnected, streamConnected, written, contentLength);
-                file.close();
-                LittleFS.remove(filePath);
-                http.end();
-                return false;
-            }
-            lastConnectionCheck = millis();
-        }
-        
-        // Check for stall (no data received for too long)
-        if (millis() - lastDataReceived > STALL_TIMEOUT_MS) {
-            LOG_E("Download stalled - no data for %lu ms (wrote %d/%d)", STALL_TIMEOUT_MS, written, contentLength);
-            file.close();
-            LittleFS.remove(filePath);
-            http.end();
-            return false;
-        }
-        
-        // Feed watchdog frequently and yield to prevent blocking main loop
-        if (millis() - lastYield >= OTA_WATCHDOG_FEED_INTERVAL_MS) {
-            feedWatchdog();
-            yield();  // Yield to other tasks
-            lastYield = millis();
-        }
-        
-        size_t available = stream->available();
-        if (available > 0) {
-            lastDataReceived = millis();
-            noDataCount = 0;  // Reset stall counter
-            
-            // Limit read size to prevent blocking main loop for too long
-            // Read in smaller chunks with yields to allow main loop to run
-            size_t maxChunkSize = min(available, (size_t)4096);  // Max 4KB per chunk
-            size_t toRead = min(maxChunkSize, (size_t)OTA_BUFFER_SIZE);  // Use allocated size
-            
-            // Yield before potentially blocking read operation
-            feedWatchdog();
-            yield();
-            
-            // Read with the heap buffer
-            size_t bytesRead = stream->readBytes(buffer.get(), toRead);
-            
-            if (bytesRead > 0) {
-                // Yield before potentially blocking write operation
-                feedWatchdog();
-                yield();
-                
-                size_t bytesWritten = file.write(buffer.get(), bytesRead);
-                if (bytesWritten != bytesRead) {
-                    LOG_E("Write error: %d/%d bytes (filesystem full?)", bytesWritten, bytesRead);
-                    file.close();
-                    LittleFS.remove(filePath);
-                    http.end();
-                    return false;
+                    LOG_E("Download timeout after %lu ms (wrote %d/%d)", 
+                          millis() - downloadStart, written, contentLength);
+                    break;
                 }
-                written += bytesWritten;
                 
-                // Yield after write to allow main loop to run
-                // This prevents blocking the main loop for >1 second
-                feedWatchdog();
-                yield();
-                vTaskDelay(pdMS_TO_TICKS(1));  // 1ms delay using FreeRTOS for better task scheduling
-                
-                // Log to console every 5 seconds (progress not sent to WebSocket - UI uses simple animation)
-                if (millis() - lastConsoleLog > OTA_CONSOLE_LOG_INTERVAL_MS) {
-                    int pct = (written * 100) / contentLength;
-                    LOG_I("Download: %d%% (%d/%d bytes)", pct, written, contentLength);
-                    lastConsoleLog = millis();
-                }
-            }
-        } else {
-            // No data available - increment counter and check for potential issues
-            noDataCount++;
-            
-            // If we've had no data for a while, check connection more aggressively
-            if (noDataCount > 100) {  // ~1 second at 10ms delay
-                if (!http.connected() || !stream->connected()) {
-                    LOG_E("Connection dropped during download (wrote %d/%d)", written, contentLength);
-                    file.close();
-                    LittleFS.remove(filePath);
-                    http.end();
-                    return false;
-                }
-            }
-            
-            // FIX: If connected but no data, wait briefly to avoid spinning too tight
-            yield();
-            delay(5);  // 5ms delay to allow other tasks to run
-            feedWatchdog();
-        }
-    }
-    
-    file.close();
-    http.end();
-    feedWatchdog();
-    
-    // Verify download complete
-    if (written != (size_t)contentLength) {
-        LOG_E("Download incomplete: %d/%d bytes", written, contentLength);
-        LittleFS.remove(filePath);
-        return false;
-    }
-    
-    unsigned long downloadTime = millis() - downloadStart;
-    LOG_I("Download complete: %d bytes in %lu ms (%.1f KB/s)", 
-          contentLength, downloadTime, (contentLength / 1024.0f) / (downloadTime / 1000.0f));
-    
-    // Verify file size matches
-    File verifyFile = LittleFS.open(filePath, "r");
-    if (!verifyFile || verifyFile.size() != (size_t)contentLength) {
-        LOG_E("File verification failed");
-        if (verifyFile) verifyFile.close();
-        LittleFS.remove(filePath);
-        return false;
-    }
-    
-    // Calculate CRC32 for integrity verification
-    LOG_I("Calculating CRC32 for downloaded file...");
-    uint32_t fileCRC32 = 0xFFFFFFFF;
-    const uint32_t crc32Polynomial = 0xEDB88320;
-    uint8_t crcBuffer[512];
-    size_t bytesRead = 0;
-    verifyFile.seek(0);
-    
-    while ((bytesRead = verifyFile.read(crcBuffer, sizeof(crcBuffer))) > 0) {
-        for (size_t i = 0; i < bytesRead; i++) {
-            fileCRC32 ^= crcBuffer[i];
-            for (int j = 0; j < 8; j++) {
-                if (fileCRC32 & 1) {
-                    fileCRC32 = (fileCRC32 >> 1) ^ crc32Polynomial;
+                size_t available = stream->available();
+                if (available > 0) {
+                    lastData = millis();
+                    size_t readSize = min(available, (size_t)OTA_BUFFER_SIZE);
+                    int bytesRead = stream->readBytes(buffer.get(), readSize);
+                    
+                    if (bytesRead > 0) {
+                        file.write(buffer.get(), bytesRead);
+                        written += bytesRead;
+                        
+                        // Feed watchdog occasionally
+                        if (written % 4096 == 0) feedWatchdog();
+                    }
                 } else {
-                    fileCRC32 >>= 1;
+                    // Check timeouts
+                    if (millis() - lastData > 10000) { // 10s stall timeout
+                        LOG_E("Download stalled");
+                        break;
+                    }
+                    delay(10);
                 }
             }
+            
+            file.close();
+            
+            if (written != contentLength) {
+                LOG_E("Download truncated: %d/%d", written, contentLength);
+            http.end();
+            return false;
         }
-        feedWatchdog();
+        
+            // Calculate CRC32 for integrity verification
+            LOG_I("Calculating CRC32 for downloaded file...");
+            File verifyFile = LittleFS.open(filePath, "r");
+            if (!verifyFile) {
+                LOG_E("Failed to open file for CRC32 calculation");
+                    http.end();
+                    return false;
+                }
+            
+            uint32_t fileCRC32 = 0xFFFFFFFF;
+            const uint32_t crc32Polynomial = 0xEDB88320;
+            uint8_t crcBuffer[512];
+            size_t bytesRead = 0;
+            
+            while ((bytesRead = verifyFile.read(crcBuffer, sizeof(crcBuffer))) > 0) {
+                for (size_t i = 0; i < bytesRead; i++) {
+                    fileCRC32 ^= crcBuffer[i];
+                    for (int j = 0; j < 8; j++) {
+                        if (fileCRC32 & 1) {
+                            fileCRC32 = (fileCRC32 >> 1) ^ crc32Polynomial;
+                        } else {
+                            fileCRC32 >>= 1;
+                        }
+                    }
+                }
+                feedWatchdog();
+            }
+            fileCRC32 = ~fileCRC32;
+            verifyFile.close();
+            
+            // Store CRC32 in Preferences for verification during streaming
+            Preferences prefs;
+            prefs.begin("ota", false);  // Read-write
+            bool stored = prefs.putUInt("pico_crc32", fileCRC32);
+            prefs.end();
+            
+            if (!stored) {
+                LOG_W("Failed to store CRC32 in Preferences - integrity check will be disabled");
+            } else {
+                LOG_I("CRC32 stored successfully: 0x%08X", fileCRC32);
+            }
+            
+    http.end();
+            LOG_I("Download complete: %d bytes, CRC32=0x%08X", written, fileCRC32);
+            return true;
+        }
+        
+        // Handle Error
+        LOG_E("HTTP Error: %d", httpCode);
+        http.end();
+        return false;
     }
-    fileCRC32 = ~fileCRC32;
     
-    verifyFile.close();
-    
-    LOG_I("Download complete: %d bytes, CRC32=0x%08X", written, fileCRC32);
-    
-    // Store CRC32 in file metadata (we'll use Preferences to store it temporarily)
-    // This will be used later when streaming to verify integrity
-    Preferences prefs;
-    prefs.begin("ota", false);  // Read-write namespace (was incorrectly set to read-only!)
-    bool stored = prefs.putUInt("pico_crc32", fileCRC32);
-    prefs.end();
-    
-    if (!stored) {
-        LOG_W("Failed to store CRC32 in Preferences - integrity check will be disabled");
-    } else {
-        LOG_I("CRC32 stored successfully: 0x%08X", fileCRC32);
-    }
-    
-    return true;
+    LOG_E("Too many redirects");
+        return false;
 }
 
 // =============================================================================
@@ -1200,33 +1189,33 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     
     if (swdSuccess) {
         // Continue with SWD method
-        broadcastOtaProgress(&_ws, "flash", 45, "Flashing firmware...");
-        feedWatchdog();
-        
-        // Flash firmware via SWD
-        bool success = swd.flashFirmware(flashFile, firmwareSize);
-        
-        // Clean up SWD connection
-        swd.end();
-        
-        flashFile.close();
-        
-        // Clean up temp file regardless of success
-        cleanupOtaFiles();
-        
-        if (!success) {
+    broadcastOtaProgress(&_ws, "flash", 45, "Flashing firmware...");
+    feedWatchdog();
+    
+    // Flash firmware via SWD
+    bool success = swd.flashFirmware(flashFile, firmwareSize);
+    
+    // Clean up SWD connection
+    swd.end();
+    
+    flashFile.close();
+    
+    // Clean up temp file regardless of success
+    cleanupOtaFiles();
+    
+    if (!success) {
             LOG_E("SWD firmware flashing failed, falling back to UART bootloader");
             broadcastLogLevel("warning", "SWD flash failed, trying UART bootloader");
             broadcastOtaProgress(&_ws, "flash", 40, "SWD failed, using UART...");
-            
-            // CRITICAL: Always reset Pico even on failure to ensure it's not stuck
-            LOG_W("SWD: Resetting Pico after failed flash attempt...");
-            swd.end();  // Clean up SWD connection
-            swd.resetTarget();  // Reset Pico to ensure it boots normally
-            
+        
+        // CRITICAL: Always reset Pico even on failure to ensure it's not stuck
+        LOG_W("SWD: Resetting Pico after failed flash attempt...");
+        swd.end();  // Clean up SWD connection
+        swd.resetTarget();  // Reset Pico to ensure it boots normally
+        
             // Reinitialize Serial1 UART for fallback to UART bootloader
-            Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
-            delay(10);
+        Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
+        delay(10);
             _picoUart.resume();  // Resume UART processing for bootloader method
             
             // Reset file position for UART bootloader
@@ -1234,30 +1223,30 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
             if (!flashFile) {
                 LOG_E("Failed to reopen firmware file for UART bootloader");
                 cleanupOtaFiles();
-                return false;
-            }
-            
+        return false;
+    }
+    
             // Fall through to UART bootloader method below
             swdSuccess = false;
         } else {
             // SWD succeeded - reset and wait for reconnect
-            LOG_I("Resetting Pico after successful SWD flash...");
-            swd.end();  // Clean up SWD connection first
-            swd.resetTarget();  // Then reset
-            
-            broadcastOtaProgress(&_ws, "flash", 55, "Waiting for device restart...");
-            
-            // Reinitialize Serial1 UART after SWD is done
-            Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
+    LOG_I("Resetting Pico after successful SWD flash...");
+    swd.end();  // Clean up SWD connection first
+    swd.resetTarget();  // Then reset
+    
+    broadcastOtaProgress(&_ws, "flash", 55, "Waiting for device restart...");
+    
+    // Reinitialize Serial1 UART after SWD is done
+    Serial1.begin(PICO_UART_BAUD, SERIAL_8N1, PICO_UART_RX_PIN, PICO_UART_TX_PIN);
             delay(10);
-            
-            // Resume packet processing to detect when Pico comes back
-            _picoUart.resume();
-            LOG_I("Resumed UART packet processing");
-            
-            // Clear connection state so we can detect when Pico actually reconnects
-            _picoUart.clearConnectionState();
-            
+    
+    // Resume packet processing to detect when Pico comes back
+    _picoUart.resume();
+    LOG_I("Resumed UART packet processing");
+    
+    // Clear connection state so we can detect when Pico actually reconnects
+    _picoUart.clearConnectionState();
+    
             // Wait for Pico to reconnect (same logic as UART bootloader)
             bool picoReconnected = false;
             for (int i = 0; i < 350; i++) {
@@ -1366,10 +1355,10 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
         unsigned long ackStartTime = millis();
         while (millis() - ackStartTime < 5000) {
             _picoUart.loop();  // Process incoming packets (including log messages)
-            feedWatchdog();
+        feedWatchdog();
             if (_picoUart.waitForBootloaderAck(100)) {  // Check with short timeout
-                handshakeSuccess = true;
-                LOG_I("Bootloader handshake successful");
+            handshakeSuccess = true;
+            LOG_I("Bootloader handshake successful");
                 break;
             }
         }
@@ -1434,7 +1423,7 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
             unsigned long backoffStart = millis();
             while ((millis() - backoffStart) < backoffDelay) {
                 delay(100);
-                feedWatchdog();
+            feedWatchdog();
             }
             
             // CRITICAL: Resume UART processing first so we can detect Pico state
@@ -1707,24 +1696,24 @@ void BrewWebServer::startGitHubOTA(const String& version) {
     
     broadcastOtaProgress(&_ws, "download", 65, "Downloading ESP32 firmware...");
     
-    // Configure secure client (services are paused to free memory for SSL buffers)
-    WiFiClientSecure client;
-    client.setInsecure(); // Skip cert verification for speed/simplicity
-    // CRITICAL FIX: Set explicit read timeout.
-    // Default is often -1 (wait forever) or too short.
-    client.setTimeout(15); // 15 seconds read timeout
-    
-    // Download ESP32 firmware
+    String currentUrl = String(downloadUrl);
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(OTA_HTTP_TIMEOUT_MS);
-    
+    WiFiClientSecure client;
     int httpCode = 0;
     
+    // Handle redirects manually (up to 3 redirects)
+    for (int redirect = 0; redirect < 3; redirect++) {
+        // Setup client for this redirect attempt
+        client.setInsecure();
+        client.setTimeout(15);
+        http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    http.setTimeout(OTA_HTTP_TIMEOUT_MS);
+    
+        // Retry loop for transient errors
     for (int retry = 0; retry < OTA_MAX_RETRIES; retry++) {
         feedWatchdog();
         
-        if (!http.begin(client, downloadUrl)) {
+            if (!http.begin(client, currentUrl)) {
             LOG_E("HTTP begin failed (attempt %d/%d)", retry + 1, OTA_MAX_RETRIES);
             if (retry < OTA_MAX_RETRIES - 1) {
                 for (int i = 0; i < 30; i++) { delay(100); feedWatchdog(); }
@@ -1735,12 +1724,20 @@ void BrewWebServer::startGitHubOTA(const String& version) {
             return;
         }
         
-        http.addHeader("User-Agent", "BrewOS-ESP32/" ESP32_VERSION);
-        feedWatchdog();
+    http.addHeader("User-Agent", "BrewOS-ESP32/" ESP32_VERSION);
+    // CRITICAL FIX: Force server to close connection after transfer
+    // This prevents hanging on Keep-Alive when Content-Length is unknown/wrong
+    http.addHeader("Connection", "close");
+    // CRITICAL: Force HTTPClient to collect headers even when redirects are disabled
+    const char* headers[] = {"Location"};
+    http.collectHeaders(headers, 1);
+    feedWatchdog();
         httpCode = http.GET();
         feedWatchdog();
         
-        if (httpCode == HTTP_CODE_OK) break;
+            if (httpCode == HTTP_CODE_OK || httpCode == 301 || httpCode == 302 || httpCode == 307) {
+                break;
+            }
         
         LOG_W("HTTP error %d (attempt %d/%d)", httpCode, retry + 1, OTA_MAX_RETRIES);
         http.end();
@@ -1753,6 +1750,118 @@ void BrewWebServer::startGitHubOTA(const String& version) {
             continue;
         }
         
+            broadcastLogLevel("error", "Update error: HTTP %d", httpCode);
+            broadcastOtaProgress(&_ws, "error", 0, "Download failed");
+            return;
+        }
+        
+        // Handle redirects
+        if (httpCode == 301 || httpCode == 302 || httpCode == 307) {
+            // Try HTTPClient's header() method (should work with collectHeaders())
+            String newUrl = http.header("Location");
+            if (newUrl.length() == 0) {
+                newUrl = http.header("location");  // Try lowercase
+            }
+            if (newUrl.length() == 0) {
+                newUrl = http.header("LOCATION");  // Try uppercase
+            }
+            
+            // If still empty, try reading from response stream
+            // GitHub Location headers can be very long (1000+ chars with query params)
+            if (newUrl.length() == 0) {
+                WiFiClient* stream = http.getStreamPtr();
+                if (stream && stream->available() > 0) {
+                    String headerLine;
+                    bool inLocationHeader = false;
+                    while (stream->available() > 0 && headerLine.length() < 2000) {  // Increased limit for long URLs
+                        char c = stream->read();
+                        if (c == '\n') {
+                            headerLine.trim();
+                            if (headerLine.length() == 0) {
+                                if (inLocationHeader) break;  // End of Location header
+                                break;  // End of headers
+                            }
+                            if (headerLine.startsWith("Location:") || headerLine.startsWith("location:")) {
+                                inLocationHeader = true;
+                                int colonIdx = headerLine.indexOf(':');
+                                if (colonIdx >= 0) {
+                                    newUrl = headerLine.substring(colonIdx + 1);
+                                    newUrl.trim();
+                                    // Check if header continues on next line (HTTP header folding)
+                                    if (stream->available() > 0) {
+                                        char peek = stream->peek();
+                                        if (peek == ' ' || peek == '\t') {
+                                            continue;  // Header continuation
+                                        }
+                                    }
+                                    LOG_I("Found Location header in stream (length: %d)", newUrl.length());
+                                    break;
+                                }
+                            } else if (inLocationHeader && (headerLine.startsWith(" ") || headerLine.startsWith("\t"))) {
+                                // Header continuation (HTTP header folding)
+                                newUrl += headerLine;
+                                newUrl.trim();
+                            } else {
+                                inLocationHeader = false;
+                            }
+                            if (!inLocationHeader) headerLine = "";
+                        } else if (c != '\r') {
+                            headerLine += c;
+                        }
+                    }
+                }
+            }
+            
+            LOG_I("Redirect detected (code=%d) to: %s", httpCode, newUrl.length() > 0 ? (newUrl.length() > 100 ? (newUrl.substring(0, 100) + "...").c_str() : newUrl.c_str()) : "(empty)");
+            
+            if (newUrl.length() == 0) {
+                LOG_E("Redirect with no Location header");
+                http.end();
+                broadcastLogLevel("error", "Update error: Invalid redirect");
+                broadcastOtaProgress(&_ws, "error", 0, "Invalid redirect");
+                return;
+            }
+            
+            // Handle relative URLs
+            if (!newUrl.startsWith("http://") && !newUrl.startsWith("https://")) {
+                int schemeEnd = currentUrl.indexOf("://");
+                if (schemeEnd >= 0) {
+                    int pathStart = currentUrl.indexOf("/", schemeEnd + 3);
+                    if (pathStart >= 0) {
+                        String baseUrl = currentUrl.substring(0, pathStart);
+                        if (newUrl.startsWith("/")) {
+                            newUrl = baseUrl + newUrl;
+                        } else {
+                            int lastSlash = currentUrl.lastIndexOf("/");
+                            if (lastSlash > schemeEnd + 3) {
+                                newUrl = currentUrl.substring(0, lastSlash + 1) + newUrl;
+                            } else {
+                                newUrl = baseUrl + "/" + newUrl;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // CRITICAL: End the current connection completely to free SSL buffers
+            http.end();
+            client.stop();
+            
+            // Update URL and loop to try again with fresh connection
+            currentUrl = newUrl;
+            
+            // Small delay to let heap settle
+            delay(100);
+            continue;
+        }
+        
+        // Success - break out of redirect loop
+        if (httpCode == HTTP_CODE_OK) {
+            break;
+        }
+        
+        // Error
+        http.end();
         broadcastLogLevel("error", "Update error: HTTP %d", httpCode);
         broadcastOtaProgress(&_ws, "error", 0, "Download failed");
         return;
@@ -2039,35 +2148,146 @@ void BrewWebServer::updateLittleFS(const char* tag) {
     
     LOG_I("LittleFS download URL: %s", littlefsUrl);
     
-    // NOTE: DNS resolution is handled automatically by HTTPClient
-    // No need to pre-resolve - HTTPClient handles DNS with proper timeouts
-    
-    // Configure secure client (services are paused to free memory for SSL buffers)
-    WiFiClientSecure client;
-    client.setInsecure();
-    // CRITICAL FIX: Set explicit read timeout.
-    // Default is often -1 (wait forever) or too short.
-    client.setTimeout(OTA_HTTP_TIMEOUT_MS / 1000); // Convert ms to seconds
-    
+    String currentUrl = String(littlefsUrl);
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    WiFiClientSecure client;
+    int httpCode = 0;
+    
+    // Handle redirects manually (up to 3 redirects)
+    for (int redirect = 0; redirect < 3; redirect++) {
+        // Setup client for this redirect attempt
+        client.setInsecure();
+        client.setTimeout(15);
+        http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
     http.setTimeout(OTA_HTTP_TIMEOUT_MS);
     
     feedWatchdog();
-    LOG_I("Starting LittleFS HTTP connection...");
-    if (!http.begin(client, littlefsUrl)) {
-        LOG_W("LittleFS HTTP begin failed - continuing");
+        LOG_I("Starting LittleFS HTTP connection to: %s", currentUrl.c_str());
+        if (!http.begin(client, currentUrl)) {
+            LOG_W("LittleFS HTTP begin failed - continuing");
         return;
     }
     
     http.addHeader("User-Agent", "BrewOS-ESP32/" ESP32_VERSION);
+    // CRITICAL FIX: Force server to close connection after transfer
+    // This prevents hanging on Keep-Alive when Content-Length is unknown/wrong
+    http.addHeader("Connection", "close");
+    // CRITICAL: Force HTTPClient to collect headers even when redirects are disabled
+    const char* headers[] = {"Location"};
+    http.collectHeaders(headers, 1);
     feedWatchdog();
-    LOG_I("Sending HTTP GET request for LittleFS (timeout=%lu ms)...", OTA_HTTP_TIMEOUT_MS);
-    unsigned long getStart = millis();
-    int httpCode = http.GET();
-    unsigned long getTime = millis() - getStart;
+        LOG_I("Sending HTTP GET request for LittleFS (timeout=%lu ms)...", OTA_HTTP_TIMEOUT_MS);
+        unsigned long getStart = millis();
+        httpCode = http.GET();
+        unsigned long getTime = millis() - getStart;
     feedWatchdog();
-    LOG_I("LittleFS HTTP GET completed: code=%d, time=%lu ms", httpCode, getTime);
+        LOG_I("LittleFS HTTP GET completed: code=%d, time=%lu ms", httpCode, getTime);
+        
+        // Handle redirects
+        if (httpCode == 301 || httpCode == 302 || httpCode == 307) {
+            // Try HTTPClient's header() method first (should work with collectHeaders())
+            String newUrl = http.header("Location");
+            if (newUrl.length() == 0) {
+                newUrl = http.header("location");
+            }
+            if (newUrl.length() == 0) {
+                newUrl = http.header("LOCATION");
+            }
+            
+            // Fallback: Read from stream if header() didn't work
+            if (newUrl.length() == 0) {
+                LOG_W("Location header not found via header() method, trying stream read...");
+                WiFiClient* stream = http.getStreamPtr();
+                if (stream && stream->available() > 0) {
+                    // Read response headers line by line
+                    String headerLine;
+                    bool foundLocation = false;
+                    int bytesRead = 0;
+                    const int MAX_HEADER_BYTES = 4096;
+                    
+                    while (stream->available() > 0 && bytesRead < MAX_HEADER_BYTES && !foundLocation) {
+                        char c = stream->read();
+                        bytesRead++;
+                        
+                        if (c == '\n') {
+                            headerLine.trim();
+                            if (headerLine.length() == 0) {
+                                break;
+                            }
+                            
+                            if (headerLine.startsWith("Location:") || headerLine.startsWith("location:")) {
+                                int colonIdx = headerLine.indexOf(':');
+                                if (colonIdx >= 0) {
+                                    newUrl = headerLine.substring(colonIdx + 1);
+                                    newUrl.trim();
+                                    foundLocation = true;
+                                    LOG_I("Found Location header in stream: %s", newUrl.length() > 100 ? (newUrl.substring(0, 100) + "...").c_str() : newUrl.c_str());
+                                    break;
+                                }
+                            }
+                            headerLine = "";
+                        } else if (c != '\r') {
+                            headerLine += c;
+                        }
+                    }
+                    
+                    if (!foundLocation) {
+                        LOG_W("Location header not found in stream (read %d bytes)", bytesRead);
+                    }
+                }
+            }
+            
+            LOG_I("Redirect detected (code=%d) to: %s", httpCode, newUrl.length() > 0 ? (newUrl.length() > 100 ? (newUrl.substring(0, 100) + "...").c_str() : newUrl.c_str()) : "(empty)");
+            
+            if (newUrl.length() == 0) {
+                LOG_W("Redirect with no Location header");
+                http.end();
+                return;
+            }
+            
+            // Handle relative URLs
+            if (!newUrl.startsWith("http://") && !newUrl.startsWith("https://")) {
+                int schemeEnd = currentUrl.indexOf("://");
+                if (schemeEnd >= 0) {
+                    int pathStart = currentUrl.indexOf("/", schemeEnd + 3);
+                    if (pathStart >= 0) {
+                        String baseUrl = currentUrl.substring(0, pathStart);
+                        if (newUrl.startsWith("/")) {
+                            newUrl = baseUrl + newUrl;
+                        } else {
+                            int lastSlash = currentUrl.lastIndexOf("/");
+                            if (lastSlash > schemeEnd + 3) {
+                                newUrl = currentUrl.substring(0, lastSlash + 1) + newUrl;
+                            } else {
+                                newUrl = baseUrl + "/" + newUrl;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // CRITICAL: End the current connection completely to free SSL buffers
+            http.end();
+            client.stop();
+            
+            // Update URL and loop to try again with fresh connection
+            currentUrl = newUrl;
+            
+            // Small delay to let heap settle
+            delay(100);
+            continue;
+        }
+        
+        // Success or error - break out of redirect loop
+        if (httpCode == HTTP_CODE_OK) {
+            break;
+        }
+        
+        // Error
+        LOG_W("LittleFS HTTP error: %d", httpCode);
+        http.end();
+        return;
+    }
     
     if (httpCode != HTTP_CODE_OK) {
         LOG_W("LittleFS HTTP error: %d", httpCode);
@@ -2108,21 +2328,6 @@ void BrewWebServer::updateLittleFS(const char* tag) {
         }
     }
     
-    // Validate content length - should be around 1.5MB, not 8MB
-    // If it's suspiciously large (>= 5MB), it's likely wrong
-    if (contentLength <= 0) {
-        LOG_W("Invalid LittleFS size: %d", contentLength);
-        http.end();
-        return;
-    }
-    
-    // Warn if content length seems wrong (file should be ~1.5MB, not 8MB)
-    if (contentLength >= 5 * 1024 * 1024) {  // >= 5MB
-        LOG_W("WARNING: Content-Length (%d bytes) seems too large for LittleFS image (expected ~1.5MB)", contentLength);
-        LOG_W("This might be a server issue - will download until connection closes");
-        // Don't return - we'll download until connection closes instead
-    }
-    
     // Find filesystem partition (could be named "littlefs" or "spiffs" depending on partition table)
     // PlatformIO's default partition tables use "spiffs" name even when using LittleFS filesystem
     const esp_partition_t* partition = esp_partition_find_first(
@@ -2142,15 +2347,20 @@ void BrewWebServer::updateLittleFS(const char* tag) {
     
     LOG_I("Found filesystem partition: %s (%d bytes)", partition->label, partition->size);
     
-    // Check if downloaded image fits in the partition
-    // This prevents silent truncation when partition table has changed
-    if ((size_t)contentLength > partition->size) {
-        LOG_W("LittleFS image (%d bytes) exceeds partition size (%d bytes)", 
+    // CRITICAL FIX: If Content-Length equals partition size exactly, it's likely a default 'unknown' value.
+    // Treat it as unknown to prevent waiting for 8MB of data that doesn't exist.
+    // Also check if it's suspiciously large (>= 5MB) or equals partition size
+    bool useContentLength = (contentLength > 0 && 
+                             (size_t)contentLength < partition->size && 
+                             contentLength != (int)partition->size &&
+                             contentLength < 5 * 1024 * 1024);  // < 5MB
+    
+    if (useContentLength) {
+        LOG_I("Content-Length: %d bytes (%.1f MB)", 
+              contentLength, contentLength / (1024.0f * 1024.0f));
+    } else {
+        LOG_W("Content-Length unknown or suspicious (%d bytes, partition=%d) - downloading until connection closes", 
               contentLength, partition->size);
-        LOG_W("Partition table mismatch - USB flash required for this upgrade");
-        broadcastOtaProgress(&_ws, "error", 0, "Partition too small - USB flash required");
-        http.end();
-        return;
     }
     
     // Erase in chunks instead of one giant block
@@ -2171,9 +2381,9 @@ void BrewWebServer::updateLittleFS(const char* tag) {
         feedWatchdog();
         if (esp_partition_erase_range(partition, erasedBytes, toErase) != ESP_OK) {
             LOG_W("Failed to erase LittleFS at offset %u", erasedBytes);
-            http.end();
-            return;
-        }
+        http.end();
+        return;
+    }
         
         erasedBytes += toErase;
         
@@ -2199,105 +2409,75 @@ void BrewWebServer::updateLittleFS(const char* tag) {
         http.end();
         return;
     }
+    LOG_I("Starting LittleFS download...");
+    
     size_t written = 0;
-    size_t offset = 0;
-    unsigned long lastYield = millis();
-    unsigned long downloadStart = millis();
-    unsigned long lastDataReceived = millis();
-    const unsigned long LITTLEFS_STALL_TIMEOUT_MS = 30000;  // 30 seconds stall timeout
+    unsigned long start = millis();
+    unsigned long lastRx = millis();
+    const unsigned long LITTLEFS_STALL_TIMEOUT_MS = 15000;  // 15 seconds stall timeout
     const unsigned long LITTLEFS_TOTAL_TIMEOUT_MS = 120000;  // 2 minutes total timeout
     
-    // Determine if we can trust Content-Length
-    // GitHub/S3 redirects may strip or provide incorrect Content-Length
-    int originalContentLength = contentLength;  // Save for logging
-    const size_t MAX_REASONABLE_SIZE = 3 * 1024 * 1024;  // 3MB max reasonable size
-    bool useContentLength = (contentLength > 0 && contentLength < MAX_REASONABLE_SIZE);
-    
-    if (!useContentLength) {
-        LOG_W("Content-Length (%d bytes) appears incorrect or missing - will download until connection closes", contentLength);
-        LOG_I("Downloading until connection closes (max %d bytes)", partition->size);
-    } else {
-        LOG_I("Content-Length: %d bytes (%.1f MB)", 
-              contentLength, contentLength / (1024.0f * 1024.0f));
-    }
-    
-    LOG_I("Starting LittleFS download to partition offset 0 (using content-length: %s)", 
-          useContentLength ? "yes" : "no");
-    
-    // Use blocking readBytes() pattern - this yields CPU automatically until data arrives
-    // This prevents busy-wait loops that starve the networking stack
-    while ((http.connected() || stream->available()) && offset < partition->size) {
-        // Check for total timeout
-        if (millis() - downloadStart > LITTLEFS_TOTAL_TIMEOUT_MS) {
-            LOG_W("LittleFS download timeout after %lu ms (wrote %d bytes)", 
-                  millis() - downloadStart, written);
+    // FIX: Use readBytes loop (more robust for SSL streams) + check connection close
+    while ((http.connected() || stream->available()) && written < partition->size) {
+        // A. Check Global Timeout (2 minutes)
+        if (millis() - start > LITTLEFS_TOTAL_TIMEOUT_MS) {
+            LOG_E("Timeout: Download took too long (%lu ms, wrote %d bytes)", 
+                  millis() - start, written);
             break;
         }
         
-        // Feed watchdog periodically
-        if (millis() - lastYield >= OTA_WATCHDOG_FEED_INTERVAL_MS) {
-            feedWatchdog();
-            yield();
-            lastYield = millis();
+        // B. Check Stall Timeout (no data for 15s)
+        if (millis() - lastRx > LITTLEFS_STALL_TIMEOUT_MS) {
+            LOG_E("Stall: No data for %lu ms (wrote %d bytes)", 
+                  LITTLEFS_STALL_TIMEOUT_MS, written);
+            break;
         }
         
-        // Use blocking readBytes() - respects client.setTimeout() and yields CPU
-        // This is more efficient than busy-waiting on available()
+        // C. Blocking read (waits for data, more robust for SSL)
         size_t bytesRead = stream->readBytes(buffer.get(), HEAP_BUFFER_SIZE);
         
         if (bytesRead > 0) {
-            // Reset stall timer when data arrives
-            lastDataReceived = millis();
-            
             // Write to partition
-            if (esp_partition_write(partition, offset, buffer.get(), bytesRead) != ESP_OK) {
-                LOG_E("LittleFS write failed at offset %d", offset);
+            if (esp_partition_write(partition, written, buffer.get(), bytesRead) != ESP_OK) {
+                LOG_E("Write failed at offset %u", written);
                 break;
             }
+            
             written += bytesRead;
-            offset += bytesRead;
+            lastRx = millis(); // Reset stall timer
+            
+            // Feed watchdog every 10KB or so
+            if ((written % 10240) == 0) {
+                feedWatchdog();
+            }
             
             // Log progress
             if (useContentLength) {
-                size_t progress = (written * 100) / originalContentLength;
-                static size_t lastProgressLog = 0;
-                if (written == 0 || (progress > 0 && progress >= lastProgressLog + 10) || 
-                    (written > 0 && written % (1024 * 1024) == 0)) {
-                    LOG_I("LittleFS download: %d%% (%d/%d bytes)", progress, written, originalContentLength);
-                    lastProgressLog = progress;
+                size_t progress = (written * 100) / contentLength;
+                if (written % (1024 * 100) == 0) {  // Every 100KB
+                    LOG_I("LittleFS download: %d%% (%d/%d bytes)", progress, written, contentLength);
                 }
             } else {
-                // When not using Content-Length, log every 1MB or every 5 seconds
-                static unsigned long lastProgressTime = 0;
-                if (written > 0 && (written % (1024 * 1024) == 0 || (millis() - lastProgressTime) > 5000)) {
-                    LOG_I("LittleFS download: %d bytes (%.1f MB) - %lu ms elapsed", 
-                          written, written / (1024.0f * 1024.0f), millis() - downloadStart);
-                    lastProgressTime = millis();
+                // When not using Content-Length, log every 1MB
+                if (written > 0 && written % (1024 * 1024) == 0) {
+                    LOG_I("LittleFS download: %d bytes (%.1f MB)", 
+                          written, written / (1024.0f * 1024.0f));
                 }
             }
-            
-            feedWatchdog();
-            yield();
         } else {
-            // No data read within timeout period
-            if (!http.connected() && stream->available() == 0) {
-                // Connection closed and buffer empty - download complete
-                LOG_I("Connection closed - download complete (wrote %d bytes, %.1f MB)", 
-                      written, written / (1024.0f * 1024.0f));
+            // No data read - check if connection closed
+            if (!http.connected()) {
+                LOG_I("Connection closed by server - download complete");
                 break;
             }
-            
-            // If connected but no data for long time, check stall
-            if (millis() - lastDataReceived > LITTLEFS_STALL_TIMEOUT_MS) {
-                LOG_W("LittleFS download stalled - no data for %lu ms (wrote %d bytes)", 
-                      LITTLEFS_STALL_TIMEOUT_MS, written);
-                break;
-            }
+            // Connection still open but no data - yield
+            delay(10);
+            feedWatchdog();
         }
         
-        // Break if we hit exact Content-Length (if known and trusted)
-        if (useContentLength && written >= (size_t)originalContentLength) {
-            LOG_I("Download complete: reached Content-Length (%d bytes)", written);
+        // D. Strict size check (if Content-Length was valid)
+        if (useContentLength && written >= (size_t)contentLength) {
+            LOG_I("Download finished (matched Content-Length: %d bytes)", written);
             break;
         }
     }
@@ -2305,12 +2485,12 @@ void BrewWebServer::updateLittleFS(const char* tag) {
     http.end();
     feedWatchdog();
     
-    if (useContentLength && written == (size_t)originalContentLength) {
+    if (useContentLength && written == (size_t)contentLength) {
         LOG_I("LittleFS updated: %d bytes", written);
     } else if (!useContentLength) {
         LOG_I("LittleFS updated: %d bytes (downloaded until connection closed)", written);
     } else {
-        LOG_W("LittleFS incomplete: %d/%d bytes (non-critical, continuing)", written, originalContentLength);
+        LOG_W("LittleFS incomplete: %d/%d bytes (non-critical, continuing)", written, contentLength);
     }
     
     // NOTE: Do NOT remount LittleFS here - device will restart and mount on next boot

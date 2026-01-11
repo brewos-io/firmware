@@ -10,16 +10,16 @@
  #include "protocol.h"  // For protocol_reset_state()           
  #include <string.h>
  #include <stdio.h>
- #include "pico/stdlib.h"
- #include "pico/multicore.h"   
- #include "pico/platform.h"
- #include "pico/bootrom.h"     
- #include "hardware/uart.h"
- #include "hardware/flash.h"
- #include "hardware/sync.h"
- #include "hardware/watchdog.h"
- #include "hardware/structs/watchdog.h"
- #include "hardware/structs/scb.h"
+#include "pico/stdlib.h"
+#include "pico/multicore.h"   
+#include "pico/platform.h"
+#include "pico/bootrom.h"
+#include "hardware/uart.h"
+#include "hardware/flash.h"
+#include "hardware/sync.h"
+#include "hardware/watchdog.h"
+#include "hardware/structs/watchdog.h"
+#include "hardware/structs/scb.h"
  
  // Bootloader protocol constants
  #define BOOTLOADER_MAGIC_1          0x55
@@ -46,26 +46,30 @@
  static bool g_receiving = false;
  static volatile bool g_bootloader_active = false;
  
- // -----------------------------------------------------------------------------
- // BootROM Function Typedefs
- // -----------------------------------------------------------------------------
- typedef void (*rom_connect_internal_flash_fn)(void);
- typedef void (*rom_flash_exit_xip_fn)(void);
- typedef void (*rom_flash_range_erase_fn)(uint32_t addr, size_t count, uint32_t block_size, uint8_t block_cmd);
- typedef void (*rom_flash_range_program_fn)(uint32_t addr, const uint8_t *data, size_t count);
- typedef void (*rom_flash_flush_cache_fn)(void);
- 
- typedef struct {
-     rom_connect_internal_flash_fn connect_internal_flash;
-     rom_flash_exit_xip_fn flash_exit_xip;
-     rom_flash_range_erase_fn flash_range_erase;
-     rom_flash_range_program_fn flash_range_program;
-     rom_flash_flush_cache_fn flash_flush_cache;
- } boot_rom_funcs_t;
- 
- // -----------------------------------------------------------------------------
- // Bootloader Mode Control
- // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// BootROM Function Typedefs
+// -----------------------------------------------------------------------------
+// CRITICAL: We must use BootROM functions via pointers, not SDK functions.
+// SDK functions (flash_range_erase, etc.) live in Flash and will be erased
+// when we erase Main Flash (offset 0), causing an immediate crash.
+// BootROM functions are in ROM and are always available.
+typedef void (*rom_connect_internal_flash_fn)(void);
+typedef void (*rom_flash_exit_xip_fn)(void);
+typedef void (*rom_flash_range_erase_fn)(uint32_t addr, size_t count, uint32_t block_size, uint8_t block_cmd);
+typedef void (*rom_flash_range_program_fn)(uint32_t addr, const uint8_t *data, size_t count);
+typedef void (*rom_flash_flush_cache_fn)(void);
+
+typedef struct {
+    rom_connect_internal_flash_fn connect_internal_flash;
+    rom_flash_exit_xip_fn flash_exit_xip;
+    rom_flash_range_erase_fn flash_range_erase;
+    rom_flash_range_program_fn flash_range_program;
+    rom_flash_flush_cache_fn flash_flush_cache;
+} boot_rom_funcs_t;
+
+// -----------------------------------------------------------------------------
+// Bootloader Mode Control
+// -----------------------------------------------------------------------------
  
  bool bootloader_is_active(void) {
      return g_bootloader_active;
@@ -303,108 +307,51 @@ void bootloader_prepare(void) {
  
  static uint8_t g_sector_buffer[FLASH_SECTOR_SIZE] __attribute__((aligned(16)));
  
- /**
-  * Copy firmware using SDK flash APIs (RP2350 only).
-  * - Runs entirely from RAM
-  * - Disables interrupts
-  * - [FIX] No verification loop to avoid crashes during XIP readback
-  * - [FIX] Uses Watchdog Reset instead of AIRCR
-  * - Uses SDK hardware/flash APIs which handle XIP state automatically
-  */
- static void __no_inline_not_in_flash_func(copy_firmware_to_main)(const boot_rom_funcs_t* rom, uint32_t firmware_size) {
-     // rom parameter is unused for RP2350 - we use SDK functions directly
-     (void)rom;
-     // 1. DISABLE INTERRUPTS GLOBALLY
-     uint32_t irq_state = save_and_disable_interrupts();
-     
-     // Calculate iterations
-     uint32_t size_sectors = (firmware_size + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
-     const uint8_t* staging_base = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
- 
-     for (uint32_t sector = 0; sector < size_sectors; sector++) {
-         // [WATCHDOG] Feed manually
-         watchdog_hw->load = 0x7fffff;
-         
-         uint32_t offset = sector * FLASH_SECTOR_SIZE;
-         
-         // [READ] Copy from Staging to RAM buffer
-         // CRITICAL: Validate we're not reading beyond firmware size
-         // This prevents copying garbage data if firmware_size is wrong
-         uint32_t copy_size = FLASH_SECTOR_SIZE;
-         if (offset + FLASH_SECTOR_SIZE > firmware_size) {
-             copy_size = firmware_size - offset;
-             // Pad remainder with 0xFF (erased flash) for partial sectors
-             for (uint32_t i = copy_size; i < FLASH_SECTOR_SIZE; i++) {
-                 g_sector_buffer[i] = 0xFF;
-             }
-         }
-         
-         // Copy firmware data from staging area
-         for (uint32_t i = 0; i < copy_size; i++) {
-             g_sector_buffer[i] = staging_base[offset + i];
-         }
- 
-        // [WRITE] Single pass - no retry/verify loop (risky readback removed)
-        // RP2350: SDK functions handle XIP exit/entry automatically
-        // SDK flash_range_erase signature: (uint32_t offset, size_t count)
-        // SDK flash_range_program signature: (uint32_t offset, const uint8_t* data, size_t count)
-        flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE);
-        flash_range_program(FLASH_MAIN_OFFSET + offset, g_sector_buffer, FLASH_SECTOR_SIZE);
-        flash_flush_cache();
+/**
+ * CRITICAL: This function must run entirely from RAM.
+ * It cannot call ANY SDK functions that exist in Flash.
+ * We use BootROM function pointers (in ROM) instead of SDK functions (in Flash).
+ */
+static void __no_inline_not_in_flash_func(copy_firmware_to_main)(const boot_rom_funcs_t* rom, uint32_t firmware_size) {
+    uint32_t irq_state = save_and_disable_interrupts();
+    
+    uint32_t sector_count = (firmware_size + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
+    const uint8_t* staging_base = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
+
+    for (uint32_t i = 0; i < sector_count; i++) {
+        uint32_t offset = i * FLASH_SECTOR_SIZE;
+        
+        // Read into RAM buffer
+        uint32_t copy_size = FLASH_SECTOR_SIZE;
+        if (offset + FLASH_SECTOR_SIZE > firmware_size) {
+            copy_size = firmware_size - offset;
+            memset(g_sector_buffer + copy_size, 0xFF, FLASH_SECTOR_SIZE - copy_size);
+        }
+        memcpy(g_sector_buffer, staging_base + offset, copy_size);
+
+        // Call BootROM functions via pointers (Safe: ROM is always available)
+        // These functions are in ROM, not Flash, so they survive flash erasure
+        rom->connect_internal_flash();
+        rom->flash_exit_xip();
+        // Block size/cmd parameters: FLASH_SECTOR_SIZE for block_size, 0 for block_cmd
+        // These are required for the function signature but may be unused on some ROMs
+        rom->flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE, 0);
+        rom->flash_range_program(FLASH_MAIN_OFFSET + offset, g_sector_buffer, FLASH_SECTOR_SIZE);
+        rom->flash_flush_cache();
+        
+        // Feed watchdog manually (interrupts disabled, can't call SDK functions)
+        watchdog_hw->load = 0x7fffff;
     }
 
-    // 4. Force System Reset
-    // After flash operations, we need to ensure a clean reset
-    // Note: We validated the staging area before copying, so main flash should be valid
-    LOG_PRINT("Bootloader: Firmware copy complete (%lu bytes), resetting Pico...\n", (unsigned long)firmware_size);
-    
-    // CRITICAL: Restore interrupts before reset
-    // Reset functions may not work properly with interrupts disabled
     restore_interrupts(irq_state);
     
-    // Small delay to ensure interrupts are restored and log message is sent
-    // Also allows UART to flush the log message
-    sleep_ms(100);
+    // Use raw register access to reset (SDK watchdog_reboot might be in erased flash)
+    // AIRCR System Reset
+    #define PPB_BASE 0xE0000000
+    #define AIRCR_Register (*((volatile uint32_t *)(PPB_BASE + 0xED0C)))
+    AIRCR_Register = 0x5FA0004;
     
-    // CRITICAL: Flush flash cache before reset to ensure consistency
-    // This ensures all flash operations are complete before reset
-    // RP2350: SDK functions handle XIP state automatically
-    flash_flush_cache();
-    
-    // Small delay after cache flush to ensure cache is fully flushed
-    sleep_ms(50);
-    
-    // CRITICAL: Use NVIC_SystemReset() which is more reliable than direct register access
-    // This function handles all the necessary steps for a clean reset
-    // It's part of the CMSIS core and is the recommended method
-    LOG_PRINT("Bootloader: Triggering system reset...\n");
-    
-    // Use NVIC_SystemReset if available, otherwise use AIRCR directly
-    // For RP2040, we need to use the hardware directly
-    #define AIRCR_VECTKEY_MASK    0x05FA0000
-    #define AIRCR_SYSRESETREQ_MASK 0x00000004
-    
-    // Write to AIRCR to trigger system reset
-    scb_hw->aircr = AIRCR_VECTKEY_MASK | AIRCR_SYSRESETREQ_MASK;
-    
-    // Wait a bit - reset should happen within microseconds
-    // If we're still here after 100ms, something is wrong
-    sleep_ms(100);
-    
-    // Fallback: Try watchdog reset if AIRCR didn't work
-    LOG_PRINT("Bootloader: WARNING - AIRCR reset did not trigger, using watchdog fallback...\n");
-    
-    // Disable watchdog first
-    watchdog_hw->ctrl = 0;
-    // Re-enable with very short timeout to force immediate reset
-    watchdog_enable(1, 1);  // 1ms timeout, pause on debug
-    watchdog_update();  // This will trigger reset immediately
-    
-    // Should never reach here, but just in case
-    while(1) {
-        __asm volatile("nop");
-        sleep_ms(1);
-    }
+    while(1);
 }
  
  // -----------------------------------------------------------------------------
@@ -621,16 +568,23 @@ bootloader_result_t bootloader_receive_firmware(void) {
      LOG_PRINT("Bootloader: Starting flash copy. USB will disconnect...\n");
      sleep_ms(50);
      
-     // RP2350 (Pico 2) - Use SDK hardware/flash APIs directly
-     // The SDK hardware/flash APIs handle architecture differences automatically
-     // These functions are RAM-safe when interrupts are disabled (which we do in copy_firmware_to_main)
-     LOG_PRINT("Bootloader: Using SDK flash APIs for RP2350\n");
+     // CRITICAL: Resolve ROM pointers using SDK lookups (Compatible with RP2040 & RP2350)
+     // We must do this BEFORE entering the RAM function, because rom_func_lookup might be in Flash
+     boot_rom_funcs_t rom_funcs;
+     
+     // The SDK provided rom_func_lookup_inline handles the differences between RP2040 and RP2350
+     // These constants are defined in pico/bootrom.h
+     rom_funcs.connect_internal_flash = (rom_connect_internal_flash_fn)rom_func_lookup_inline(ROM_FUNC_CONNECT_INTERNAL_FLASH);
+     rom_funcs.flash_exit_xip = (rom_flash_exit_xip_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_EXIT_XIP);
+     rom_funcs.flash_range_erase = (rom_flash_range_erase_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_RANGE_ERASE);
+     rom_funcs.flash_range_program = (rom_flash_range_program_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_RANGE_PROGRAM);
+     rom_funcs.flash_flush_cache = (rom_flash_flush_cache_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_FLUSH_CACHE);
      
      watchdog_enable(8300, 1);
      
      // Transfer control to RAM - NO RETURN
-     // Pass NULL for rom_funcs since we'll use SDK functions directly
-     copy_firmware_to_main(NULL, g_received_size);
+     // Pass the BootROM function pointers to the RAM function
+     copy_firmware_to_main(&rom_funcs, g_received_size);
      
      return BOOTLOADER_SUCCESS;
  }
