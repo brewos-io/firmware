@@ -340,8 +340,8 @@ static void pauseServicesForOTA(CloudConnection* cloudConnection, AsyncWebSocket
     // Display uses PSRAM for buffers but turning it off reduces DMA activity
 #if ENABLE_SCREEN
     extern Display display;
-    LOG_I("  - Turning off display...");
-    display.backlightOff();
+    LOG_I("  - Turning off display completely...");
+    display.sleep();  // Fully power down display (backlight + sleep mode)
 #endif
     
     // Give all services time to cleanly shut down and memory to be freed
@@ -1919,37 +1919,72 @@ void BrewWebServer::updateLittleFS(const char* tag) {
     // This prevents "Corrupted dir pair" errors and conflicts with LogManager
     // LogManager's loop() periodically calls saveToFlash() which opens /logs.txt
     // If LittleFS is mounted during partition erase, it causes corruption
-    if (LittleFS.begin()) {  // Check if mounted (begin() returns true if already mounted)
-        LittleFS.end();
-        LOG_I("LittleFS unmounted for update");
-    }
+    // Just call end() directly - it's safe to call even if not mounted
+    LittleFS.end();
+    LOG_I("LittleFS unmounted for update");
     
     char littlefsUrl[256];
     snprintf(littlefsUrl, sizeof(littlefsUrl), 
              "https://github.com/" GITHUB_OWNER "/" GITHUB_REPO "/releases/download/%s/" GITHUB_ESP32_LITTLEFS_ASSET, 
              tag);
     
+    LOG_I("LittleFS download URL: %s", littlefsUrl);
+    
+    // CRITICAL: Pre-resolve DNS before GET to avoid DNS hang
+    String urlStr(littlefsUrl);
+    String hostname = "";
+    int hostStart = urlStr.indexOf("://");
+    if (hostStart >= 0) {
+        hostStart += 3;
+        int hostEnd = urlStr.indexOf("/", hostStart);
+        if (hostEnd < 0) hostEnd = urlStr.length();
+        hostname = urlStr.substring(hostStart, hostEnd);
+        int portColon = hostname.indexOf(":");
+        if (portColon >= 0) {
+            hostname = hostname.substring(0, portColon);
+        }
+    }
+    
+    if (hostname.length() > 0) {
+        LOG_I("Resolving DNS for: %s", hostname.c_str());
+        IPAddress resolvedIP;
+        unsigned long dnsStart = millis();
+        bool dnsResolved = WiFi.hostByName(hostname.c_str(), resolvedIP);
+        unsigned long dnsTime = millis() - dnsStart;
+        
+        if (!dnsResolved) {
+            LOG_E("DNS resolution failed for %s (took %lu ms)", hostname.c_str(), dnsTime);
+            return;
+        }
+        LOG_I("DNS resolved: %s -> %s (%lu ms)", hostname.c_str(), resolvedIP.toString().c_str(), dnsTime);
+    }
+    
     // Configure secure client (services are paused to free memory for SSL buffers)
     WiFiClientSecure client;
     client.setInsecure();
     // CRITICAL FIX: Set explicit read timeout.
     // Default is often -1 (wait forever) or too short.
-    client.setTimeout(15); // 15 seconds read timeout
+    client.setTimeout(OTA_HTTP_TIMEOUT_MS / 1000); // Convert ms to seconds
     
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(OTA_HTTP_TIMEOUT_MS);
     
     feedWatchdog();
+    LOG_I("Starting LittleFS HTTP connection...");
     if (!http.begin(client, littlefsUrl)) {
-        LOG_W("LittleFS download failed - continuing");
+        LOG_W("LittleFS HTTP begin failed - continuing");
         return;
     }
     
     http.addHeader("User-Agent", "BrewOS-ESP32/" ESP32_VERSION);
     feedWatchdog();
+    LOG_I("Sending HTTP GET request for LittleFS (timeout=%lu ms)...", OTA_HTTP_TIMEOUT_MS);
+    unsigned long getStart = millis();
     int httpCode = http.GET();
+    unsigned long getTime = millis() - getStart;
     feedWatchdog();
+    LOG_I("LittleFS HTTP GET completed: code=%d, time=%lu ms", httpCode, getTime);
     
     if (httpCode != HTTP_CODE_OK) {
         LOG_W("LittleFS HTTP error: %d", httpCode);
@@ -1994,14 +2029,41 @@ void BrewWebServer::updateLittleFS(const char* tag) {
         return;
     }
     
-    broadcastOtaProgress(&_ws, "flash", 97, "Erasing filesystem...");
-    feedWatchdog();
+    // Erase in chunks instead of one giant block
+    // 8MB erase blocks the flash controller for too long, causing crashes/hangs
+    // Erasing 64KB at a time allows the system to yield and service interrupts
+    LOG_I("Erasing filesystem in chunks...");
+    broadcastOtaProgress(&_ws, "flash", 97, "Erasing storage...");
     
-    if (esp_partition_erase_range(partition, 0, partition->size) != ESP_OK) {
-        LOG_W("Failed to erase LittleFS");
-        http.end();
-        return;
+    const size_t ERASE_CHUNK_SIZE = 65536; // 64KB chunks (matches block size)
+    size_t erasedBytes = 0;
+    
+    while (erasedBytes < partition->size) {
+        size_t toErase = partition->size - erasedBytes;
+        if (toErase > ERASE_CHUNK_SIZE) {
+            toErase = ERASE_CHUNK_SIZE;
+        }
+        
+        feedWatchdog();
+        if (esp_partition_erase_range(partition, erasedBytes, toErase) != ESP_OK) {
+            LOG_W("Failed to erase LittleFS at offset %u", erasedBytes);
+            http.end();
+            return;
+        }
+        
+        erasedBytes += toErase;
+        
+        // CRITICAL: Yield to allow other tasks to run and flash cache to refill
+        // This prevents the system from hanging during long erase operations
+        feedWatchdog();
+        yield();
+        
+        // Log progress every 1MB so you know it's alive
+        if (erasedBytes % (1024 * 1024) == 0) {
+            LOG_I("Erased %u/%u bytes...", erasedBytes, partition->size);
+        }
     }
+    LOG_I("Erase complete: %u bytes", erasedBytes);
     
     broadcastOtaProgress(&_ws, "flash", 98, "Installing web UI...");
     
@@ -2020,6 +2082,8 @@ void BrewWebServer::updateLittleFS(const char* tag) {
     unsigned long lastDataReceived = millis();
     const unsigned long LITTLEFS_STALL_TIMEOUT_MS = 30000;  // 30 seconds stall timeout
     const unsigned long LITTLEFS_TOTAL_TIMEOUT_MS = 120000;  // 2 minutes total timeout
+    
+    LOG_I("Starting LittleFS download: %d bytes to partition offset 0", contentLength);
     
     while (http.connected() && written < (size_t)contentLength && offset < partition->size) {
         // Check for total timeout
@@ -2048,6 +2112,14 @@ void BrewWebServer::updateLittleFS(const char* tag) {
             // Limit read size to prevent blocking main loop for too long
             size_t maxChunkSize = min(available, (size_t)4096);  // Max 4KB per chunk
             size_t toRead = min(maxChunkSize, HEAP_BUFFER_SIZE);
+            
+            // Log progress every 10% or every 1MB
+            static size_t lastProgressLog = 0;
+            size_t progress = (written * 100) / contentLength;
+            if (written == 0 || (progress > 0 && progress >= lastProgressLog + 10) || (written > 0 && written % (1024 * 1024) == 0)) {
+                LOG_I("LittleFS download: %d%% (%d/%d bytes)", progress, written, contentLength);
+                lastProgressLog = progress;
+            }
             
             // Yield before potentially blocking read operation
             feedWatchdog();

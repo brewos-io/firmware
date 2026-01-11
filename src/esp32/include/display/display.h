@@ -50,6 +50,12 @@ public:
     void backlightOff();
     
     /**
+     * Put display in sleep mode (fully powered down)
+     * This sends Sleep In command (0x10) to the display controller
+     */
+    void sleep();
+    
+    /**
      * Handle idle timeout for backlight dimming
      * Call this when there's user input to reset the idle timer
      */

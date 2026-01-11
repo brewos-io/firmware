@@ -582,6 +582,16 @@ void Display::backlightOff() {
     }
 }
 
+void Display::sleep() {
+    // Turn off backlight first
+    backlightOff();
+    
+    // Send Sleep In command (0x10) to fully power down the display controller
+    // This puts the display in deep sleep mode, reducing power consumption
+    spi_write_cmd(0x10);  // Sleep In command
+    delay(120);  // Wait for command to complete (same delay as Sleep Out)
+}
+
 void Display::resetIdleTimer() {
     _lastActivityTime = millis();
     if (_isDimmed) {
