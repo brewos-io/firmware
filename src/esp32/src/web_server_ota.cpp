@@ -323,6 +323,19 @@ static void pauseServicesForOTA(CloudConnection* cloudConnection, AsyncWebSocket
         notificationManager->setEnabled(false);
     }
     
+    // 5.5. Disable LogManager file logging during OTA
+    // LogManager's loop() periodically calls saveToFlash() which writes to /littlefs/logs.txt
+    // This conflicts with LittleFS partition erase/update operations
+    // We'll disable it temporarily - logs will still go to Serial and RAM buffer
+    // Note: Pico log forwarding doesn't work during OTA anyway, so disabling is safe
+    if (LogManager::instance().isEnabled()) {
+        LOG_I("  - Disabling LogManager file logging during OTA...");
+        // Temporarily disable to prevent saveToFlash() calls during LittleFS update
+        // Logs will still go to Serial, just not saved to flash
+        // LogManager will be restored on reboot (or can be re-enabled after OTA)
+        LogManager::instance().disable();
+    }
+    
     // 6. Turn off display to free memory and reduce interference
     // Display uses PSRAM for buffers but turning it off reduces DMA activity
 #if ENABLE_SCREEN
@@ -1264,41 +1277,6 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     // Retry configuration (defined at function scope for use in multiple retry loops)
     const int MAX_HANDSHAKE_RETRIES = 3;  // Retry bootloader handshake up to 3 times
     
-    // CRITICAL: Enable Pico log forwarding BEFORE starting OTA for better diagnostics
-    // This allows us to see Pico logs over Serial during the entire OTA process
-    // Note: Logs are printed to Serial even without the log buffer enabled (see LogManager::handlePicoLog)
-    bool picoLogForwardingWasEnabled = LogManager::instance().isPicoLogForwardingEnabled();
-    
-    // Enable Pico log forwarding (if not already enabled)
-    // This sends MSG_CMD_LOG_CONFIG to Pico to start forwarding logs
-    // Logs will be printed to Serial for diagnostics (no buffer required)
-    // CRITICAL: Enable BEFORE pausing UART so Pico can process the command
-    if (!picoLogForwardingWasEnabled) {
-        LOG_I("Enabling Pico log forwarding for OTA diagnostics (Serial output)");
-        LogManager::instance().setPicoLogForwarding(true, [this](uint8_t* payload, size_t len) {
-            return _picoUart.sendCommand(MSG_CMD_LOG_CONFIG, payload, len);
-        });
-        
-        // Give Pico time to process the log forwarding command and start forwarding logs
-        // This ensures we see "Entering bootloader mode" and other bootloader logs
-        delay(200);
-        
-        // Process any pending packets to ensure log forwarding ACK is received
-        _picoUart.loop();
-        delay(50);
-    }
-    
-    // Helper lambda to restore log forwarding state on cleanup
-    auto restoreLogForwarding = [picoLogForwardingWasEnabled, this]() {
-        // Restore Pico log forwarding state
-        if (!picoLogForwardingWasEnabled && LogManager::instance().isPicoLogForwardingEnabled()) {
-            LOG_I("Restoring Pico log forwarding state (disabling)");
-            LogManager::instance().setPicoLogForwarding(false, [this](uint8_t* payload, size_t len) {
-                return _picoUart.sendCommand(MSG_CMD_LOG_CONFIG, payload, len);
-            });
-        }
-    };
-    
     // Send bootloader command with retry mechanism
     broadcastOtaProgress(&_ws, "flash", 42, "Preparing device...");
     feedWatchdog();
@@ -1332,7 +1310,6 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
                 _picoUart.resume();  // Resume on failure
                 flashFile.close();
                 cleanupOtaFiles();
-                restoreLogForwarding();  // Restore log forwarding state
                 return false;
             }
         }
@@ -1344,7 +1321,6 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
         feedWatchdog();
         
         // Process UART packets while waiting for bootloader ACK
-        // This allows us to receive log messages from Pico (e.g., "Entering bootloader mode")
         // waitForBootloaderAck() reads directly from Serial1 and looks for the specific pattern
         // The protocol handler might consume some bytes, but bootloader ACK (0xB0 0x07 0xAC 0x4B)
         // doesn't start with 0xAA, so it should pass through
@@ -1370,7 +1346,6 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
                 _picoUart.resume();  // Resume on failure
                 flashFile.close();
                 cleanupOtaFiles();
-                restoreLogForwarding();  // Restore log forwarding state
                 return false;
             }
         }
@@ -1569,7 +1544,6 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
         broadcastLogLevel("error", "Update error: Installation failed after retries");
         broadcastOtaProgress(&_ws, "error", 0, "Installation failed after retries");
         _picoUart.resume();  // Resume on failure
-        restoreLogForwarding();  // Restore log forwarding state
         return false;
     }
     
@@ -1636,13 +1610,11 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
         
         if (!picoReconnected) {
             LOG_E("Pico failed to connect after manual reset");
-            restoreLogForwarding();  // Restore log forwarding state
             return false;
         }
     }
     
     LOG_I("Pico OTA complete!");
-    restoreLogForwarding();  // Restore log forwarding state
     return true;
 }
 
@@ -1942,6 +1914,15 @@ void BrewWebServer::startGitHubOTA(const String& version) {
 void BrewWebServer::updateLittleFS(const char* tag) {
     LOG_I("Updating LittleFS...");
     broadcastOtaProgress(&_ws, "flash", 96, "Updating web UI...");
+    
+    // CRITICAL: Unmount LittleFS before raw partition operations
+    // This prevents "Corrupted dir pair" errors and conflicts with LogManager
+    // LogManager's loop() periodically calls saveToFlash() which opens /logs.txt
+    // If LittleFS is mounted during partition erase, it causes corruption
+    if (LittleFS.begin()) {  // Check if mounted (begin() returns true if already mounted)
+        LittleFS.end();
+        LOG_I("LittleFS unmounted for update");
+    }
     
     char littlefsUrl[256];
     snprintf(littlefsUrl, sizeof(littlefsUrl), 
