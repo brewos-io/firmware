@@ -2900,6 +2900,10 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
         return false;
     }
     
+    // Ensure end marker is fully transmitted before sending CRC32
+    Serial1.flush();
+    delay(50);  // Small delay to ensure Pico has received the end marker
+    
     // Send expected CRC32 to Pico bootloader for verification
     // Format: [0xAA 0x55] [CRC32: 4 bytes LE]
     if (expectedCRC32 != 0) {
@@ -2919,6 +2923,40 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
     LOG_I("Firmware streaming complete: %d bytes in %d chunks, CRC32=0x%08X", 
           bytesSent, chunkNumber, streamCRC32);
     broadcastLog("Firmware streaming complete: %zu bytes in %d chunks", bytesSent, chunkNumber);
+    
+    // CRITICAL: Wait for Pico to process the end marker and checksum before resuming UART
+    // The Pico bootloader needs time to:
+    // 1. Receive and verify the checksum
+    // 2. Start the flash copy operation (which logs "Bootloader: Starting flash copy")
+    // If we resume UART processing too early, we might interfere with bootloader operations
+    // Wait up to 2 seconds for Pico to acknowledge or start processing
+    LOG_I("Waiting for Pico to verify checksum and start flash copy...");
+    unsigned long waitStart = millis();
+    const unsigned long MAX_WAIT_MS = 2000;  // 2 seconds max wait
+    
+    // Try to read any final ACK or status from bootloader
+    bool bootloaderAckReceived = false;
+    while ((millis() - waitStart) < MAX_WAIT_MS) {
+        if (Serial1.available()) {
+            uint8_t byte = Serial1.read();
+            // Bootloader may send 0xAA 0x55 0x00 as final ACK before starting copy
+            if (byte == 0xAA || byte == 0x55 || byte == 0x00) {
+                bootloaderAckReceived = true;
+                LOG_I("Bootloader ACK received - flash copy should start soon");
+                // Give it a bit more time to actually start the copy
+                delay(200);
+                break;
+            }
+        }
+        delay(10);  // Small delay to avoid busy-waiting
+    }
+    
+    if (!bootloaderAckReceived) {
+        // No ACK received, but that's OK - Pico might have already started copying
+        // Give it a minimum delay to ensure it has time to process
+        LOG_I("No bootloader ACK received, waiting minimum delay for processing...");
+        delay(500);  // Minimum delay to ensure Pico has processed the end marker
+    }
     
     // Clean up stored CRC32 (reuse prefs variable)
     prefs.begin("ota", false);  // Read-write

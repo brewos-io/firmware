@@ -312,46 +312,70 @@ void bootloader_prepare(void) {
  * It cannot call ANY SDK functions that exist in Flash.
  * We use BootROM function pointers (in ROM) instead of SDK functions (in Flash).
  */
+/**
+ * CRITICAL: This function runs entirely from RAM.
+ * It uses function pointers to call ROM functions directly.
+ * It NEVER calls SDK functions that might reside in Flash.
+ */
 static void __no_inline_not_in_flash_func(copy_firmware_to_main)(const boot_rom_funcs_t* rom, uint32_t firmware_size) {
+    // 1. Disable Interrupts (stops USB/Time/etc)
+    // NOTE: We do NOT restore interrupts because the vector table will be invalid after erasing flash
     uint32_t irq_state = save_and_disable_interrupts();
     
+    // 2. Prepare Loop
     uint32_t sector_count = (firmware_size + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
     const uint8_t* staging_base = (const uint8_t*)(XIP_BASE + FLASH_TARGET_OFFSET);
 
     for (uint32_t i = 0; i < sector_count; i++) {
         uint32_t offset = i * FLASH_SECTOR_SIZE;
         
-        // Read into RAM buffer
+        // A. Read from Staging (XIP is still active here)
         uint32_t copy_size = FLASH_SECTOR_SIZE;
         if (offset + FLASH_SECTOR_SIZE > firmware_size) {
             copy_size = firmware_size - offset;
-            memset(g_sector_buffer + copy_size, 0xFF, FLASH_SECTOR_SIZE - copy_size);
+            // Pad last sector with 0xFF using manual loop (memset might be in flash)
+            for (size_t k = copy_size; k < FLASH_SECTOR_SIZE; k++) {
+                g_sector_buffer[k] = 0xFF;
+            }
         }
-        memcpy(g_sector_buffer, staging_base + offset, copy_size);
+        
+        // Manual memcpy to ensure no flash-based memcpy is called
+        const uint8_t* src = staging_base + offset;
+        for (size_t k = 0; k < copy_size; k++) {
+            g_sector_buffer[k] = src[k];
+        }
 
-        // Call BootROM functions via pointers (Safe: ROM is always available)
-        // These functions are in ROM, not Flash, so they survive flash erasure
+        // B. Call ROM Functions to Erase/Program
+        // These live in the CPU's ROM, so they are safe to call even if Flash is erased
         rom->connect_internal_flash();
         rom->flash_exit_xip();
-        // Block size/cmd parameters: FLASH_SECTOR_SIZE for block_size, 0 for block_cmd
-        // These are required for the function signature but may be unused on some ROMs
-        rom->flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE, 0);
+        
+        // Erase: block_size is typically 256 bytes (the actual erase block size)
+        // Using FLASH_SECTOR_SIZE should work but 256 is more correct for the ROM function
+        // The ROM function will handle the actual erase operation
+        rom->flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE, 256, 0);
+        
+        // Program
         rom->flash_range_program(FLASH_MAIN_OFFSET + offset, g_sector_buffer, FLASH_SECTOR_SIZE);
+        
+        // Flush Cache (Restart XIP)
         rom->flash_flush_cache();
         
-        // Feed watchdog manually (interrupts disabled, can't call SDK functions)
+        // C. Feed Watchdog (Direct Register Access)
+        // We cannot call watchdog_update() as it might be in Flash
         watchdog_hw->load = 0x7fffff;
     }
 
-    restore_interrupts(irq_state);
+    // 3. Reset System (Direct AIRCR Access)
+    // We do NOT restore interrupts because the vector table is likely invalid/erased
+    // Restoring interrupts would try to use an invalid vector table and could cause issues
     
     // Use raw register access to reset (SDK watchdog_reboot might be in erased flash)
-    // AIRCR System Reset
     #define PPB_BASE 0xE0000000
     #define AIRCR_Register (*((volatile uint32_t *)(PPB_BASE + 0xED0C)))
-    AIRCR_Register = 0x5FA0004;
+    AIRCR_Register = 0x5FA0004; // Trigger System Reset
     
-    while(1);
+    while(1); // Infinite loop until reset
 }
  
  // -----------------------------------------------------------------------------
