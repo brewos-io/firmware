@@ -49,23 +49,11 @@
 // -----------------------------------------------------------------------------
 // BootROM Function Typedefs
 // -----------------------------------------------------------------------------
-// CRITICAL: We must use BootROM functions via pointers, not SDK functions.
-// SDK functions (flash_range_erase, etc.) live in Flash and will be erased
-// when we erase Main Flash (offset 0), causing an immediate crash.
-// BootROM functions are in ROM and are always available.
-typedef void (*rom_connect_internal_flash_fn)(void);
-typedef void (*rom_flash_exit_xip_fn)(void);
-typedef void (*rom_flash_range_erase_fn)(uint32_t addr, size_t count, uint32_t block_size, uint8_t block_cmd);
-typedef void (*rom_flash_range_program_fn)(uint32_t addr, const uint8_t *data, size_t count);
-typedef void (*rom_flash_flush_cache_fn)(void);
-
-typedef struct {
-    rom_connect_internal_flash_fn connect_internal_flash;
-    rom_flash_exit_xip_fn flash_exit_xip;
-    rom_flash_range_erase_fn flash_range_erase;
-    rom_flash_range_program_fn flash_range_program;
-    rom_flash_flush_cache_fn flash_flush_cache;
-} boot_rom_funcs_t;
+// REMOVED: BootROM function lookup code that was RP2040-specific
+// The standard SDK functions flash_range_erase() and flash_range_program()
+// are marked as __no_inline_not_in_flash_func, meaning they reside in RAM
+// and are safe to call even while erasing flash. They also handle RP2040/RP2350
+// differences automatically via the hardware/flash.h library.
 
 // -----------------------------------------------------------------------------
 // Bootloader Mode Control
@@ -308,16 +296,14 @@ void bootloader_prepare(void) {
  static uint8_t g_sector_buffer[FLASH_SECTOR_SIZE] __attribute__((aligned(16)));
  
 /**
- * CRITICAL: This function must run entirely from RAM.
- * It cannot call ANY SDK functions that exist in Flash.
- * We use BootROM function pointers (in ROM) instead of SDK functions (in Flash).
- */
-/**
  * CRITICAL: This function runs entirely from RAM.
- * It uses function pointers to call ROM functions directly.
- * It NEVER calls SDK functions that might reside in Flash.
+ * We use standard SDK functions (flash_range_erase/program) which are
+ * marked __no_inline_not_in_flash_func (RAM-resident) and handle RP2040/RP2350 differences.
+ * Note: SDK flash functions save/restore interrupt state. Since we call them
+ * with interrupts disabled, they will restore interrupts to DISABLED state,
+ * preventing any crash from a vector table lookup in erased flash.
  */
-static void __no_inline_not_in_flash_func(copy_firmware_to_main)(const boot_rom_funcs_t* rom, uint32_t firmware_size) {
+static void __no_inline_not_in_flash_func(copy_firmware_to_main)(uint32_t firmware_size) {
     // 1. Disable Interrupts (stops USB/Time/etc)
     // NOTE: We do NOT restore interrupts because the vector table will be invalid after erasing flash
     uint32_t irq_state = save_and_disable_interrupts();
@@ -329,7 +315,7 @@ static void __no_inline_not_in_flash_func(copy_firmware_to_main)(const boot_rom_
     for (uint32_t i = 0; i < sector_count; i++) {
         uint32_t offset = i * FLASH_SECTOR_SIZE;
         
-        // A. Read from Staging (XIP is still active here)
+        // A. Read from Staging (XIP is active here)
         uint32_t copy_size = FLASH_SECTOR_SIZE;
         if (offset + FLASH_SECTOR_SIZE > firmware_size) {
             copy_size = firmware_size - offset;
@@ -345,21 +331,11 @@ static void __no_inline_not_in_flash_func(copy_firmware_to_main)(const boot_rom_
             g_sector_buffer[k] = src[k];
         }
 
-        // B. Call ROM Functions to Erase/Program
-        // These live in the CPU's ROM, so they are safe to call even if Flash is erased
-        rom->connect_internal_flash();
-        rom->flash_exit_xip();
-        
-        // Erase: block_size is typically 256 bytes (the actual erase block size)
-        // Using FLASH_SECTOR_SIZE should work but 256 is more correct for the ROM function
-        // The ROM function will handle the actual erase operation
-        rom->flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE, 256, 0);
-        
-        // Program
-        rom->flash_range_program(FLASH_MAIN_OFFSET + offset, g_sector_buffer, FLASH_SECTOR_SIZE);
-        
-        // Flush Cache (Restart XIP)
-        rom->flash_flush_cache();
+        // B. Erase and Program using SDK functions
+        // These handle XIP exit/entry and RP2350/RP2040 differences automatically
+        // The SDK functions are marked __no_inline_not_in_flash_func, so they run from RAM
+        flash_range_erase(FLASH_MAIN_OFFSET + offset, FLASH_SECTOR_SIZE);
+        flash_range_program(FLASH_MAIN_OFFSET + offset, g_sector_buffer, FLASH_SECTOR_SIZE);
         
         // C. Feed Watchdog (Direct Register Access)
         // We cannot call watchdog_update() as it might be in Flash
@@ -586,30 +562,28 @@ bootloader_result_t bootloader_receive_firmware(void) {
         LOG_PRINT("Bootloader: No expected CRC32 received (ESP32 may not support it) - skipping verification\n");
     }
     
+    // CRITICAL: Send final ACK BEFORE starting flash copy
+    // The ESP32 will wait for this ACK, then wait 6 seconds before checking version
+    // This gives us time to complete the flash copy and reset before ESP32 verifies
     uart_write_byte(0xAA); uart_write_byte(0x55); uart_write_byte(0x00);
-     sleep_ms(50);
+    uart_tx_wait_blocking(ESP32_UART_ID);  // Ensure ACK is fully transmitted
+    sleep_ms(50);
      
-     LOG_PRINT("Bootloader: Starting flash copy. USB will disconnect...\n");
-     sleep_ms(50);
+    LOG_PRINT("Bootloader: Starting flash copy. USB will disconnect...\n");
+    LOG_PRINT("Bootloader: Copying %lu bytes (%lu sectors) from staging to main flash...\n", 
+              (unsigned long)g_received_size, 
+              (unsigned long)((g_received_size + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE));
+    sleep_ms(50);
      
-     // CRITICAL: Resolve ROM pointers using SDK lookups (Compatible with RP2040 & RP2350)
-     // We must do this BEFORE entering the RAM function, because rom_func_lookup might be in Flash
-     boot_rom_funcs_t rom_funcs;
+    // Enable watchdog with generous timeout (8.3 seconds) for flash copy
+    // The copy function feeds the watchdog during the copy, so this is just a safety net
+    // For 108KB firmware (~27 sectors), copy should take ~2-3 seconds
+    watchdog_enable(8300, 1);
      
-     // The SDK provided rom_func_lookup handles the differences between RP2040 and RP2350
-     // These constants are defined in pico/bootrom.h
-     // NOTE: We use rom_func_lookup (not rom_func_lookup_inline) because we're not in a RAM function yet
-     rom_funcs.connect_internal_flash = (rom_connect_internal_flash_fn)rom_func_lookup(ROM_FUNC_CONNECT_INTERNAL_FLASH);
-     rom_funcs.flash_exit_xip = (rom_flash_exit_xip_fn)rom_func_lookup(ROM_FUNC_FLASH_EXIT_XIP);
-     rom_funcs.flash_range_erase = (rom_flash_range_erase_fn)rom_func_lookup(ROM_FUNC_FLASH_RANGE_ERASE);
-     rom_funcs.flash_range_program = (rom_flash_range_program_fn)rom_func_lookup(ROM_FUNC_FLASH_RANGE_PROGRAM);
-     rom_funcs.flash_flush_cache = (rom_flash_flush_cache_fn)rom_func_lookup(ROM_FUNC_FLASH_FLUSH_CACHE);
-     
-     watchdog_enable(8300, 1);
-     
-     // Transfer control to RAM - NO RETURN
-     // Pass the BootROM function pointers to the RAM function
-     copy_firmware_to_main(&rom_funcs, g_received_size);
+    // Transfer control to RAM - NO RETURN
+    // This function will copy all sectors from staging to main flash using SDK functions,
+    // which are RAM-resident and handle both RP2040 and RP2350 automatically
+    copy_firmware_to_main(g_received_size);
      
      return BOOTLOADER_SUCCESS;
  }

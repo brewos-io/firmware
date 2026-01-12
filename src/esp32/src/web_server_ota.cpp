@@ -2421,15 +2421,33 @@ void BrewWebServer::startCombinedOTA(const String& version, bool isPendingOTA) {
     }
     LOG_I("Pico responded after update");
     
-    // Request boot info to get the new version
-    // The Pico should send MSG_BOOT on boot, but we also explicitly request it
-    // to ensure we get the version even if MSG_BOOT was missed
+    // CRITICAL: Wait for flash copy to complete before checking version
+    // The bootloader copies firmware from staging to main flash (~3-5 seconds for 108KB)
+    // The Pico may reconnect quickly, but the flash copy might still be in progress.
+    // If we check the version too early, we'll get the old version cached from the initial reconnection.
+    // Wait at least 6 seconds to ensure flash copy is complete, then request fresh boot info.
+    LOG_I("Waiting for flash copy to complete before version check (6 seconds)...");
+    for (int i = 0; i < 60; i++) {  // Wait 6 seconds for flash copy
+        delay(100);
+        feedWatchdog();
+        _picoUart.loop();  // Keep processing packets
+    }
+    
+    // The Pico may have sent boot info with old version during initial reconnection.
+    // After waiting for flash copy, request fresh boot info to get the updated version.
+    // Note: We don't clear connection state here to avoid disconnecting the Pico.
+    // Instead, we'll request boot info multiple times and wait for it to update.
+    LOG_I("Requesting fresh boot info after flash copy delay...");
     _picoUart.requestBootInfo();
     
-    // Wait for boot info with retries (up to 3 seconds)
-    // Pico might need time to fully boot and send MSG_BOOT
+    // Wait for boot info with retries (up to 5 seconds)
+    // The Pico should send MSG_BOOT with the new version after the flash copy completes
     const char* picoVersion = nullptr;
-    for (int attempt = 0; attempt < 30; attempt++) {
+    const char* previousVersion = State.getPicoVersion();  // Store old version for comparison
+    bool isDevOrBeta = (strcmp(version.c_str(), "dev-latest") == 0) || 
+                       (strstr(version.c_str(), "-") != nullptr);
+    
+    for (int attempt = 0; attempt < 50; attempt++) {
         delay(100);
         feedWatchdog();
         _picoUart.loop();
@@ -2437,23 +2455,40 @@ void BrewWebServer::startCombinedOTA(const String& version, bool isPendingOTA) {
         // Check if version was received
         picoVersion = State.getPicoVersion();
         if (picoVersion && picoVersion[0] != '\0') {
-            LOG_I("Pico version received after %d ms", (attempt + 1) * 100);
-            break;
+            // For stable releases, check if version matches expected (best case)
+            if (!isDevOrBeta && strcmp(picoVersion, version.c_str()) == 0) {
+                LOG_I("Pico version matches expected version: %s (after %d ms)", 
+                      picoVersion, (attempt + 1) * 100);
+                break;
+            }
+            // If version changed from what we saw initially, that's progress
+            // (might be updating, or might be the new version if old was already correct)
+            if (previousVersion && strcmp(picoVersion, previousVersion) != 0) {
+                LOG_I("Pico version updated from %s to %s after %d ms", 
+                      previousVersion, picoVersion, (attempt + 1) * 100);
+                // For stable releases, if it matches expected, we're done
+                if (!isDevOrBeta && strcmp(picoVersion, version.c_str()) == 0) {
+                    break;
+                }
+                // Otherwise continue waiting to see if it updates further
+            }
+            // If we've waited long enough (2+ seconds), proceed to verification
+            // (version check will handle mismatch by forcing reset)
+            if (attempt >= 20) {
+                LOG_I("Pico version received after %d ms: %s", (attempt + 1) * 100, picoVersion);
+                break;
+            }
         }
         
-        // Request again every 1 second if not received yet
+        // Request again every 1 second if not received yet or version hasn't changed
         if (attempt > 0 && attempt % 10 == 0) {
-            LOG_I("Still waiting for Pico version, requesting boot info again...");
+            LOG_I("Still waiting for Pico version update, requesting boot info again...");
             _picoUart.requestBootInfo();
         }
     }
     
     // Verify Pico version after update
-    // For dev-latest and beta channels (versions containing "-"), skip exact version matching
-    // since the tag name differs from the actual firmware version (e.g., "dev-latest" vs "0.7.5")
-    bool isDevOrBeta = (strcmp(version.c_str(), "dev-latest") == 0) || 
-                       (strstr(version.c_str(), "-") != nullptr);
-    
+    // Note: isDevOrBeta was already set above
     if (picoVersion && picoVersion[0] != '\0') {
         if (isDevOrBeta) {
             // For dev/beta channels, just log the version - we can't verify against tag name
@@ -2463,12 +2498,61 @@ void BrewWebServer::startCombinedOTA(const String& version, bool isPendingOTA) {
             // For stable releases, verify exact version match
             LOG_I("Pico version after update: %s (expected: %s)", picoVersion, version.c_str());
             if (strcmp(picoVersion, version.c_str()) != 0) {
-                LOG_E("Pico update FAILED! Got %s, expected %s", picoVersion, version.c_str());
-                broadcastLogLevel("error", "Internal controller update failed");
-                broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
-                cleanupOtaFiles();
-                handleOTAFailure(&_ws);  // Will restart device
-                return;  // Won't reach here due to restart
+                // Version mismatch - the Pico may have reconnected before flash copy completed
+                // Try forcing a reset to ensure it boots with the new firmware
+                LOG_W("Pico version mismatch detected. Forcing reset to ensure new firmware boots...");
+                _picoUart.resetPico();
+                
+                // Wait for Pico to reconnect after forced reset
+                LOG_I("Waiting for Pico to reconnect after forced reset...");
+                bool reconnected = false;
+                for (int i = 0; i < 100; i++) {  // Wait up to 10 seconds
+                    delay(100);
+                    feedWatchdog();
+                    _picoUart.loop();
+                    
+                    if (_picoUart.isConnected()) {
+                        LOG_I("Pico reconnected after forced reset (%d ms)", i * 100);
+                        reconnected = true;
+                        break;
+                    }
+                }
+                
+                if (!reconnected) {
+                    LOG_E("Pico failed to reconnect after forced reset");
+                    broadcastLogLevel("error", "Internal controller update failed");
+                    broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
+                    cleanupOtaFiles();
+                    handleOTAFailure(&_ws);  // Will restart device
+                    return;  // Won't reach here due to restart
+                }
+                
+                // Request boot info again after reset
+                _picoUart.requestBootInfo();
+                delay(1000);  // Wait 1 second for boot info
+                feedWatchdog();
+                _picoUart.loop();
+                
+                // Check version again
+                picoVersion = State.getPicoVersion();
+                if (picoVersion && picoVersion[0] != '\0') {
+                    LOG_I("Pico version after forced reset: %s (expected: %s)", picoVersion, version.c_str());
+                    if (strcmp(picoVersion, version.c_str()) != 0) {
+                        LOG_E("Pico update FAILED! Got %s, expected %s after forced reset", picoVersion, version.c_str());
+                        broadcastLogLevel("error", "Internal controller update failed");
+                        broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
+                        cleanupOtaFiles();
+                        handleOTAFailure(&_ws);  // Will restart device
+                        return;  // Won't reach here due to restart
+                    }
+                } else {
+                    LOG_E("Could not get Pico version after forced reset");
+                    broadcastLogLevel("error", "Internal controller not responding");
+                    broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
+                    cleanupOtaFiles();
+                    handleOTAFailure(&_ws);  // Will restart device
+                    return;  // Won't reach here due to restart
+                }
             }
         }
         LOG_I("Pico version verified: %s", picoVersion);

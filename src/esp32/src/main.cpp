@@ -2747,6 +2747,13 @@ static void loopHandleWiFiTasks() {
             // Retry on next loop iteration (don't set mDNSStarted = true on failure)
         }
     }
+    
+    // CRITICAL: Update mDNS responder every loop iteration when started
+    // Without this, mDNS won't respond to queries and brewos.local won't resolve
+    if (mDNSStarted && state.wifi_connected) {
+        MDNS.update();
+    }
+    
     if (!state.wifi_connected) {
         // Reset when WiFi disconnects
         wifiConnectedTime = 0;
