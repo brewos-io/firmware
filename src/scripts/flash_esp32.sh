@@ -294,6 +294,46 @@ if [ "$FIRMWARE_ONLY" = false ]; then
         exit 1
     fi
     
+    # Trim trailing 0xFF bytes to reduce file size (for OTA efficiency)
+    if [ -f "$LITTLEFS_IMAGE" ]; then
+        status_log "Trimming LittleFS binary (removing trailing 0xFF)..."
+        if [ "$QUIET" = false ]; then
+            ORIGINAL_SIZE=$(du -h "$LITTLEFS_IMAGE" | cut -f1)
+            quiet_echo "${BLUE}Original size: $ORIGINAL_SIZE${NC}"
+        fi
+        
+        python3 -c "
+import os
+path = '$LITTLEFS_IMAGE'
+if os.path.exists(path):
+    with open(path, 'rb') as f:
+        data = f.read()
+    
+    # Find last byte that is NOT 0xFF
+    length = len(data)
+    while length > 0 and data[length-1] == 0xFF:
+        length -= 1
+        
+    # Align to next 4KB block (flash sector size) for safety
+    if length % 4096 != 0:
+        length = (length // 4096 + 1) * 4096
+        
+    # Don't trim if it would be empty (keep at least 4KB)
+    if length == 0: length = 4096
+    
+    if length < len(data):
+        with open(path, 'wb') as f:
+            f.write(data[:length])
+        if '$QUIET' == 'false':
+            print(f'  Trimmed size:  {length/1024/1024:.2f} MB')
+" 2>/dev/null || {
+            # If Python fails, continue without trimming (non-critical)
+            if [ "$QUIET" = false ]; then
+                quiet_echo "${YELLOW}⚠ Could not trim LittleFS (Python not available or error)${NC}"
+            fi
+        }
+    fi
+    
     status_log "LittleFS image built"
     if [ "$QUIET" = false ]; then
         LITTLEFS_SIZE=$(du -h "$LITTLEFS_IMAGE" | cut -f1)

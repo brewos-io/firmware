@@ -194,6 +194,37 @@ build_esp32() {
             print_error "LittleFS build failed"
             exit 1
         }
+
+        # Trim trailing 0xFF bytes to reduce OTA size
+        LITTLEFS_BIN="$ESP32_DIR/.pio/build/$env_name/littlefs.bin"
+        if [ -f "$LITTLEFS_BIN" ]; then
+            print_info "Trimming LittleFS binary (removing trailing 0xFF)..."
+            python3 -c "
+import os
+path = '$LITTLEFS_BIN'
+if os.path.exists(path):
+    with open(path, 'rb') as f:
+        data = f.read()
+    
+    # Find last byte that is NOT 0xFF
+    length = len(data)
+    while length > 0 and data[length-1] == 0xFF:
+        length -= 1
+        
+    # Align to next 4KB block (flash sector size) for safety
+    if length % 4096 != 0:
+        length = (length // 4096 + 1) * 4096
+        
+    # Don't trim if it would be empty (keep at least 4KB)
+    if length == 0: length = 4096
+    
+    if length < len(data):
+        print(f'  Original size: {len(data)/1024/1024:.2f} MB')
+        with open(path, 'wb') as f:
+            f.write(data[:length])
+        print(f'  Trimmed size:  {length/1024/1024:.2f} MB')
+"
+        fi
     fi
     
     # Generate compile_commands.json for IDE

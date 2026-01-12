@@ -166,6 +166,38 @@ jobs:
           cd src/esp32
           pio run -e esp32s3 -t buildfs
 
+      - name: Trim LittleFS Binary
+        run: |
+          cd src/esp32
+          LITTLEFS_BIN=".pio/build/esp32s3/littlefs.bin"
+          if [ -f "$LITTLEFS_BIN" ]; then
+            echo "Trimming LittleFS binary (removing trailing 0xFF)..."
+            python3 -c "
+          import os
+          path = '.pio/build/esp32s3/littlefs.bin'
+          if os.path.exists(path):
+              with open(path, 'rb') as f:
+                  data = f.read()
+              length = len(data)
+              while length > 0 and data[length-1] == 0xFF:
+                  length -= 1
+              if length % 4096 != 0:
+                  length = (length // 4096 + 1) * 4096
+              if length == 0: length = 4096
+              if length < len(data):
+                  print('  Original size: {:.2f} MB'.format(len(data)/1024/1024))
+                  with open(path, 'wb') as f:
+                      f.write(data[:length])
+                  print('  Trimmed size:  {:.2f} MB'.format(length/1024/1024))
+              else:
+                  print('  Size: {:.2f} MB (no trimming needed)'.format(len(data)/1024/1024))
+          "
+            echo "✓ LittleFS binary trimmed"
+          else
+            echo "❌ LittleFS binary not found: $LITTLEFS_BIN"
+            exit 1
+          fi
+
       # ===== Prepare Release Assets =====
       - name: Prepare Release Files
         run: |
