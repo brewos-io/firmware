@@ -14,9 +14,9 @@
 // -----------------------------------------------------------------------------
 #define ESP32_VERSION_MAJOR     0
 #define ESP32_VERSION_MINOR     8
-#define ESP32_VERSION_PATCH     43
+#define ESP32_VERSION_PATCH     44
 #define ESP32_VERSION_PRERELEASE "beta.1"  // Empty string "" for stable releases
-#define ESP32_VERSION           "0.8.43"
+#define ESP32_VERSION           "0.8.44"
 
 // Build timestamp (set at compile time)
 // Format: "Dec 12 2024" and "14:30:45"
