@@ -1290,9 +1290,18 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
                │              │                    │  Green/Yellow    │     │
                │              │                    └────────┬─────────┘     │
                │              │                             │              │
-               │              │                             ─┴─             │
-               │              │                             GND             │
-               │              │                    (PCB Logic Ground)       │
+               │              │                    ┌────────┴────────┐      │
+               │              │                    │  ISOLATION NET  │      │
+               │              │                    │                 │      │
+               │              │                    │  R_SRif  C_SRif │      │
+               │              │                    │   1MΩ    100nF  │      │
+               │              │                    │  [████]──┤├──   │      │
+               │              │                    │     └──┬──┘     │      │
+               │              │                    └────────┼────────┘      │
+               │              │                             │              │
+               │              │                            ─┴─             │
+               │              │                            GND             │
+               │              │                   (PCB Logic Ground)       │
                │              │                                             │
                └──────────────┼─────────────────────────────────────────────┘
                               │
@@ -1305,6 +1314,13 @@ using the machine's existing high-voltage wiring. NO HIGH CURRENT flows through 
       • C64 provides AC coupling (blocks DC, passes AC signal)
       • When water touches probe: AC signal is attenuated (water = resistive load)
       • When no water: AC signal passes with minimal attenuation
+
+    CHASSIS ISOLATION (SRif):
+    ─────────────────────────
+      • J5 connects chassis/boiler to PCB GND via isolation network
+      • R_SRif (1MΩ) blocks DC loop currents (safety isolation from HV area)
+      • C_SRif (100nF) provides low-impedance AC return path at ~1.6kHz
+      • ⚠️ J5 is NOT directly connected to GND - isolation network required!
 
     ═══════════════════════════════════════════════════════════════════════════
                     STAGE 3: COMPARATOR & DIGITAL OUTPUT
