@@ -354,7 +354,7 @@ Verify the SSR trigger circuit provides adequate voltage (~4.8V) for KS15 D-24Z2
 
 ### Purpose
 
-Verify the level probe sensing concept works correctly and requires PE-GND connection.
+Verify the level probe sensing concept works correctly. Note: Production design uses J5 (SRif) chassis reference with C-R isolation network, NOT direct PE-GND connection.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
@@ -371,7 +371,7 @@ Verify the level probe sensing concept works correctly and requires PE-GND conne
 │                                                                                 │
 │  This DC test is ONLY for validating:                                          │
 │  • Basic conductivity detection concept                                        │
-│  • PE-GND connection requirement                                               │
+│  • Chassis reference (SRif) requirement for signal return                      │
 │  • Threshold resistances for water detection                                   │
 │                                                                                 │
 │  DO NOT use this DC circuit in production! See Phase 2/3 for AC circuit test. │
@@ -399,8 +399,8 @@ Verify the level probe sensing concept works correctly and requires PE-GND conne
           ▼               │
      "PROBE" ─────────────┤
      (wire)               │
-                         ─┴─
-                         GND (connected to PE in real machine)
+                        ─┴─
+                        GND (via J5 SRif isolation network in production)
 ```
 
 ### Test Procedure (DC Concept Validation Only)
@@ -435,12 +435,16 @@ Verify the level probe sensing concept works correctly and requires PE-GND conne
 ### Critical Notes
 
 ```
-⚠️  This circuit REQUIRES PE (Protective Earth) to be connected to signal GND.
-    In the actual machine, the boiler body is connected to PE.
-    Without PE-GND connection, this circuit will NOT work!
+⚠️  This circuit REQUIRES a ground reference for the probe signal return.
+    In the actual machine, the boiler body connects to J5 (SRif) which routes
+    to PCB GND via isolation network (R_SRif 1MΩ || C_SRif 100nF).
+    The C-R network blocks DC loop currents while allowing AC signal return.
 
 ⚠️  DO NOT USE THIS DC CIRCUIT IN PRODUCTION!
     The production AC oscillator circuit (OPA342 + TLV3201) is tested in Phase 2/3.
+
+⚠️  IMPORTANT: J5 (SRif) is NOT directly connected to GND!
+    The isolation network (R_SRif + C_SRif) is REQUIRED for safety.
 ```
 
 ### Phase 2/3: AC Oscillator Circuit Validation (On Assembled PCB)
@@ -970,7 +974,7 @@ ONLY proceed if:
 | Machine unplugged                                | Verified                   |      |
 | Original control board removed                   | Documented wire positions  |      |
 | All machine wires labeled                        | Photos taken               |      |
-| New board PE connected                           | Continuity to chassis      |      |
+| J5 (SRif) connected to chassis                   | Wire to boiler/chassis bolt |      |
 | **LV Wiring:** Wires stripped 6mm or ferrules    | Visual (J26 - all 18 pins) |      |
 | **HV Wiring:** Spade connectors crimped properly | Tug test (J1, J2, J3, J4)  |      |
 
