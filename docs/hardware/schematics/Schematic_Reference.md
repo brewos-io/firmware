@@ -21,7 +21,7 @@ High-resolution schematic captures from EasyEDA. Click to enlarge.
 
 Mains input, AC/DC isolation, buck converter, ADC reference
 
-![Power Supply Schematic](SCH_Schematic1_1-Power%20Supply_2025-12-22.png)
+![Power Supply Schematic](SCH_Schematic1_1-Power%20Supply_2026-01-20.png)
 
 ---
 
@@ -29,7 +29,7 @@ Mains input, AC/DC isolation, buck converter, ADC reference
 
 RP2354 discrete chip, GPIO allocation, crystal, and power connections
 
-![Microcontroller Schematic](SCH_Schematic1_2-Microcontroller%20%28Raspberry%20Pi%20Pico%202%29_2025-12-22.png)
+![Microcontroller Schematic](SCH_Schematic1_2-Microcontroller%20%28Raspberry%20Pi%20Pico%202%29_2026-01-20.png)
 
 **Note:** Schematic image may still show Pico 2 module - actual implementation uses RP2354A (QFN-60) discrete chip with 12MHz crystal and SWD interface.
 
@@ -39,7 +39,7 @@ RP2354 discrete chip, GPIO allocation, crystal, and power connections
 
 K1-K3 relay driver circuits with flyback protection
 
-![Relay Drivers Schematic](SCH_Schematic1_3-Relay%20Drivers_2025-12-22.png)
+![Relay Drivers Schematic](SCH_Schematic1_3-Relay%20Drivers_2026-01-20.png)
 
 ---
 
@@ -47,7 +47,7 @@ K1-K3 relay driver circuits with flyback protection
 
 Solid-state relay trigger circuits for heaters
 
-![SSR Drivers Schematic](SCH_Schematic1_4-SSR%20Drivers_2025-12-22.png)
+![SSR Drivers Schematic](SCH_Schematic1_4-SSR%20Drivers_2026-01-20.png)
 
 ---
 
@@ -55,7 +55,7 @@ Solid-state relay trigger circuits for heaters
 
 NTC thermistors, pressure transducer, level probe
 
-![Sensor Inputs Schematic](SCH_Schematic1_5-Sensor%20Inputs_2025-12-22.png)
+![Sensor Inputs Schematic](SCH_Schematic1_5-Sensor%20Inputs_2026-01-20.png)
 
 ---
 
@@ -63,7 +63,7 @@ NTC thermistors, pressure transducer, level probe
 
 ESP32, RS485
 
-![Communication Interfaces Schematic](SCH_Schematic1_6-Communication%20Interfaces_2025-12-22.png)
+![Communication Interfaces Schematic](SCH_Schematic1_6-Communication%20Interfaces_2026-01-20.png)
 
 ---
 
@@ -71,7 +71,7 @@ ESP32, RS485
 
 LEDs, buzzer, reset button
 
-![User Interface Schematic](SCH_Schematic1_7-User%20Interface_2025-12-22.png)
+![User Interface Schematic](SCH_Schematic1_7-User%20Interface_2026-01-20.png)
 
 ---
 
@@ -79,7 +79,7 @@ LEDs, buzzer, reset button
 
 External power meter interface (PZEM, JSY, Eastron)
 
-![Power Metering Schematic](SCH_Schematic1_8-Power%20Metering%20%28Universal%20External%20Interface%29_2025-12-22.png)
+![Power Metering Schematic](SCH_Schematic1_8-Power%20Metering%20%28Universal%20External%20Interface%29_2026-01-20.png)
 
 ---
 
@@ -87,7 +87,7 @@ External power meter interface (PZEM, JSY, Eastron)
 
 TVS, ESD protection, filtering
 
-![Protection & Filtering Schematic](SCH_Schematic1_9-Protection%20%26%20Filtering_2025-12-22.png)
+![Protection & Filtering Schematic](SCH_Schematic1_9-Protection%20%26%20Filtering_2026-01-20.png)
 
 ---
 
