@@ -499,13 +499,17 @@ void handle_cmd_bootloader(const packet_t* packet) {
     bootloader_result_t result = bootloader_receive_firmware();
     
     // If we get here, bootloader failed
-    // Log error before resetting
-    LOG_ERROR("Bootloader error: %s\n", bootloader_get_status_message(result));
+    // CRITICAL: Send error code via UART FIRST (before any printf/protocol overhead)
+    // This ensures ESP32 sees the actual error code
+    uart_putc(ESP32_UART_ID, 0xEE);  // Error marker
+    uart_putc(ESP32_UART_ID, (uint8_t)result);  // Actual error code
+    uart_tx_wait_blocking(ESP32_UART_ID);
+    
+    LOG_ERROR("Bootloader error code: %d\n", (int)result);
     
     // Send error message via debug (if possible before reset)
     char error_msg[64];
-    snprintf(error_msg, sizeof(error_msg), "Bootloader failed: %s", 
-             bootloader_get_status_message(result));
+    snprintf(error_msg, sizeof(error_msg), "Bootloader failed: code=%d", (int)result);
     protocol_send_debug(error_msg);
     
     // Small delay to ensure error message is sent

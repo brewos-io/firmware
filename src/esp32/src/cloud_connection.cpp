@@ -68,12 +68,37 @@ void CloudConnection::begin(const String& serverUrl, const String& deviceId, con
 }
 
 void CloudConnection::end() {
+    // Signal task to stop
     _enabled = false;
     
-    // Stop background task
+    // Wait for task to exit gracefully (it checks _enabled in its loop)
+    // The task will set _taskHandle = nullptr before calling vTaskDelete(NULL)
     if (_taskHandle != nullptr) {
-        vTaskDelete(_taskHandle);
-        _taskHandle = nullptr;
+        // Give the task time to notice _enabled=false and exit gracefully
+        // This is critical - forcibly killing a task that's in the middle of 
+        // SSL/TCP operations will corrupt internal FreeRTOS queues
+        LOG_I("Waiting for cloud task to exit gracefully...");
+        
+        const int MAX_WAIT_MS = 3000;  // 3 second max wait
+        const int CHECK_INTERVAL_MS = 50;
+        int waited = 0;
+        
+        // Wait for task to set _taskHandle = nullptr (indicating it's about to exit)
+        while (_taskHandle != nullptr && waited < MAX_WAIT_MS) {
+            vTaskDelay(pdMS_TO_TICKS(CHECK_INTERVAL_MS));
+            waited += CHECK_INTERVAL_MS;
+        }
+        
+        if (_taskHandle == nullptr) {
+            LOG_I("Cloud task exited gracefully after %d ms", waited);
+        } else {
+            // If task still hasn't exited, force delete as last resort
+            // This shouldn't happen normally, but prevents hanging
+            LOG_W("Cloud task did not exit gracefully after %d ms, forcing delete", waited);
+            vTaskDelete(_taskHandle);
+            _taskHandle = nullptr;
+        }
+        
         LOG_I("Cloud task stopped");
     }
     
@@ -312,6 +337,11 @@ void CloudConnection::taskCode(void* parameter) {
     }
     
     LOG_I("Task ending");
+    
+    // CRITICAL: Clear task handle BEFORE deleting, so end() knows we've exited
+    // This must be done atomically-ish (single write) to avoid race conditions
+    self->_taskHandle = nullptr;
+    
     vTaskDelete(NULL);
 }
 

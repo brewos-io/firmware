@@ -22,6 +22,7 @@
 #include "pico/multicore.h"
 #include "pico/flash.h"       // For flash_safe_execute()
 #include "hardware/flash.h"
+#include "hardware/sync.h"    // For save_and_disable_interrupts(), restore_interrupts()
 
 // =============================================================================
 // State
@@ -152,6 +153,78 @@ bool flash_safe_program(uint32_t offset, const uint8_t* data, size_t size) {
         DEBUG_PRINT("Flash safety: Program failed (error %d)\n", result);
         return false;
     }
+    
+    return true;
+}
+
+// =============================================================================
+// Bootloader-specific Flash Functions (NO multicore lockout)
+// =============================================================================
+// These functions are for use ONLY during bootloader chunk reception.
+// They write to the staging area which is separate from main firmware,
+// so Core 1 can continue running from main firmware safely.
+// We only disable interrupts (not multicore lockout) to prevent ISRs
+// from executing flash code during the write.
+
+bool flash_bootloader_erase(uint32_t offset, size_t size) {
+    // Validate offset is sector-aligned
+    if (offset % FLASH_SECTOR_SIZE != 0) {
+        return false;
+    }
+    
+    // Validate size is multiple of sector size
+    if (size % FLASH_SECTOR_SIZE != 0) {
+        return false;
+    }
+    
+    // Validate bounds
+    if (offset + size > PICO_FLASH_SIZE_BYTES) {
+        return false;
+    }
+    
+    // Disable interrupts for the flash operation
+    // This prevents ISRs from executing flash code during erase
+    uint32_t irq_state = save_and_disable_interrupts();
+    
+    // Perform the erase (flash_range_erase is RAM-resident in SDK)
+    flash_range_erase(offset, size);
+    
+    // Re-enable interrupts
+    restore_interrupts(irq_state);
+    
+    return true;
+}
+
+bool flash_bootloader_program(uint32_t offset, const uint8_t* data, size_t size) {
+    // Validate offset is page-aligned
+    if (offset % FLASH_PAGE_SIZE != 0) {
+        return false;
+    }
+    
+    // Validate size is multiple of page size
+    if (size % FLASH_PAGE_SIZE != 0) {
+        return false;
+    }
+    
+    // Validate data pointer
+    if (!data) {
+        return false;
+    }
+    
+    // Validate bounds
+    if (offset + size > PICO_FLASH_SIZE_BYTES) {
+        return false;
+    }
+    
+    // Disable interrupts for the flash operation
+    // This prevents ISRs from executing flash code during program
+    uint32_t irq_state = save_and_disable_interrupts();
+    
+    // Perform the program (flash_range_program is RAM-resident in SDK)
+    flash_range_program(offset, data, size);
+    
+    // Re-enable interrupts
+    restore_interrupts(irq_state);
     
     return true;
 }

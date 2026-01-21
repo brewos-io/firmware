@@ -66,5 +66,28 @@ bool flash_safe_erase(uint32_t offset, size_t size);
  */
 bool flash_safe_program(uint32_t offset, const uint8_t* data, size_t size);
 
+// =============================================================================
+// Bootloader-specific Flash Functions (NO multicore lockout)
+// =============================================================================
+// These functions are for use ONLY during bootloader chunk reception.
+// They write to the staging area which is separate from main firmware,
+// so Core 1 can continue running from main firmware safely.
+// They only disable interrupts (not multicore lockout) which is faster
+// and avoids the multicore lockout timeout issues on RP2350.
+
+/**
+ * Erase flash for bootloader use (no multicore lockout).
+ * Only disables interrupts, does not pause other core.
+ * Safe for writing to staging area while Core 1 runs from main firmware.
+ */
+bool flash_bootloader_erase(uint32_t offset, size_t size);
+
+/**
+ * Program flash for bootloader use (no multicore lockout).
+ * Only disables interrupts, does not pause other core.
+ * Safe for writing to staging area while Core 1 runs from main firmware.
+ */
+bool flash_bootloader_program(uint32_t offset, const uint8_t* data, size_t size);
+
 #endif // FLASH_SAFE_H
 

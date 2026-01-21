@@ -1614,14 +1614,219 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     
     broadcastOtaProgress(&_ws, "flash", 55, "Waiting for device restart...");
     
-    // Resume packet processing to detect when Pico comes back
-    _picoUart.resume();
-    LOG_I("Resumed UART packet processing");
+    // CRITICAL: Check for debug markers BEFORE resuming packet processing
+    // The PicoUART handler might consume bytes from Serial1's buffer
+    LOG_I("Checking for Pico bootloader debug markers (BEFORE resume)...");
     
-    // Drain any leftover bootloader bytes from UART buffer
+    // Wait a bit for debug markers to arrive (Pico is doing printfs with delays)
+    delay(500);
+    
+    // Parse and log debug markers from Pico bootloader
+    // Format: 0xDB [marker] [value_lo] [value_hi]
+    int debugMarkersReceived = 0;
+    int bytesAvailable = Serial1.available();
+    LOG_I("UART buffer has %d bytes available", bytesAvailable);
+    
+    // Process UART buffer with improved parsing
+    // Group raw bytes and decode known patterns for readability
+    if (bytesAvailable > 0) {
+        LOG_I("UART buffer has %d bytes. Parsing Pico response...", bytesAvailable);
+    }
+    
+    // Buffers for grouping output
+    char asciiBuffer[65] = {0};  // For printable ASCII strings
+    int asciiLen = 0;
+    char hexBuffer[128] = {0};   // For hex dump of non-printable data
+    int hexLen = 0;
+    
+    // Helper lambda to flush ASCII buffer
+    auto flushAscii = [&]() {
+        if (asciiLen > 0) {
+            asciiBuffer[asciiLen] = '\0';
+            LOG_I("[Pico TEXT] \"%s\"", asciiBuffer);
+            asciiLen = 0;
+        }
+    };
+    
+    // Helper lambda to flush hex buffer
+    auto flushHex = [&]() {
+        if (hexLen > 0) {
+            hexBuffer[hexLen] = '\0';
+            LOG_I("[Pico HEX] %s", hexBuffer);
+            hexLen = 0;
+        }
+    };
+    
+    while (Serial1.available() > 0) {
+        uint8_t b = Serial1.peek();
+        
+        if (b == 0xDB) {
+            // Debug marker: 0xDB [marker] [val_lo] [val_hi] (4 bytes)
+            flushAscii();
+            flushHex();
+            if (Serial1.available() < 4) break;
+            
+            Serial1.read(); // Consume 0xDB
+            uint8_t marker = Serial1.read();
+            uint8_t val_lo = Serial1.read();
+            uint8_t val_hi = Serial1.read();
+            uint16_t value = val_lo | (val_hi << 8);
+            
+            // Decode marker
+            const char* markerName = "UNKNOWN";
+            switch (marker) {
+                case 0x01: markerName = "COPY_ENTER"; break;
+                case 0x02: markerName = "SIZE_CHECK"; break;
+                case 0x03: markerName = "SECTOR_COUNT"; break;
+                case 0x04: markerName = "STAGING_READ"; break;
+                case 0x05: markerName = "VECTOR_CHECK"; break;
+                case 0x06: markerName = "VECTOR_FAIL"; break;
+                case 0x07: markerName = "LOOP_START"; break;
+                case 0x08: markerName = "SECTOR_COPY"; break;
+                case 0x09: markerName = "ERASE_START"; break;
+                case 0x0A: markerName = "ERASE_DONE"; break;
+                case 0x0B: markerName = "PROG_START"; break;
+                case 0x0C: markerName = "PROG_DONE"; break;
+                case 0x0D: markerName = "LOOP_DONE"; break;
+                case 0x0E: markerName = "RESET_TRIGGER"; break;
+                case 0x0F: markerName = "EXIT_ERROR"; break;
+                case 0xAA: markerName = "ACK_STAGE_PASSED"; break;
+                case 0xBB: markerName = "BOOTLOADER_BEGIN"; break;
+                case 0xF0: markerName = "PRELOAD_DONE"; break;
+                case 0xD1: markerName = "LOCKOUT_START"; break;
+                case 0xD2: markerName = "LOCKOUT_RESULT"; break;
+                case 0xD3: markerName = "LOCKOUT_RESET"; break;
+                case 0xD4: markerName = "CORE1_STOPPED"; break;
+                case 0xD5: markerName = "IRQ_DISABLE_PRE"; break;
+                case 0xD6: markerName = "IRQ_DISABLED"; break;
+                case 0xC0: markerName = "VERIFY_START_LO"; break;
+                case 0xC1: markerName = "VERIFY_START_HI"; break;
+                case 0xC2: markerName = "VERIFY_CALC_LO"; break;
+                case 0xC3: markerName = "VERIFY_CALC_HI"; break;
+                case 0xCA: markerName = "VERIFY_SUCCESS"; break;
+                case 0xE0: markerName = "STAGING_READ_DONE"; break;
+            }
+            LOG_I("[Pico DBG] %s (0x%02X) = %d (0x%04X)", markerName, marker, value, value);
+            debugMarkersReceived++;
+            
+        } else if (b == 0xCE) {
+            // CRC Info: 0xCE [calcCRC:4] [expCRC:4] (9 bytes)
+            flushAscii();
+            flushHex();
+            if (Serial1.available() < 9) break;
+            
+            Serial1.read(); // Consume 0xCE
+            uint32_t calcCRC = 0;
+            uint32_t expCRC = 0;
+            Serial1.readBytes((char*)&calcCRC, 4);
+            Serial1.readBytes((char*)&expCRC, 4);
+            LOG_I("[Pico CRC] Calculated: 0x%08X, Expected: 0x%08X, Match: %s", 
+                  calcCRC, expCRC, calcCRC == expCRC ? "YES" : "NO");
+            debugMarkersReceived++;
+            
+        } else if (b == 0xCF) {
+            // CRC Fail marker
+            flushAscii();
+            flushHex();
+            Serial1.read();
+            LOG_E("[Pico CRC] VERIFICATION FAILED!");
+            debugMarkersReceived++;
+            
+        } else if (b == 0xAA) {
+            // Protocol packet start or ACK - check next byte
+            flushAscii();
+            flushHex();
+            Serial1.read(); // Consume 0xAA
+            
+            if (Serial1.available() > 0) {
+                uint8_t next = Serial1.peek();
+                if (next == 0x55) {
+                    // End marker ACK (0xAA 0x55 ...)
+                    Serial1.read(); // Consume 0x55
+                    if (Serial1.available() > 0) {
+                        uint8_t status = Serial1.read();
+                        LOG_I("[Pico ACK] Final ACK received (status=0x%02X)", status);
+                    } else {
+                        LOG_I("[Pico ACK] Final ACK (0xAA 0x55)");
+                    }
+                } else {
+                    // Protocol packet - log header info
+                    LOG_I("[Pico PKT] Protocol packet start (0xAA), type=0x%02X", next);
+                }
+            } else {
+                LOG_I("[Pico ACK] Chunk ACK (0xAA)");
+            }
+            debugMarkersReceived++;
+            
+        } else if (b == 0xEE) {
+            // Error marker
+            flushAscii();
+            flushHex();
+            Serial1.read();
+            if (Serial1.available() > 0) {
+                uint8_t errorCode = Serial1.read();
+                const char* errorName = "UNKNOWN";
+                switch (errorCode) {
+                    case 1: errorName = "TIMEOUT"; break;
+                    case 2: errorName = "INVALID_MAGIC"; break;
+                    case 3: errorName = "INVALID_SIZE"; break;
+                    case 4: errorName = "INVALID_CHUNK"; break;
+                    case 5: errorName = "CHECKSUM"; break;
+                    case 6: errorName = "FLASH_WRITE"; break;
+                    case 7: errorName = "FLASH_ERASE"; break;
+                }
+                LOG_E("[Pico ERR] Bootloader error: %s (code=%d)", errorName, errorCode);
+            } else {
+                LOG_E("[Pico ERR] Error marker (0xEE)");
+            }
+            debugMarkersReceived++;
+            
+        } else if (b >= 0x20 && b < 0x7F) {
+            // Printable ASCII - accumulate into string buffer
+            flushHex();
+            Serial1.read();
+            if (asciiLen < 64) {
+                asciiBuffer[asciiLen++] = (char)b;
+            } else {
+                flushAscii();
+                asciiBuffer[asciiLen++] = (char)b;
+            }
+            
+        } else {
+            // Non-printable byte - accumulate into hex buffer
+            flushAscii();
+            Serial1.read();
+            if (hexLen < 120) {
+                hexLen += snprintf(hexBuffer + hexLen, sizeof(hexBuffer) - hexLen, "%02X ", b);
+            } else {
+                flushHex();
+                hexLen += snprintf(hexBuffer + hexLen, sizeof(hexBuffer) - hexLen, "%02X ", b);
+            }
+        }
+    }
+    
+    // Flush any remaining buffered data
+    flushAscii();
+    flushHex();
+    if (debugMarkersReceived > 0) {
+        LOG_I("Received %d debug markers from Pico bootloader", debugMarkersReceived);
+    } else {
+        LOG_W("No debug markers received - copy_firmware_to_main may not be running");
+    }
+    
+    // Drain any other leftover bootloader bytes from UART buffer
+    int drainedRemaining = 0;
     while (Serial1.available()) {
         Serial1.read();
+        drainedRemaining++;
     }
+    if (drainedRemaining > 0) {
+        LOG_I("Drained %d remaining bytes from UART", drainedRemaining);
+    }
+    
+    // NOW resume packet processing
+    _picoUart.resume();
+    LOG_I("Resumed UART packet processing");
     
     // Clear connection state so we can detect when Pico actually reconnects
     _picoUart.clearConnectionState();
@@ -1638,6 +1843,71 @@ bool BrewWebServer::startPicoGitHubOTA(const String& version) {
     for (int i = 0; i < 350; i++) {  // Wait up to 35 seconds
         delay(100);
         feedWatchdog();
+        
+        // Check for debug markers during wait (improved parsing)
+        while (Serial1.available() > 0) {
+            uint8_t b = Serial1.peek();
+            if (b == 0xDB && Serial1.available() >= 4) {
+                Serial1.read();  // Consume 0xDB
+                uint8_t marker = Serial1.read();
+                uint8_t val_lo = Serial1.read();
+                uint8_t val_hi = Serial1.read();
+                uint16_t value = val_lo | (val_hi << 8);
+                
+                const char* markerName = "UNKNOWN";
+                switch (marker) {
+                    case 0x01: markerName = "COPY_ENTER"; break;
+                    case 0x02: markerName = "SIZE_CHECK"; break;
+                    case 0x03: markerName = "SECTOR_COUNT"; break;
+                    case 0x04: markerName = "STAGING_READ"; break;
+                    case 0x05: markerName = "VECTOR_CHECK"; break;
+                    case 0x06: markerName = "VECTOR_FAIL"; break;
+                    case 0x07: markerName = "LOOP_START"; break;
+                    case 0x08: markerName = "SECTOR_COPY"; break;
+                    case 0x09: markerName = "ERASE_START"; break;
+                    case 0x0A: markerName = "ERASE_DONE"; break;
+                    case 0x0B: markerName = "PROG_START"; break;
+                    case 0x0C: markerName = "PROG_DONE"; break;
+                    case 0x0D: markerName = "LOOP_DONE"; break;
+                    case 0x0E: markerName = "RESET_TRIGGER"; break;
+                    case 0x0F: markerName = "EXIT_ERROR"; break;
+                    case 0xC0: markerName = "VERIFY_START_LO"; break;
+                    case 0xC1: markerName = "VERIFY_START_HI"; break;
+                    case 0xC2: markerName = "VERIFY_CALC_LO"; break;
+                    case 0xC3: markerName = "VERIFY_CALC_HI"; break;
+                    case 0xCA: markerName = "VERIFY_SUCCESS"; break;
+                    case 0xE0: markerName = "STAGING_READ_DONE"; break;
+                }
+                LOG_I("[Pico DBG] %s (0x%02X) = %d", markerName, marker, value);
+            } else if (b == 0xCE && Serial1.available() >= 9) {
+                Serial1.read();  // Consume 0xCE
+                uint32_t calcCRC = 0, expCRC = 0;
+                Serial1.readBytes((char*)&calcCRC, 4);
+                Serial1.readBytes((char*)&expCRC, 4);
+                LOG_I("[Pico CRC] Calc: 0x%08X, Exp: 0x%08X, Match: %s", 
+                      calcCRC, expCRC, calcCRC == expCRC ? "YES" : "NO");
+            } else if (b == 0xCF) {
+                Serial1.read();
+                LOG_E("[Pico CRC] VERIFICATION FAILED!");
+            } else if (b == 0xEE && Serial1.available() >= 2) {
+                Serial1.read();
+                uint8_t errCode = Serial1.read();
+                const char* errName = "UNKNOWN";
+                switch (errCode) {
+                    case 1: errName = "TIMEOUT"; break;
+                    case 2: errName = "INVALID_MAGIC"; break;
+                    case 3: errName = "INVALID_SIZE"; break;
+                    case 4: errName = "INVALID_CHUNK"; break;
+                    case 5: errName = "CHECKSUM"; break;
+                    case 6: errName = "FLASH_WRITE"; break;
+                    case 7: errName = "FLASH_ERASE"; break;
+                }
+                LOG_E("[Pico ERR] %s (code=%d)", errName, errCode);
+            } else {
+                break;  // Not a recognized marker, let normal processing handle it
+            }
+        }
+        
         _picoUart.loop();  // Process incoming packets
         
         // Check if Pico sent any packets (heartbeat or boot info)

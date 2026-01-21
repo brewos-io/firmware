@@ -70,5 +70,16 @@ bootloader_result_t bootloader_receive_firmware(void);
  */
 const char* bootloader_get_status_message(bootloader_result_t result);
 
+/**
+ * Safe RAM-resident loop for Core 0 during bootloader operations.
+ * 
+ * This function:
+ * 1. Disables interrupts to prevent flash access
+ * 2. Spins in a loop while g_bootloader_active is true
+ * 3. Does NOT feed the watchdog (Core 1 takes ownership)
+ * 4. Must be called from RAM (not flash)
+ */
+void bootloader_core0_loop(void);
+
 #endif // BOOTLOADER_H
 

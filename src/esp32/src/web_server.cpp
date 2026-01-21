@@ -2670,15 +2670,31 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
     firmwareFile.seek(0);  // Start from beginning
     
     // Stream firmware in chunks using bootloader protocol
+    unsigned long lastChunkTime = millis();  // Track time between chunks for debugging
+    
     while (bytesSent < firmwareSize) {
+        unsigned long chunkStartTime = millis();
         size_t bytesToRead = min(CHUNK_SIZE, firmwareSize - bytesSent);
         size_t bytesRead = firmwareFile.read(buffer, bytesToRead);
+        unsigned long fileReadTime = millis() - chunkStartTime;
+        
+        // Log if file read took too long (>100ms is suspicious)
+        if (fileReadTime > 100) {
+            LOG_W("Chunk %d: File read took %lu ms (expected <10ms)", chunkNumber, fileReadTime);
+        }
         
         if (bytesRead == 0) {
             LOG_E("Failed to read firmware chunk at offset %d", bytesSent);
             broadcastLogLevel("error", "Firmware read error");
             return false;
         }
+        
+        // Check time since last chunk (should be ~30-50ms normally)
+        unsigned long timeSinceLastChunk = millis() - lastChunkTime;
+        if (timeSinceLastChunk > 1000 && chunkNumber > 0) {
+            LOG_W("Chunk %d: %lu ms since last chunk (expected <100ms)", chunkNumber, timeSinceLastChunk);
+        }
+        lastChunkTime = millis();
         
         // Update CRC32 for this chunk
         for (size_t i = 0; i < bytesRead; i++) {
@@ -2733,7 +2749,7 @@ bool BrewWebServer::streamFirmwareToPico(File& firmwareFile, size_t firmwareSize
             bool ackReceived = false;
             uint8_t errorCode = 0;
             unsigned long ackStart = millis();
-            const unsigned long ACK_TIMEOUT_MS = 5000;  // 5 second timeout (flash erase can take 3-4 seconds)
+            const unsigned long ACK_TIMEOUT_MS = 10000;  // 10 second timeout to match Pico's BOOTLOADER_CHUNK_TIMEOUT_MS
             
             while ((millis() - ackStart) < ACK_TIMEOUT_MS) {
                 if (Serial1.available()) {

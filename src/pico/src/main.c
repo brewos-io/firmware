@@ -520,13 +520,12 @@ int main(void) {
         // Skip all operations when bootloader is active
         // Core 1 (running bootloader) handles everything during OTA
         if (bootloader_is_active()) {
-            // CRITICAL: Feed watchdog to prevent reset during OTA
-            // Bootloader can take several seconds, so Core 0 must keep watchdog alive
-            watchdog_update();
+            // CRITICAL: Enter safe RAM loop to prevent flash access during OTA
+            // This function disables interrupts and spins in RAM until reset
+            // It does NOT feed the watchdog (Core 1 takes ownership)
+            bootloader_core0_loop();
             
-            // Small delay to avoid busy-waiting and reduce CPU usage
-            // Bootloader on Core 1 handles all the work, Core 0 just needs to stay alive
-            sleep_ms(10);
+            // We should never return here, but if we do (e.g. OTA cancelled), continue loop
             continue;
         }
         
