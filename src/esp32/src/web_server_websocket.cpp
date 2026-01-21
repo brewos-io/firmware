@@ -12,6 +12,7 @@
 #include "power_meter/power_meter_manager.h"
 #include "ui/ui.h"
 #include "esp32_diagnostics.h"
+#include "log_manager.h"
 #include <ArduinoJson.h>
 #include <stdarg.h>
 
@@ -219,6 +220,16 @@ void BrewWebServer::processCommand(JsonDocument& doc) {
         LOG_I("Command: setLogLevel=%s", levelStr.c_str());
         BrewOSLogLevel level = stringToLogLevel(levelStr.c_str());
         setLogLevel(level);
+        
+        // Also persist the setting if it's debug/info toggle
+        if (level == BREWOS_LOG_DEBUG) {
+            State.settings().system.debugLogsEnabled = true;
+            State.saveSystemSettings();
+        } else if (level == BREWOS_LOG_INFO) {
+            State.settings().system.debugLogsEnabled = false;
+            State.saveSystemSettings();
+        }
+        
         broadcastLog("Log level set to: %s", logLevelToString(level));
     }
     else if (type == "command") {
@@ -283,6 +294,9 @@ void BrewWebServer::processCommand(JsonDocument& doc) {
         }
         else if (cmd == "run_diagnostics" || cmd == "run_diagnostic_test") {
             handleDiagnosticsCommand(doc, cmd);
+        }
+        else if (cmd == "set_log_config" || cmd == "clear_logs" || cmd == "get_log_config") {
+            handleLogCommand(doc, cmd);
         }
     }
 }
@@ -1234,5 +1248,69 @@ void BrewWebServer::handleDiagnosticsCommand(JsonDocument& doc, const String& cm
         } else {
             broadcastLogLevel("error", "Failed to start diagnostic test");
         }
+    }
+}
+
+void BrewWebServer::handleLogCommand(JsonDocument& doc, const String& cmd) {
+    if (cmd == "set_log_config") {
+        // Enable/disable log features
+        if (!doc["enabled"].isNull()) {
+            bool enabled = doc["enabled"].as<bool>();
+            if (enabled) {
+                g_logManager->enable();
+            } else {
+                g_logManager->disable();
+            }
+            State.settings().system.logBufferEnabled = enabled;
+        }
+        
+        if (!doc["picoEnabled"].isNull()) {
+            bool enabled = doc["picoEnabled"].as<bool>();
+            if (g_logManager && g_logManager->isEnabled()) {
+                g_logManager->setPicoLogForwarding(enabled, [this](uint8_t* payload, size_t len) {
+                    return _picoUart.sendCommand(MSG_CMD_LOG_CONFIG, payload, len);
+                });
+            }
+            State.settings().system.picoLogForwardingEnabled = enabled;
+        }
+        
+        if (!doc["debugEnabled"].isNull()) {
+            bool enabled = doc["debugEnabled"].as<bool>();
+            setLogLevel(enabled ? BREWOS_LOG_DEBUG : BREWOS_LOG_INFO);
+            State.settings().system.debugLogsEnabled = enabled;
+        }
+        
+        State.saveSystemSettings();
+        broadcastLogLevel("info", "Log configuration updated");
+        
+        // Broadcast updated status
+        JsonDocument statusDoc;
+        statusDoc["type"] = "log_config";
+        statusDoc["enabled"] = g_logManager && g_logManager->isEnabled();
+        statusDoc["picoEnabled"] = g_logManager && g_logManager->isPicoLogForwardingEnabled();
+        statusDoc["debugEnabled"] = State.settings().system.debugLogsEnabled;
+        statusDoc["size"] = g_logManager ? g_logManager->getLogsSize() : 0;
+        
+        String jsonStr;
+        serializeJson(statusDoc, jsonStr);
+        broadcastRaw(jsonStr);
+    }
+    else if (cmd == "clear_logs") {
+        if (g_logManager) {
+            g_logManager->clear();
+            broadcastLogLevel("info", "Logs cleared");
+        }
+    }
+    else if (cmd == "get_log_config") {
+        JsonDocument statusDoc;
+        statusDoc["type"] = "log_config";
+        statusDoc["enabled"] = g_logManager && g_logManager->isEnabled();
+        statusDoc["picoEnabled"] = g_logManager && g_logManager->isPicoLogForwardingEnabled();
+        statusDoc["debugEnabled"] = State.settings().system.debugLogsEnabled;
+        statusDoc["size"] = g_logManager ? g_logManager->getLogsSize() : 0;
+        
+        String jsonStr;
+        serializeJson(statusDoc, jsonStr);
+        broadcastRaw(jsonStr);
     }
 }

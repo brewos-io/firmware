@@ -143,6 +143,7 @@ private:
     void handleTimeCommand(JsonDocument& doc, const String& cmd);
     void handleMaintenanceCommand(JsonDocument& doc, const String& cmd);
     void handleDiagnosticsCommand(JsonDocument& doc, const String& cmd);
+    void handleLogCommand(JsonDocument& doc, const String& cmd);
     
     // Helpers
     String getContentType(const String& filename);

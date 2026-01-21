@@ -695,9 +695,9 @@ String LogManager::getLogsFromFlash() {
 }
 
 String LogManager::getLogsComplete() {
-    // First, flush RAM buffer to flash to ensure we have latest logs
+    // First, flush RAM buffer to flash (using delta save to preserve history)
     if (_enabled && _buffer && _size > 0) {
-        saveToFlash();
+        saveDelta();
     }
     
     // Then get logs from flash (which has complete history)
