@@ -237,8 +237,8 @@ typedef struct __attribute__((packed)) {
     int16_t raw_value;             // Raw sensor reading (if applicable)
     int16_t expected_min;          // Expected minimum value
     int16_t expected_max;          // Expected maximum value
-    char message[24];              // Result message (null-terminated)
-} diag_result_payload_t;  // 32 bytes
+    char message[48];              // Result message (null-terminated) - was 24, increased to avoid truncation
+} diag_result_payload_t;  // 56 bytes
 
 // Diagnostic report header (followed by individual results)
 typedef struct __attribute__((packed)) {
@@ -338,5 +338,7 @@ _Static_assert(sizeof(config_machine_info_t) + 1 <= PROTOCOL_MAX_PAYLOAD,
                "config_machine_info_t + config_type byte exceeds PROTOCOL_MAX_PAYLOAD");
 _Static_assert(sizeof(boot_payload_t) <= PROTOCOL_MAX_PAYLOAD,
                "boot_payload_t exceeds PROTOCOL_MAX_PAYLOAD");
+_Static_assert(sizeof(diag_result_payload_t) <= PROTOCOL_MAX_PAYLOAD,
+               "diag_result_payload_t exceeds PROTOCOL_MAX_PAYLOAD");
 
 #endif // PROTOCOL_H

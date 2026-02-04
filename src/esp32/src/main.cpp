@@ -689,8 +689,8 @@ static void handlePicoDiagnostics(const PicoPacket& packet) {
         if (packet.payload[5] && webServer) {
             webServer->broadcastLog("Diagnostics complete");
         }
-    } else if (packet.length >= 32) {
-        // Diagnostic result
+    } else if (packet.length >= 8) {
+        // Diagnostic result (payload: 8-byte header + up to 48-byte message)
         LOG_I("Diag result: test=%d, status=%d", packet.payload[0], packet.payload[1]);
         
         #pragma GCC diagnostic push
@@ -704,9 +704,11 @@ static void handlePicoDiagnostics(const PicoPacket& packet) {
         doc["expectedMin"] = (int16_t)(packet.payload[4] | (packet.payload[5] << 8));
         doc["expectedMax"] = (int16_t)(packet.payload[6] | (packet.payload[7] << 8));
         
-        char msg[25];
-        memcpy(msg, &packet.payload[8], 24);
-        msg[24] = '\0';
+        size_t msgLen = (packet.length > 8) ? (packet.length - 8) : 0;
+        if (msgLen > 48) msgLen = 48;
+        char msg[49];
+        if (msgLen > 0) memcpy(msg, &packet.payload[8], msgLen);
+        msg[msgLen] = '\0';
         doc["message"] = msg;
         
         size_t jsonSize = measureJson(doc) + 1;

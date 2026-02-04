@@ -17,6 +17,7 @@
 #include "power_meter.h"
 #include "safety.h"
 #include "protocol_defs.h"
+#include "protocol.h"
 #include "class_b.h"
 #include <string.h>
 #include <stdio.h>
@@ -626,8 +627,11 @@ uint8_t diag_test_esp32_comm(diag_result_t* result) {
     uint32_t elapsed = 0;
     uint32_t check_interval_ms = 50;
     
-    // Check periodically if we received a new heartbeat (indicating ping received)
+    // Check periodically if we received a new heartbeat (indicating ping received).
+    // Must call protocol_process() so UART is read and heartbeat is updated when
+    // ESP32 sends the ping; otherwise we never see it while blocked here.
     while (elapsed < timeout_ms) {
+        protocol_process();
         sleep_ms(check_interval_ms);
         elapsed = to_ms_since_boot(get_absolute_time()) - start_time;
         

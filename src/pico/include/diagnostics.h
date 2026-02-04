@@ -25,7 +25,7 @@ typedef struct {
     int16_t raw_value;         // Raw sensor value (if applicable)
     int16_t expected_min;      // Expected minimum value
     int16_t expected_max;      // Expected maximum value
-    char message[32];          // Human-readable result message
+    char message[48];          // Human-readable result message (must fit in wire diag_result_payload_t)
 } diag_result_t;
 
 /**
