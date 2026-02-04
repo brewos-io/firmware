@@ -599,8 +599,38 @@ void handle_cmd_diagnostics(const packet_t* packet) {
 }
 
 void handle_cmd_power_meter(const packet_t* packet) {
-    // Power meter configuration
-    protocol_send_ack(packet->type, packet->seq, ACK_SUCCESS);
+    if (packet->type == MSG_CMD_POWER_METER_DISCOVER) {
+        // Auto-detect: run discovery and save config if a meter is found
+        if (power_meter_auto_detect()) {
+            protocol_send_ack(MSG_CMD_POWER_METER_DISCOVER, packet->seq, ACK_SUCCESS);
+        } else {
+            protocol_send_ack(MSG_CMD_POWER_METER_DISCOVER, packet->seq, ACK_ERROR_FAILED);
+        }
+        return;
+    }
+
+    /* MSG_CMD_POWER_METER_CONFIG: payload byte0 = enabled (0/1), optional byte1 = meter_index (0-4 or 0xFF = auto) */
+    if (packet->length < 1) {
+        protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_ERROR_INVALID);
+        return;
+    }
+
+    power_meter_config_t config = {
+        .enabled = (packet->payload[0] != 0),
+        .meter_index = (packet->length >= 2) ? packet->payload[1] : (uint8_t)0xFF,
+        .slave_addr = 0,
+        .baud_rate = 0
+    };
+
+    if (!power_meter_init(&config)) {
+        protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_ERROR_FAILED);
+        return;
+    }
+
+    if (config.enabled) {
+        power_meter_request_save();  /* Defer to Core 0 to avoid watchdog during flash write */
+    }
+    protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_SUCCESS);
 }
 
 void handle_cmd_get_boot(const packet_t* packet) {

@@ -121,6 +121,19 @@ bool power_meter_auto_detect(void);
 bool power_meter_save_config(void);
 
 /**
+ * Request that config be saved from Core 0 (safe; avoids watchdog during flash write).
+ * Call from Core 1 packet handler; Core 0 main loop must call power_meter_process_pending_save().
+ */
+void power_meter_request_save(void);
+
+/**
+ * Process pending save request (call from Core 0 main loop only).
+ * Performs the actual flash write so watchdog can be fed.
+ * @return true if a save was performed
+ */
+bool power_meter_process_pending_save(void);
+
+/**
  * Load configuration from flash
  * @param config Pointer to config structure to fill
  * @return true if config loaded

@@ -170,6 +170,7 @@ static power_meter_reading_t last_reading = {0};
 static uint32_t last_success_time = 0;
 static char last_error[64] = {0};
 static power_meter_config_t current_config = {0};
+static volatile bool g_pending_save = false;
 
 // =============================================================================
 // MODBUS PROTOCOL HELPERS
@@ -360,14 +361,31 @@ bool power_meter_init(const power_meter_config_t* config) {
     }
     
     if (!current_config.enabled) {
+        initialized = false;
+        current_map = NULL;
         return true;  // Disabled, nothing to do
+    }
+    
+    /* Validate meter_index from flash to avoid out-of-bounds or long auto-detect at boot */
+    if (current_config.meter_index != 0xFF && current_config.meter_index >= METER_MAPS_COUNT) {
+        snprintf(last_error, sizeof(last_error), "Invalid meter index %u", (unsigned)current_config.meter_index);
+        current_config.enabled = false;
+        initialized = false;
+        current_map = NULL;
+        return true;  /* Success but disabled */
     }
     
     // Select register map
     if (current_config.meter_index < METER_MAPS_COUNT) {
         current_map = &METER_MAPS[current_config.meter_index];
     } else if (current_config.meter_index == 0xFF) {
-        // Auto-detect
+        /* Auto-detect: skip at boot when config is NULL (would block 10-15s, risk watchdog) */
+        if (!config) {
+            current_config.enabled = false;
+            initialized = false;
+            current_map = NULL;
+            return true;  /* Boot: don't run auto_detect here; user can re-enable from UI */
+        }
         return power_meter_auto_detect();
     } else {
         snprintf(last_error, sizeof(last_error), "Invalid meter index");
@@ -556,6 +574,18 @@ bool power_meter_save_config(void) {
     // In unit tests, always succeed
     return true;
 #endif
+}
+
+void power_meter_request_save(void) {
+    g_pending_save = true;
+}
+
+bool power_meter_process_pending_save(void) {
+    if (!g_pending_save) {
+        return false;
+    }
+    g_pending_save = false;
+    return power_meter_save_config();
 }
 
 bool power_meter_load_config(power_meter_config_t* config) {

@@ -544,6 +544,11 @@ int main(void) {
         // Update cleaning mode (10Hz)
         cleaning_update();
         
+#if CONFIG_POWER_METER_ENABLED
+        // Process deferred power meter config save (Core 0 only; avoids watchdog during flash write)
+        power_meter_process_pending_save();
+#endif
+        
         // Control loop (10Hz)
         if (now - last_control >= CONTROL_LOOP_PERIOD_MS) {
             last_control = now;
