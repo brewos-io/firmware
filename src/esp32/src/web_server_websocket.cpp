@@ -1231,6 +1231,16 @@ void BrewWebServer::handleDiagnosticsCommand(JsonDocument& doc, const String& cm
         // Then send command to Pico to run all diagnostics
         uint8_t payload[1] = { 0x00 };  // DIAG_TEST_ALL
         if (_picoUart.sendCommand(MSG_CMD_DIAGNOSTICS, payload, 1)) {
+            // Toggle WEIGHT_STOP for ~2s so Pico's WEIGHT_STOP input test (0x13) can see HIGH.
+            // Pico runs tests after receiving the command; without this, it only sees LOW (idle).
+            pinMode(WEIGHT_STOP_PIN, OUTPUT);
+            for (int i = 0; i < 10; i++) {
+                digitalWrite(WEIGHT_STOP_PIN, HIGH);
+                delay(100);
+                digitalWrite(WEIGHT_STOP_PIN, LOW);
+                delay(100);
+            }
+            digitalWrite(WEIGHT_STOP_PIN, LOW);
             // Send immediate ping to help with ping-pong test
             _picoUart.sendPing();
         } else {
