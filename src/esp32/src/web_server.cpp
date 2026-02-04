@@ -742,6 +742,17 @@ void BrewWebServer::setupRoutes() {
         handleStartOTA(request);
     });
     
+    // ESP32 direct OTA upload - streams firmware directly to flash (no filesystem storage)
+    _server.on("/api/ota/esp32/upload", HTTP_POST,
+        [](AsyncWebServerRequest* request) {
+            // Response is sent after upload completes (in handleESP32OTAUpload final block)
+        },
+        [this](AsyncWebServerRequest* request, const String& filename, size_t index, 
+               uint8_t* data, size_t len, bool final) {
+            handleESP32OTAUpload(request, filename, index, data, len, final);
+        }
+    );
+    
     // Filesystem space check endpoint
     _server.on("/api/filesystem/space", HTTP_GET, [](AsyncWebServerRequest* request) {
         size_t used = LittleFS.usedBytes();
@@ -2536,6 +2547,146 @@ void BrewWebServer::handleOTAUpload(AsyncWebServerRequest* request, const String
         if (uploadSuccess) {
             broadcastLog("Firmware uploaded: %zu bytes", uploadedSize);
         }
+    }
+}
+
+void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const String& filename,
+                                          size_t index, uint8_t* data, size_t len, bool final) {
+    static size_t totalSize = 0;
+    static size_t uploadedSize = 0;
+    static bool updateStarted = false;
+    static bool updateFailed = false;
+    
+    if (index == 0) {
+        // First chunk - initialize update
+        LOG_I("ESP32 OTA upload started: %s", filename.c_str());
+        totalSize = request->contentLength();
+        uploadedSize = 0;
+        updateStarted = false;
+        updateFailed = false;
+        
+        // Validate firmware size
+        if (totalSize == 0) {
+            LOG_E("ESP32 OTA: Invalid firmware size (0)");
+            updateFailed = true;
+            return;
+        }
+        
+        // Check if OTA is already in progress
+        if (_otaInProgress) {
+            LOG_E("ESP32 OTA: Another OTA already in progress");
+            updateFailed = true;
+            return;
+        }
+        
+        _otaInProgress = true;
+        
+        // Broadcast start
+        broadcastLogLevel("info", "ESP32 OTA upload started: %zu bytes", totalSize);
+        
+        // Begin OTA update
+        if (!Update.begin(totalSize)) {
+            LOG_E("ESP32 OTA: Not enough space. Error: %s", Update.errorString());
+            broadcastLogLevel("error", "ESP32 OTA failed: Not enough space");
+            updateFailed = true;
+            _otaInProgress = false;
+            return;
+        }
+        
+        updateStarted = true;
+        LOG_I("ESP32 OTA: Update.begin() successful, ready to receive %zu bytes", totalSize);
+    }
+    
+    // Skip processing if update failed during init
+    if (updateFailed || !updateStarted) {
+        return;
+    }
+    
+    // Write data chunk to flash
+    if (len > 0) {
+        size_t written = Update.write(data, len);
+        if (written != len) {
+            LOG_E("ESP32 OTA: Write failed at %zu bytes. Expected %zu, wrote %zu. Error: %s", 
+                  uploadedSize, len, written, Update.errorString());
+            broadcastLogLevel("error", "ESP32 OTA write failed: %s", Update.errorString());
+            Update.abort();
+            updateFailed = true;
+            _otaInProgress = false;
+            return;
+        }
+        uploadedSize += written;
+        
+        // Log progress every 10%
+        static size_t lastProgressPercent = 0;
+        size_t progressPercent = (uploadedSize * 100) / totalSize;
+        if (progressPercent >= lastProgressPercent + 10) {
+            lastProgressPercent = progressPercent;
+            LOG_I("ESP32 OTA progress: %zu%% (%zu/%zu bytes)", progressPercent, uploadedSize, totalSize);
+            
+            // Broadcast progress to WebSocket clients
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            StaticJsonDocument<256> doc;
+            #pragma GCC diagnostic pop
+            doc["type"] = "ota_progress";
+            doc["stage"] = "upload";
+            doc["progress"] = progressPercent;
+            doc["uploaded"] = uploadedSize;
+            doc["total"] = totalSize;
+            
+            char jsonBuffer[256];
+            serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
+            _ws.textAll(jsonBuffer);
+        }
+    }
+    
+    // Final chunk - finalize update
+    if (final) {
+        LOG_I("ESP32 OTA upload complete: %zu bytes received", uploadedSize);
+        
+        if (uploadedSize != totalSize) {
+            LOG_E("ESP32 OTA: Size mismatch. Expected %zu, got %zu", totalSize, uploadedSize);
+            broadcastLogLevel("error", "ESP32 OTA failed: Incomplete upload");
+            Update.abort();
+            _otaInProgress = false;
+            request->send(400, "application/json", "{\"error\":\"Incomplete upload\"}");
+            return;
+        }
+        
+        // Finalize the update
+        if (!Update.end(true)) {
+            LOG_E("ESP32 OTA: Update.end() failed: %s", Update.errorString());
+            broadcastLogLevel("error", "ESP32 OTA failed: %s", Update.errorString());
+            _otaInProgress = false;
+            request->send(500, "application/json", "{\"error\":\"Update finalization failed\"}");
+            return;
+        }
+        
+        LOG_I("ESP32 OTA: Update successful! Rebooting...");
+        broadcastLogLevel("info", "ESP32 OTA successful! Rebooting in 2 seconds...");
+        
+        // Send success response before reboot
+        request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Update successful, rebooting...\"}");
+        
+        // Broadcast complete status
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<256> doc;
+        #pragma GCC diagnostic pop
+        doc["type"] = "ota_progress";
+        doc["stage"] = "complete";
+        doc["progress"] = 100;
+        doc["message"] = "Update successful, rebooting...";
+        
+        char jsonBuffer[256];
+        serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
+        _ws.textAll(jsonBuffer);
+        
+        _otaInProgress = false;
+        
+        // Delay to allow response to be sent, then reboot
+        delay(2000);
+        ESP.restart();
     }
 }
 

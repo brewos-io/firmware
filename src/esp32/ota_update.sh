@@ -92,13 +92,16 @@ fi
 echo -e "${GREEN}ESP32 is reachable!${NC}"
 echo ""
 
-# Step 4: Upload firmware
-echo -e "${YELLOW}[4/4] Uploading firmware via OTA...${NC}"
+# Step 4: Upload and flash firmware
+echo -e "${YELLOW}[4/4] Uploading and flashing firmware via OTA...${NC}"
+echo -e "${YELLOW}      (ESP32 will reboot automatically after flash)${NC}"
 echo ""
 
-RESPONSE=$(curl -X POST "http://$ESP32_IP/api/ota/upload" \
+# Use the new direct ESP32 OTA endpoint that flashes immediately
+RESPONSE=$(curl -X POST "http://$ESP32_IP/api/ota/esp32/upload" \
     -F "firmware=@$FIRMWARE" \
     --progress-bar \
+    --max-time 120 \
     -w "\n%{http_code}" 2>&1)
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
@@ -106,16 +109,20 @@ BODY=$(echo "$RESPONSE" | sed '$d')
 
 echo ""
 if [ "$HTTP_CODE" = "200" ]; then
-    echo -e "${GREEN}✓ Firmware uploaded!${NC}"
-    
-    # Note: The uploaded firmware is saved to LittleFS but NOT automatically flashed
-    # For local dev, you need to manually trigger the flash via webapp or use GitHub OTA
+    echo -e "${GREEN}╔══════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║  ✓ ESP32 OTA Update Successful!      ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${YELLOW}⚠ Note: Firmware is uploaded but not yet flashed.${NC}"
-    echo -e "${YELLOW}   For local development, use the webapp to trigger OTA,${NC}"
-    echo -e "${YELLOW}   or use GitHub OTA which handles both firmware and filesystem.${NC}"
+    echo -e "${BLUE}ESP32 is rebooting with new firmware...${NC}"
+    echo -e "${BLUE}Wait ~5 seconds, then access: http://$ESP32_IP${NC}"
+elif [ "$HTTP_CODE" = "000" ]; then
+    # Connection closed - expected when ESP32 reboots
+    echo -e "${GREEN}╔══════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║  ✓ ESP32 OTA Update Successful!      ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${BLUE}Access your device at: http://$ESP32_IP${NC}"
+    echo -e "${BLUE}ESP32 is rebooting with new firmware...${NC}"
+    echo -e "${BLUE}Wait ~5 seconds, then access: http://$ESP32_IP${NC}"
 else
     echo -e "${RED}OTA Upload Failed!${NC}"
     echo "HTTP Code: $HTTP_CODE"

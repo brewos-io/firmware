@@ -115,6 +115,8 @@ private:
     void handleOTAUpload(AsyncWebServerRequest* request, const String& filename,
                          size_t index, uint8_t* data, size_t len, bool final);
     void handleStartOTA(AsyncWebServerRequest* request);
+    void handleESP32OTAUpload(AsyncWebServerRequest* request, const String& filename,
+                              size_t index, uint8_t* data, size_t len, bool final);
     
     // WebSocket message handler (processes JSON commands)
     void handleWsMessage(uint32_t clientNum, uint8_t* payload, size_t length);
