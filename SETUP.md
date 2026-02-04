@@ -201,6 +201,35 @@ The ESP32 implementation supports both serial bootloader (primary method) and ha
 3. Connect SWD pins (see Pico datasheet)
 4. Use OpenOCD for upload and debugging
 
+### Recovery: full flash erase (boot loop or corrupt config)
+
+If the Pico **boot loops** or behaves oddly after flashing (e.g. after disabling the power meter or changing config), **persisted config in the last flash sector** may still be present. A normal UF2 copy does not overwrite that sector, so doing a **full flash erase** before flashing can fix it.
+
+**Option A – picotool (Pico must be running and connected)**
+
+1. Install [picotool](https://github.com/raspberrypi/picotool) (included with Pico SDK; ensure it’s on your PATH).
+2. Connect the Pico over USB **and let it run** (if it boot loops, try connecting and running the script quickly, or use Option B).
+3. From the firmware repo:
+   ```bash
+   cd firmware/scripts
+   ./flash_pico_erase.sh
+   ```
+   Or by hand:
+   ```bash
+   picotool erase -a
+   ```
+4. Put the Pico in BOOTSEL mode (hold BOOTSEL, connect USB), then copy your `brewos_*.uf2` to the RPI-RP2 drive.
+
+**Option B – boot loop: use “nuke” then normal flash**
+
+1. Put the Pico in BOOTSEL mode (hold BOOTSEL, connect USB).
+2. Build and flash the official [pico-examples “nuke”](https://github.com/raspberrypi/pico-examples/tree/master/flash/nuke) UF2 (erases entire flash), or download a prebuilt nuke UF2 for your board.
+3. After the Pico resets, put it in BOOTSEL again and copy your `brewos_*.uf2` to the RPI-RP2 drive.
+
+**Option C – SWD (OpenOCD + Picoprobe)**
+
+See [Pico Debugging](docs/pico/Debugging.md) for SWD setup; use OpenOCD to erase flash, then flash via UF2 or OpenOCD as usual.
+
 ## Testing Without Hardware
 
 Both firmwares can run without the full hardware setup:

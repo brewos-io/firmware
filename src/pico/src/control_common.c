@@ -636,11 +636,15 @@ void control_init(void) {
     LOG_PRINT("Control: Initialized (Brew SP=%.1fC, Steam SP=%.1fC, Strategy=%d)\n",
               g_brew_pid.setpoint, g_steam_pid.setpoint, g_heating_strategy);
     
+#if CONFIG_POWER_METER_ENABLED
     // Initialize power meter if configured (PZEM, JSY, Eastron, etc.)
     if (power_meter_init(NULL)) {
         const char* meter_name = power_meter_get_name();
         DEBUG_PRINT("Power meter initialized: %s\n", meter_name);
     }
+#else
+    LOG_PRINT("Control: Power meter disabled (CONFIG_POWER_METER_ENABLED=0)\n");
+#endif
 }
 
 // =============================================================================

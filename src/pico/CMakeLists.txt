@@ -89,6 +89,17 @@ endif()
 message(STATUS "Building for PCB: ${PCB_TYPE}")
 
 # -----------------------------------------------------------------------------
+# Power Meter (PZEM / JSY / Eastron)
+# -----------------------------------------------------------------------------
+# Set to 0 to disable power meter UART (GPIO6/7) - use if meter circuit or
+# JP3/JP4 jumper area is damaged and causes boot/reset loops.
+# Build with: cmake .. -DCONFIG_POWER_METER_ENABLED=0
+if(DEFINED CONFIG_POWER_METER_ENABLED)
+    add_compile_definitions(CONFIG_POWER_METER_ENABLED=${CONFIG_POWER_METER_ENABLED})
+    message(STATUS "Power meter: ${CONFIG_POWER_METER_ENABLED}")
+endif()
+
+# -----------------------------------------------------------------------------
 # Common Source Files (shared by all machine types)
 # -----------------------------------------------------------------------------
 
