@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>  // For size_t
 #include "config.h"  // Includes protocol_defs.h
+#include "power_meter.h"  // For power_meter_reading_t
 
 // -----------------------------------------------------------------------------
 // Protocol Configuration
@@ -283,6 +284,8 @@ bool protocol_send_ack(uint8_t for_type, uint8_t seq, uint8_t result);
 bool protocol_send_debug(const char* message);
 // Log forwarding (MSG_LOG)
 bool protocol_send_log(uint8_t level, const char* message);
+// Power meter reading (MSG_POWER_METER)
+bool protocol_send_power_meter(const power_meter_reading_t* reading);
 // Diagnostics
 bool protocol_send_diag_header(const diag_header_payload_t* header);
 bool protocol_send_diag_result(const diag_result_payload_t* result);

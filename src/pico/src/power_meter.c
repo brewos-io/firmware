@@ -165,8 +165,12 @@ static const modbus_register_map_t METER_MAPS[] = {
 // PRIVATE STATE
 // =============================================================================
 
-static bool initialized = false;
-static bool has_ever_read = false;   // True after first successful Modbus read
+// Cross-core shared state: Core 1 writes (via power_meter_init from packet handler),
+// Core 0 reads (via sensors_read / power_meter_is_initialized / power_meter_update).
+// Flags checked frequently by the other core must be volatile to prevent the compiler
+// from caching stale values in registers.
+static volatile bool initialized = false;
+static volatile bool has_ever_read = false;   // True after first successful Modbus read
 static const modbus_register_map_t* current_map = NULL;
 static power_meter_reading_t last_reading = {0};
 static uint32_t last_success_time = 0;
@@ -351,15 +355,21 @@ static bool parse_response(const uint8_t* buffer, int length, power_meter_readin
 bool power_meter_init(const power_meter_config_t* config) {
     // Load or use provided config
     if (config) {
+        // Runtime enable (from ESP32 command) - use provided config
         current_config = *config;
     } else {
-        if (!power_meter_load_config(&current_config)) {
-            // No saved config, use defaults
-            current_config.enabled = false;
-            current_config.meter_index = 0xFF;  // Auto-detect
-            current_config.slave_addr = 0;
-            current_config.baud_rate = 0;
+        // Boot-time init: Load saved config to remember meter type, but do NOT
+        // initialize the UART or mark as enabled. The power meter's blocking Modbus
+        // I/O can cause watchdog resets during boot if misconfigured or disconnected.
+        // The ESP32 will re-send the enable command after the Pico connects,
+        // at which point the saved meter_index will be used.
+        if (power_meter_load_config(&current_config)) {
+            // Config loaded - remember meter_index for when ESP32 re-enables,
+            // but don't activate at boot
+            LOG_PRINT("Power meter: Config loaded from flash (meter_index=%d), waiting for ESP32 enable\n",
+                      current_config.meter_index);
         }
+        current_config.enabled = false;  // Never auto-enable at boot
     }
     
     if (!current_config.enabled) {

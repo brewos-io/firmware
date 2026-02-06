@@ -615,9 +615,25 @@ void handle_cmd_power_meter(const packet_t* packet) {
         return;
     }
 
+    uint8_t meter_index;
+    if (packet->length >= 2) {
+        /* Explicit meter_index provided by ESP32 */
+        meter_index = packet->payload[1];
+    } else {
+        /* No meter_index in payload - use saved config from flash (loaded at boot).
+         * This allows the ESP32 to send a simple "enable" command after Pico boot,
+         * and the Pico re-uses the previously configured meter type. */
+        power_meter_config_t saved;
+        if (power_meter_load_config(&saved) && saved.meter_index != 0xFF) {
+            meter_index = saved.meter_index;
+        } else {
+            meter_index = 0xFF;  /* No saved config - fall back to auto-detect */
+        }
+    }
+
     power_meter_config_t config = {
         .enabled = (packet->payload[0] != 0),
-        .meter_index = (packet->length >= 2) ? packet->payload[1] : (uint8_t)0xFF,
+        .meter_index = meter_index,
         .slave_addr = 0,
         .baud_rate = 0
     };

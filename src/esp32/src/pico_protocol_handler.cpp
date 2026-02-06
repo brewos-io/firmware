@@ -262,6 +262,18 @@ void PicoProtocolHandler::handleBoot(const PicoPacket& packet) {
             }
         }
     }
+    
+    // Restore power meter config to Pico on boot.
+    // The Pico no longer auto-initializes from its own flash config at boot (safety measure),
+    // so the ESP32 must re-send the enable command after each Pico boot/reconnect.
+    if (_uart && _powerMeter && _powerMeter->getSource() == PowerMeterSource::HARDWARE_MODBUS) {
+        // Send enable command with auto-detect (1 byte payload = enabled, no meter_index → Pico uses 0xFF)
+        // Pico will use its saved meter_index from flash if available, or auto-detect
+        uint8_t payload[1] = {1};  // enabled=1
+        if (_uart->sendCommand(MSG_CMD_POWER_METER_CONFIG, payload, 1)) {
+            LOG_I("Sent power meter enable to Pico (hardware source active)");
+        }
+    }
 }
 
 void PicoProtocolHandler::updateBackoff(uint32_t now) {

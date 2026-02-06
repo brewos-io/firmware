@@ -114,6 +114,7 @@ void core1_main(void) {
     uint32_t last_status_send = 0;
     uint32_t last_boot_info_send = 0;  // For periodic boot info resend
     uint32_t last_protocol_stats_log = 0;  // For periodic protocol diagnostics
+    uint32_t last_power_meter_send = 0;  // For periodic power meter readings (1Hz)
     
     while (true) {
         uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -151,6 +152,17 @@ void core1_main(void) {
                 protocol_send_status(&status_copy);
             }
         }
+        
+        // Send power meter readings to ESP32 (1Hz when connected)
+#if CONFIG_POWER_METER_ENABLED
+        if (power_meter_is_connected() && (now - last_power_meter_send >= 1000)) {
+            last_power_meter_send = now;
+            power_meter_reading_t reading;
+            if (power_meter_get_reading(&reading)) {
+                protocol_send_power_meter(&reading);
+            }
+        }
+#endif
         
         // Periodically resend boot info (version, env config) to ensure ESP32 stays in sync
         // This helps recover from missed messages or ESP32 restarts
@@ -411,12 +423,25 @@ int main(void) {
     watchdog_enable(SAFETY_WATCHDOG_TIMEOUT_MS, true);
     LOG_PRINT("Watchdog enabled (%dms timeout)\n", SAFETY_WATCHDOG_TIMEOUT_MS);
     
-    // Check reset reason
-    if (watchdog_caused_reboot()) {
+    // Check reset reason and track consecutive watchdog resets via scratch register.
+    // Scratch registers survive watchdog resets but are cleared on power-on reset.
+    // We use scratch[0] to count consecutive unintentional watchdog resets.
+    #define WD_RESET_SCRATCH_IDX 0
+    #define WD_RESET_MAGIC       0xBEEF0000  // Upper 16 bits: magic, lower 16: count
+    uint32_t wd_scratch = watchdog_hw->scratch[WD_RESET_SCRATCH_IDX];
+    uint8_t watchdog_reset_count = 0;
+    bool was_watchdog_reset = watchdog_caused_reboot() && !watchdog_enable_caused_reboot();
+    if (was_watchdog_reset && (wd_scratch & 0xFFFF0000) == WD_RESET_MAGIC) {
+        watchdog_reset_count = (uint8_t)(wd_scratch & 0xFF) + 1;
+        LOG_PRINT("WARNING: Watchdog reset! (consecutive: %d)\n", watchdog_reset_count);
+    } else if (was_watchdog_reset) {
+        watchdog_reset_count = 1;
         LOG_PRINT("WARNING: Watchdog reset!\n");
-        // SAF-004: On watchdog timeout, outputs are already OFF from gpio_init_outputs()
-        // which sets all outputs to 0 (safe state) on boot
+    } else {
+        watchdog_reset_count = 0;  // Clean boot
     }
+    // Store count for next potential watchdog reset (survives watchdog resets)
+    watchdog_hw->scratch[WD_RESET_SCRATCH_IDX] = WD_RESET_MAGIC | (uint32_t)watchdog_reset_count;
     
     // Initialize safety system FIRST
     safety_init();
@@ -471,6 +496,10 @@ int main(void) {
         printf("Log forwarding enabled (loaded from flash)\n");
     }
     
+    // Note: Power meter is no longer auto-initialized at boot from saved config.
+    // The ESP32 re-sends the enable command after Pico connects (handleBoot).
+    // This eliminates boot-time watchdog risks from power meter blocking I/O.
+    
     // Initialize control
     control_init();
     DEBUG_PRINT("Control initialized\n");
@@ -509,6 +538,10 @@ int main(void) {
     protocol_set_callback(handle_packet);
     
     DEBUG_PRINT("Entering main control loop\n");
+    
+    // Clear watchdog reset counter - we've successfully booted and are about to enter the main loop.
+    // If we get a watchdog reset from here, the counter will start from 0.
+    watchdog_hw->scratch[WD_RESET_SCRATCH_IDX] = 0;
     
     // Timing
     uint32_t last_control = 0;
