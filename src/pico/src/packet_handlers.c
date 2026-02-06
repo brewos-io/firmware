@@ -622,12 +622,17 @@ void handle_cmd_power_meter(const packet_t* packet) {
         .baud_rate = 0
     };
 
+    /* Track if auto-detect was requested - auto_detect saves config internally */
+    bool was_auto_detect = (config.enabled && config.meter_index == 0xFF);
+
     if (!power_meter_init(&config)) {
         protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_ERROR_FAILED);
         return;
     }
 
-    if (config.enabled) {
+    /* Only schedule deferred save if NOT auto-detect (auto_detect already saved) */
+    /* and config is enabled with a specific meter index */
+    if (config.enabled && !was_auto_detect) {
         power_meter_request_save();  /* Defer to Core 0 to avoid watchdog during flash write */
     }
     protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_SUCCESS);

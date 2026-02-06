@@ -596,9 +596,19 @@ bool power_meter_load_config(power_meter_config_t* config) {
     // Load from flash using config_persistence system
     config_persistence_get_power_meter(config);
     
-    // Check if config is valid (enabled flag and valid meter index)
-    if (config->enabled && config->meter_index != 0xFF) {
+    // Validate config: enabled flag AND valid meter index (not 0xFF and within bounds)
+    // This ensures we only return true for configs that can actually be used at boot
+    if (config->enabled && 
+        config->meter_index != 0xFF && 
+        config->meter_index < METER_MAPS_COUNT) {
         return true;
+    }
+    
+    // Invalid config - reset to safe defaults to prevent boot issues
+    if (config->enabled) {
+        // Config was enabled but invalid - disable it to prevent problems
+        config->enabled = false;
+        config->meter_index = 0xFF;
     }
     return false;
 #else
