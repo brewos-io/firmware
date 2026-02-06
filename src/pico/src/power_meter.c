@@ -39,6 +39,7 @@
 static uint8_t uart_tx_pin = UART_TX_PIN_DEFAULT;
 static uint8_t uart_rx_pin = UART_RX_PIN_DEFAULT;
 static bool pins_swapped = false;
+static uint8_t last_configured_meter = 0xFF;  // Track meter type across disable/enable cycles
 
 // Modbus protocol
 #define MODBUS_FC_READ_HOLDING_REGS 0x03
@@ -185,7 +186,7 @@ static volatile bool g_pending_save = false;
 
 // Number of consecutive Modbus failures before trying the next pin config
 #define PIN_ROTATE_THRESHOLD 3
-static uint8_t consecutive_failures = 0;
+static volatile uint8_t consecutive_failures = 0;  // volatile: written by Core 0 (update) and Core 1 (init)
 
 // =============================================================================
 // MODBUS PROTOCOL HELPERS
@@ -453,28 +454,46 @@ bool power_meter_init(const power_meter_config_t* config) {
         return false;
     }
     
-    // Configure RS485 direction pin if needed (before UART, so direction is set)
-    if (current_map->is_rs485) {
-        gpio_init(RS485_DE_RE_PIN);
-        gpio_set_dir(RS485_DE_RE_PIN, GPIO_OUT);
-        gpio_put(RS485_DE_RE_PIN, 0);  // Start in receive mode
-    }
+    // CRITICAL: Always configure RS485 DE/RE pin as output LOW (receive mode).
+    // The MAX3485 transceiver's A/B outputs are permanently connected to J10 pins 4/5,
+    // which are shared with the TTL signal path. If GPIO20 (DE/RE) is left floating,
+    // DE may float HIGH, putting the MAX3485 in transmit mode. This causes the MAX3485
+    // to actively drive J10 pins 4/5 with differential signals, overpowering the TTL
+    // signals and making communication with TTL meters (PZEM, JSY) impossible.
+    gpio_init(RS485_DE_RE_PIN);
+    gpio_set_dir(RS485_DE_RE_PIN, GPIO_OUT);
+    gpio_put(RS485_DE_RE_PIN, 0);  // LOW = receive mode (A/B are high-impedance inputs)
     
-    // If already initialized with the same meter, don't reset pin swap state.
-    if (!initialized || current_map != &METER_MAPS[current_config.meter_index]) {
+    // Preserve pin swap state when re-initializing with the same meter type.
+    // power_meter_init() is called from Core 1 (packet handler) and can race with
+    // power_meter_update() on Core 0 which manages the pin swap/retry logic.
+    // Only reset pin state when the meter type actually changes.
+    bool meter_changed = (current_config.meter_index != last_configured_meter);
+    last_configured_meter = current_config.meter_index;
+    
+    if (meter_changed) {
+        // Different meter type (or first-ever init) - full reset of pin state
         uart_tx_pin = UART_TX_PIN_DEFAULT;
         uart_rx_pin = UART_RX_PIN_DEFAULT;
         pins_swapped = false;
         consecutive_failures = 0;
+    }
+    
+    if (!initialized || meter_changed) {
+        // First init, re-enable, or meter change: configure UART
+        // Pin state is preserved for same meter re-enable (swap survives disable/enable)
         configure_uart_pins(current_map->baud_rate);
-        LOG_PRINT("Power meter: Initialized (%s @ %u baud, RS485: %s, TX=GPIO%d, RX=GPIO%d)\n", 
+        LOG_PRINT("Power meter: Initialized (%s @ %u baud, RS485: %s, TX=GPIO%d, RX=GPIO%d%s)\n", 
                   current_map->name, (unsigned int)current_map->baud_rate,
                   current_map->is_rs485 ? "yes" : "no",
-                  uart_tx_pin, uart_rx_pin);
-        LOG_PRINT("Power meter: Will probe for meter on first update cycle\n");
+                  uart_tx_pin, uart_rx_pin,
+                  pins_swapped ? " [swapped]" : "");
+        if (meter_changed) {
+            LOG_PRINT("Power meter: Will probe for meter on first update cycle\n");
+        }
     } else {
-        LOG_PRINT("Power meter: Already initialized (%s), keeping pin config (TX=GPIO%d, RX=GPIO%d)\n",
-                  current_map->name, uart_tx_pin, uart_rx_pin);
+        LOG_PRINT("Power meter: Already initialized (%s), keeping pin config (TX=GPIO%d, RX=GPIO%d, failures=%d)\n",
+                  current_map->name, uart_tx_pin, uart_rx_pin, consecutive_failures);
     }
     
     initialized = true;
@@ -689,6 +708,7 @@ bool power_meter_auto_detect(void) {
                     
                     current_config.enabled = true;
                     current_config.meter_index = i;
+                    last_configured_meter = i;  // Track for re-init preservation
                     // Note: config NOT saved to Pico flash (ESP32 handles persistence)
                     
                     return true;
