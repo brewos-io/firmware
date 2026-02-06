@@ -37,10 +37,10 @@ void log_forward_init(void) {
     g_enabled = config_persistence_get_log_forwarding();
     g_initialized = true;
     
-    if (g_enabled) {
-        // Use direct printf to avoid recursion during initialization
-        printf("Log: Forwarding enabled (loaded from flash)\n");
-    }
+    // Note: Don't log here - the caller (main.c) will log the forwarding state.
+    // Previously used direct printf() which blocks for up to 500ms on cold boot
+    // when USB CDC is not yet enumerated (PICO_STDIO_USB_STDOUT_TIMEOUT_US).
+    // This contributed to watchdog timeouts during power-on boot.
 }
 
 void log_forward_set_enabled(bool enabled) {

@@ -11,18 +11,15 @@
 
 #ifndef UNIT_TEST
 // Real hardware environment
-#include "hardware/uart.h"
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 #include "config_persistence.h"
 #include "packet_handlers.h"  // For core1_signal_alive()
-
-#define UART_ID uart1
+#include "pio_uart.h"         // PIO-based UART (GPIO6/7 are UART1_CTS/RTS, not TX/RX)
 
 #else
-// Unit test environment - use mocked UART
-// uart1 is defined in mock_hardware.h as ((void*)1)
-#define UART_ID uart1
+// Unit test environment
+#include "pio_uart.h"
 
 #endif
 
@@ -30,10 +27,20 @@
 // HARDWARE CONFIGURATION
 // =============================================================================
 
-#define UART_TX_PIN 6
-#define UART_RX_PIN 7
+// Pin mapping based on actual schematic diagram (Sheet 2, MCU pinout):
+//   GP7 = METER_TX (data output to meter)
+//   GP8 = METER_RX (data input from meter)
+// Note: The ASCII text summary incorrectly lists GP6=TX, GP7=RX.
+//       The diagram shows GP6=BREW_SW, GP7=METER_TX, GP8=METER_RX.
+#define UART_TX_PIN_DEFAULT 7
+#define UART_RX_PIN_DEFAULT 8
 #define RS485_DE_RE_PIN 20
 #define RS485_SWITCHING_DELAY_US 100  // Delay for RS485 transceiver switching
+
+// Active TX/RX pins (may be swapped if wiring is reversed)
+static uint8_t uart_tx_pin = UART_TX_PIN_DEFAULT;
+static uint8_t uart_rx_pin = UART_RX_PIN_DEFAULT;
+static bool pins_swapped = false;
 
 // Modbus protocol
 #define MODBUS_FC_READ_HOLDING_REGS 0x03
@@ -178,6 +185,10 @@ static char last_error[64] = {0};
 static power_meter_config_t current_config = {0};
 static volatile bool g_pending_save = false;
 
+// Number of consecutive Modbus failures before trying a TX/RX pin swap
+#define PIN_SWAP_RETRY_THRESHOLD 2
+static uint8_t consecutive_failures = 0;
+
 // =============================================================================
 // MODBUS PROTOCOL HELPERS
 // =============================================================================
@@ -208,6 +219,50 @@ static void set_rs485_direction(bool transmit) {
     }
 }
 
+// Forward declarations for functions used by try_modbus_probe and configure_uart_pins
+static bool send_modbus_request(uint8_t slave_addr, uint8_t function_code, 
+                                uint16_t start_reg, uint16_t num_regs);
+static bool receive_modbus_response(uint8_t* buffer, int max_len, int* bytes_read);
+static bool verify_modbus_response(const uint8_t* buffer, int length);
+
+/**
+ * Configure PIO UART with the current TX/RX pin assignment.
+ * Uses PIO instead of hardware UART because GPIO6/GPIO7 map to
+ * UART1_CTS/RTS in RP2350 silicon (not TX/RX). PIO works on any pin.
+ */
+static void configure_uart_pins(uint32_t baud_rate) {
+    pio_uart_reconfigure(uart_tx_pin, uart_rx_pin, baud_rate);
+}
+
+/**
+ * Try a single Modbus read with the current UART pin configuration.
+ * Returns true if a valid response was received.
+ */
+static bool try_modbus_probe(void) {
+    if (!current_map) return false;
+    
+    // Clear any stale data
+    while (pio_uart_is_readable()) {
+        pio_uart_getc();
+    }
+    
+    // Send request
+    if (!send_modbus_request(current_map->slave_addr, current_map->function_code,
+                            current_map->voltage_reg, current_map->num_registers)) {
+        return false;
+    }
+    
+    // Receive response
+    uint8_t response_buffer[128];
+    int bytes_read = 0;
+    if (!receive_modbus_response(response_buffer, sizeof(response_buffer), &bytes_read)) {
+        return false;
+    }
+    
+    // Verify response is valid
+    return verify_modbus_response(response_buffer, bytes_read);
+}
+
 static bool send_modbus_request(uint8_t slave_addr, uint8_t function_code, 
                                 uint16_t start_reg, uint16_t num_regs) {
     uint8_t request[8];
@@ -225,7 +280,7 @@ static bool send_modbus_request(uint8_t slave_addr, uint8_t function_code,
     
     // Send request
     set_rs485_direction(true);
-    uart_write_blocking(UART_ID, request, 8);
+    pio_uart_write_blocking(request, 8);
     set_rs485_direction(false);
     
     return true;
@@ -236,8 +291,8 @@ static bool receive_modbus_response(uint8_t* buffer, int max_len, int* bytes_rea
     uint32_t start_time = time_us_32() / 1000;  // Convert to ms
     
     while ((time_us_32() / 1000 - start_time) < RESPONSE_TIMEOUT_MS) {
-        if (uart_is_readable(UART_ID)) {
-            buffer[*bytes_read] = uart_getc(UART_ID);
+        if (pio_uart_is_readable()) {
+            buffer[*bytes_read] = pio_uart_getc();
             (*bytes_read)++;
             
             // Check if we have enough bytes for a complete response
@@ -358,18 +413,13 @@ bool power_meter_init(const power_meter_config_t* config) {
         // Runtime enable (from ESP32 command) - use provided config
         current_config = *config;
     } else {
-        // Boot-time init: Load saved config to remember meter type, but do NOT
-        // initialize the UART or mark as enabled. The power meter's blocking Modbus
-        // I/O can cause watchdog resets during boot if misconfigured or disconnected.
-        // The ESP32 will re-send the enable command after the Pico connects,
-        // at which point the saved meter_index will be used.
-        if (power_meter_load_config(&current_config)) {
-            // Config loaded - remember meter_index for when ESP32 re-enables,
-            // but don't activate at boot
-            LOG_PRINT("Power meter: Config loaded from flash (meter_index=%d), waiting for ESP32 enable\n",
-                      current_config.meter_index);
-        }
-        current_config.enabled = false;  // Never auto-enable at boot
+        // Boot-time init: Power meter is always disabled at boot.
+        // ESP32 re-sends the enable command after Pico connects (handleBoot).
+        // No flash config is loaded - ESP32 is the sole source of truth.
+        current_config.enabled = false;
+        current_config.meter_index = 0xFF;
+        current_config.slave_addr = 0;
+        current_config.baud_rate = 0;
     }
     
     if (!current_config.enabled) {
@@ -406,23 +456,30 @@ bool power_meter_init(const power_meter_config_t* config) {
         return false;
     }
     
-    // Initialize UART
-    uart_init(UART_ID, current_map->baud_rate);
-    gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
-    uart_set_format(UART_ID, 8, 1, UART_PARITY_NONE);
-    
-    // Configure RS485 direction pin if needed
+    // Configure RS485 direction pin if needed (before UART, so direction is set)
     if (current_map->is_rs485) {
         gpio_init(RS485_DE_RE_PIN);
         gpio_set_dir(RS485_DE_RE_PIN, GPIO_OUT);
         gpio_put(RS485_DE_RE_PIN, 0);  // Start in receive mode
     }
     
-    initialized = true;
-    LOG_PRINT("Power meter: Initialized (%s @ %u baud, RS485: %s)\n", 
-              current_map->name, (unsigned int)current_map->baud_rate,
-              current_map->is_rs485 ? "yes" : "no");
+    // If already initialized with the same meter, don't reset pin swap state.
+    // This preserves the auto-swap cycle across repeated init calls
+    // (e.g., ESP32 re-sends enable on boot + user clicks save).
+    if (!initialized || current_map != &METER_MAPS[current_config.meter_index]) {
+        uart_tx_pin = UART_TX_PIN_DEFAULT;
+        uart_rx_pin = UART_RX_PIN_DEFAULT;
+        pins_swapped = false;
+        consecutive_failures = 0;
+        configure_uart_pins(current_map->baud_rate);
+        LOG_PRINT("Power meter: Initialized (%s @ %u baud, RS485: %s, TX=GPIO%d, RX=GPIO%d)\n", 
+                  current_map->name, (unsigned int)current_map->baud_rate,
+                  current_map->is_rs485 ? "yes" : "no",
+                  uart_tx_pin, uart_rx_pin);
+    } else {
+        LOG_PRINT("Power meter: Already initialized (%s), keeping pin config (TX=GPIO%d, RX=GPIO%d)\n",
+                  current_map->name, uart_tx_pin, uart_rx_pin);
+    }
     
     return true;
 }
@@ -433,14 +490,17 @@ void power_meter_update(void) {
     }
     
     // Clear any stale data
-    while (uart_is_readable(UART_ID)) {
-        uart_getc(UART_ID);
+    int stale_bytes = 0;
+    while (pio_uart_is_readable()) {
+        pio_uart_getc();
+        stale_bytes++;
     }
     
     // Send Modbus request
     if (!send_modbus_request(current_map->slave_addr, current_map->function_code,
                             current_map->voltage_reg, current_map->num_registers)) {
         snprintf(last_error, sizeof(last_error), "Failed to send request");
+        LOG_PRINT("Power meter: Failed to send Modbus request\n");
         return;
     }
     
@@ -448,13 +508,52 @@ void power_meter_update(void) {
     uint8_t response_buffer[128];
     int bytes_read = 0;
     if (!receive_modbus_response(response_buffer, sizeof(response_buffer), &bytes_read)) {
-        snprintf(last_error, sizeof(last_error), "No response from meter");
+        consecutive_failures++;
+        
+        // Log every failure for the first few, then periodically
+        if (consecutive_failures <= 3 || consecutive_failures % 10 == 0) {
+            LOG_PRINT("Power meter: No response (attempt %d, TX=GPIO%d, RX=GPIO%d, stale=%d bytes)\n",
+                      consecutive_failures, uart_tx_pin, uart_rx_pin, stale_bytes);
+        }
+        
+        // After several failures, try swapping TX/RX pins (common wiring mistake)
+        if (consecutive_failures == PIN_SWAP_RETRY_THRESHOLD) {
+            // Swap pins
+            uint8_t old_tx = uart_tx_pin;
+            uart_tx_pin = uart_rx_pin;
+            uart_rx_pin = old_tx;
+            pins_swapped = !pins_swapped;
+            configure_uart_pins(current_map->baud_rate);
+            snprintf(last_error, sizeof(last_error), "No response - swapped TX/RX (TX=GPIO%d)", uart_tx_pin);
+            LOG_PRINT("Power meter: Swapping pins → TX=GPIO%d, RX=GPIO%d\n", uart_tx_pin, uart_rx_pin);
+        } else if (consecutive_failures == PIN_SWAP_RETRY_THRESHOLD * 2) {
+            // Swap back to original if swapped config also fails
+            uint8_t old_tx = uart_tx_pin;
+            uart_tx_pin = uart_rx_pin;
+            uart_rx_pin = old_tx;
+            pins_swapped = !pins_swapped;
+            configure_uart_pins(current_map->baud_rate);
+            consecutive_failures = 0;  // Reset cycle
+            snprintf(last_error, sizeof(last_error), "No response - reverted TX/RX (TX=GPIO%d)", uart_tx_pin);
+            LOG_PRINT("Power meter: Reverting pins → TX=GPIO%d, RX=GPIO%d (cycle reset)\n", uart_tx_pin, uart_rx_pin);
+        } else {
+            snprintf(last_error, sizeof(last_error), "No response from meter");
+        }
         return;
+    }
+    
+    // Got some bytes back - log for debugging
+    if (!has_ever_read) {
+        LOG_PRINT("Power meter: Got %d bytes response (TX=GPIO%d, RX=GPIO%d)\n",
+                  bytes_read, uart_tx_pin, uart_rx_pin);
     }
     
     // Verify response
     if (!verify_modbus_response(response_buffer, bytes_read)) {
-        snprintf(last_error, sizeof(last_error), "Invalid response");
+        snprintf(last_error, sizeof(last_error), "Invalid response (%d bytes, addr=0x%02X)", 
+                 bytes_read, bytes_read > 0 ? response_buffer[0] : 0);
+        LOG_PRINT("Power meter: Invalid response (%d bytes, first=0x%02X, expected addr=0x%02X)\n",
+                  bytes_read, bytes_read > 0 ? response_buffer[0] : 0, current_map->slave_addr);
         return;
     }
     
@@ -462,10 +561,17 @@ void power_meter_update(void) {
     power_meter_reading_t reading;
     if (!parse_response(response_buffer, bytes_read, &reading)) {
         snprintf(last_error, sizeof(last_error), "Parse error");
+        LOG_PRINT("Power meter: Parse error (%d bytes)\n", bytes_read);
         return;
     }
     
-    // Success
+    // Success - reset failure counter
+    if (!has_ever_read || consecutive_failures > 0) {
+        LOG_PRINT("Power meter: Connected! %.1fV %.2fA %.1fW (TX=GPIO%d, RX=GPIO%d)\n",
+                  reading.voltage, reading.current, reading.power,
+                  uart_tx_pin, uart_rx_pin);
+    }
+    consecutive_failures = 0;
     reading.timestamp = time_us_32() / 1000;
     reading.valid = true;
     last_reading = reading;
@@ -509,92 +615,103 @@ const char* power_meter_get_name(void) {
 }
 
 bool power_meter_auto_detect(void) {
-    printf("Starting power meter auto-detection...\n");
+    printf("Starting power meter auto-detection (both pin configs)...\n");
     
-    // Try each known meter configuration
+    // Try each known meter configuration, with both pin orientations
     for (uint8_t i = 0; i < METER_MAPS_COUNT; i++) {
         const modbus_register_map_t* test_map = &METER_MAPS[i];
-        printf("Trying %s @ %u baud...\n", test_map->name, (unsigned int)test_map->baud_rate);
-        
         current_map = test_map;
         
-        // CRITICAL: Signal Core 1 is alive before each meter attempt.
-        // Auto-detect runs on Core 1 (packet handler) and can block for ~800ms per meter.
-        // Without this signal, Core 0 sees Core 1 as dead after 1s and stops feeding
-        // the watchdog, causing a reset after 3s total (1s timeout + 2s watchdog).
-#ifndef UNIT_TEST
-        core1_signal_alive();
-#endif
-        
-        // Initialize UART for this config
-        uart_deinit(UART_ID);
-        uart_init(UART_ID, test_map->baud_rate);
-        gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-        gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
-        uart_set_format(UART_ID, 8, 1, UART_PARITY_NONE);
-        
-        // Configure RS485 if needed
+        // Configure RS485 if needed (once per meter type)
         if (test_map->is_rs485) {
             gpio_init(RS485_DE_RE_PIN);
             gpio_set_dir(RS485_DE_RE_PIN, GPIO_OUT);
             gpio_put(RS485_DE_RE_PIN, 0);
         }
         
-        sleep_ms(100);  // Let UART settle
-        
-        // Try to read
-        power_meter_reading_t test_reading;
-        
-        // Clear buffer
-        while (uart_is_readable(UART_ID)) {
-            uart_getc(UART_ID);
-        }
-        
-        // Send request
-        if (!send_modbus_request(test_map->slave_addr, test_map->function_code,
-                                test_map->voltage_reg, test_map->num_registers)) {
-            continue;
-        }
-        
-        // Receive response (blocks up to RESPONSE_TIMEOUT_MS = 500ms)
-        uint8_t response_buffer[128];
-        int bytes_read = 0;
-        if (!receive_modbus_response(response_buffer, sizeof(response_buffer), &bytes_read)) {
-            // Signal alive after the blocking receive timeout
+        // Try both pin configurations: default and swapped
+        for (uint8_t pin_try = 0; pin_try < 2; pin_try++) {
+            if (pin_try == 0) {
+                uart_tx_pin = UART_TX_PIN_DEFAULT;
+                uart_rx_pin = UART_RX_PIN_DEFAULT;
+                pins_swapped = false;
+            } else {
+                uart_tx_pin = UART_RX_PIN_DEFAULT;
+                uart_rx_pin = UART_TX_PIN_DEFAULT;
+                pins_swapped = true;
+            }
+            
+            printf("Trying %s @ %u baud (TX=GPIO%d, RX=GPIO%d)...\n", 
+                   test_map->name, (unsigned int)test_map->baud_rate,
+                   uart_tx_pin, uart_rx_pin);
+            
+            // CRITICAL: Signal Core 1 is alive before each attempt.
+            // Auto-detect runs on Core 1 and can block for ~600ms per attempt.
 #ifndef UNIT_TEST
             core1_signal_alive();
 #endif
-            continue;
-        }
-        
-        // Verify and parse
-        if (verify_modbus_response(response_buffer, bytes_read) &&
-            parse_response(response_buffer, bytes_read, &test_reading)) {
             
-            // Verify reading is reasonable
-            if (test_reading.voltage > 50 && test_reading.voltage < 300) {
-                printf("Detected: %s\n", test_map->name);
-                initialized = true;
-                has_ever_read = true;
-                last_reading = test_reading;
-                last_success_time = time_us_32() / 1000;
-                
-                // Save config (deferred to Core 0 to avoid watchdog during flash write)
-                current_config.enabled = true;
-                current_config.meter_index = i;
-                power_meter_request_save();
-                
-                return true;
+            configure_uart_pins(test_map->baud_rate);
+            sleep_ms(50);  // Let UART settle
+            
+            // Try to read
+            power_meter_reading_t test_reading;
+            
+            // Clear buffer
+            while (pio_uart_is_readable()) {
+                pio_uart_getc();
             }
+            
+            // Send request
+            if (!send_modbus_request(test_map->slave_addr, test_map->function_code,
+                                    test_map->voltage_reg, test_map->num_registers)) {
+                continue;
+            }
+            
+            // Receive response (blocks up to RESPONSE_TIMEOUT_MS = 500ms)
+            uint8_t response_buffer[128];
+            int bytes_read = 0;
+            if (!receive_modbus_response(response_buffer, sizeof(response_buffer), &bytes_read)) {
+#ifndef UNIT_TEST
+                core1_signal_alive();
+#endif
+                continue;
+            }
+            
+            // Verify and parse
+            if (verify_modbus_response(response_buffer, bytes_read) &&
+                parse_response(response_buffer, bytes_read, &test_reading)) {
+                
+                // Verify reading is reasonable
+                if (test_reading.voltage > 50 && test_reading.voltage < 300) {
+                    printf("Detected: %s on %s pins (TX=GPIO%d, RX=GPIO%d)\n", 
+                           test_map->name, pins_swapped ? "swapped" : "default",
+                           uart_tx_pin, uart_rx_pin);
+                    initialized = true;
+                    has_ever_read = true;
+                    last_reading = test_reading;
+                    last_success_time = time_us_32() / 1000;
+                    
+                    current_config.enabled = true;
+                    current_config.meter_index = i;
+                    // Note: config NOT saved to Pico flash (ESP32 handles persistence)
+                    
+                    return true;
+                }
+            }
+            
+            sleep_ms(100);  // Wait before next attempt
         }
-        
-        sleep_ms(200);  // Wait before next attempt
     }
     
-    printf("No power meter detected\n");
+    printf("No power meter detected on either pin configuration\n");
     snprintf(last_error, sizeof(last_error), "Auto-detection failed");
     initialized = false;
     current_map = NULL;
+    // Reset to default pins
+    uart_tx_pin = UART_TX_PIN_DEFAULT;
+    uart_rx_pin = UART_RX_PIN_DEFAULT;
+    pins_swapped = false;
     return false;
 }
 

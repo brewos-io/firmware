@@ -256,7 +256,15 @@ const char* PowerMeterManager::getMeterName() const {
     }
     
     if (_source == PowerMeterSource::HARDWARE_MODBUS) {
-        return "Hardware Meter";  // Specific type reported by Pico
+        // Return specific meter type name based on stored index
+        switch (_meterIndex) {
+            case 0: return "PZEM-004T V3";
+            case 1: return "JSY-MK-163T";
+            case 2: return "JSY-MK-194T";
+            case 3: return "Eastron SDM120";
+            case 4: return "Eastron SDM230";
+            default: return "Hardware Meter";
+        }
     }
     
     return "None";
@@ -321,11 +329,12 @@ bool PowerMeterManager::saveConfig() {
     
     prefs.putUChar("source", (uint8_t)_source);
     
-    if (_source == PowerMeterSource::MQTT && _mqttMeter) {
+    if (_source == PowerMeterSource::HARDWARE_MODBUS) {
+        prefs.putUChar("meter_idx", _meterIndex);
+    } else if (_source == PowerMeterSource::MQTT && _mqttMeter) {
         prefs.putString("mqtt_topic", _mqttMeter->getTopic());
         prefs.putString("mqtt_format", _mqttMeter->getFormat());
     }
-    // Hardware config is stored on Pico, not ESP32
     
     prefs.end();
     LOG_I("Power meter config saved");
@@ -342,8 +351,9 @@ bool PowerMeterManager::loadConfig() {
     _source = (PowerMeterSource)sourceVal;
     
     if (_source == PowerMeterSource::HARDWARE_MODBUS) {
-        // Hardware config is on Pico, we just need to know the source
+        _meterIndex = prefs.getUChar("meter_idx", 0xFF);
         prefs.end();
+        LOG_I("Loaded hardware meter config: index=%d", _meterIndex);
         return true;
     } else if (_source == PowerMeterSource::MQTT) {
         String topic = prefs.getString("mqtt_topic", "");

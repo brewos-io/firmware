@@ -120,6 +120,7 @@ set(COMMON_SOURCES
     src/config_persistence.c
     src/flash_safe.c          # Flash safety utilities (XIP crash prevention)
     src/power_meter.c         # Generic power meter (PZEM, JSY, Eastron)
+    src/pio_uart.c            # PIO-based UART for power meter (GPIO6/7 = CTS/RTS, not TX/RX)
     src/cleaning.c
     src/log_forward.c         # Log forwarding to ESP32 (dev mode)
     src/bootloader.c
@@ -155,6 +156,7 @@ set(COMMON_LIBS
     hardware_pwm
     hardware_watchdog
     hardware_sync       # For atomic operations and critical sections
+    hardware_pio        # For PIO-based UART (power meter on GPIO6/7)
 )
 
 # -----------------------------------------------------------------------------

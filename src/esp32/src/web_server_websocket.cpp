@@ -868,20 +868,23 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
             broadcastLogLevel("info", "Power metering disabled");
         }
         else if (source == "hardware") {
-            // Hardware meters are configured on Pico
-            powerMeterManager->configureHardware();
-            
             // Map meterType to Pico meter_index (must match METER_MAPS order in power_meter.c)
             // 0=PZEM-004T V3, 1=JSY-MK-163T, 2=JSY-MK-194T, 3=Eastron SDM120, 4=Eastron SDM230, 0xFF=auto
             String meterType = doc["meterType"] | "auto";
-            uint8_t payload[2] = {1, 0xFF};  // enabled=1, meter_index=auto
-            if (meterType == "PZEM-004T V3")       { payload[1] = 0; }
-            else if (meterType == "JSY-MK-163T")  { payload[1] = 1; }
-            else if (meterType == "JSY-MK-194T")  { payload[1] = 2; }
-            else if (meterType == "Eastron SDM120") { payload[1] = 3; }
-            else if (meterType == "Eastron SDM230") { payload[1] = 4; }
-            // else 0xFF = auto-detect
-            size_t payloadLen = (payload[1] == 0xFF) ? 1u : 2u;  // Send 1 byte for auto so Pico uses 0xFF
+            uint8_t meterIndex = 0xFF;
+            if (meterType == "PZEM-004T V3")       { meterIndex = 0; }
+            else if (meterType == "JSY-MK-163T")  { meterIndex = 1; }
+            else if (meterType == "JSY-MK-194T")  { meterIndex = 2; }
+            else if (meterType == "Eastron SDM120") { meterIndex = 3; }
+            else if (meterType == "Eastron SDM230") { meterIndex = 4; }
+            
+            // Store meter index on ESP32 (Pico no longer persists config)
+            powerMeterManager->setMeterIndex(meterIndex);
+            powerMeterManager->configureHardware();
+            
+            // Send to Pico
+            uint8_t payload[2] = {1, meterIndex};
+            size_t payloadLen = (meterIndex == 0xFF) ? 1u : 2u;
             _picoUart.sendCommand(MSG_CMD_POWER_METER_CONFIG, payload, payloadLen);
             broadcastLogLevel("info", "Power meter configured (hardware)");
         }

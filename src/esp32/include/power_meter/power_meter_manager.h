@@ -75,10 +75,15 @@ public:
     bool saveConfig();
     bool loadConfig();
     
+    // Get/set hardware meter index (0-4 = specific type, 0xFF = auto-detect)
+    uint8_t getMeterIndex() const { return _meterIndex; }
+    void setMeterIndex(uint8_t index) { _meterIndex = index; }
+    
 private:
     PowerMeterSource _source;
     PowerMeterReading _lastReading;
     uint32_t _lastReadTime;
+    uint8_t _meterIndex = 0xFF;  // Hardware meter type index (persisted in NVS)
     
     // MQTT meter (only MQTT handled by ESP32, hardware is on Pico)
     MQTTPowerMeter* _mqttMeter;

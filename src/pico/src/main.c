@@ -97,6 +97,13 @@ static void send_environmental_config(void) {
 void core1_main(void) {
     LOG_PRINT("Core 1: Starting communication loop\n");
     
+    // Register Core 1 as a multicore lockout victim.
+    // This allows Core 0 to safely pause Core 1 during flash operations
+    // (e.g., deferred config saves from power_meter_process_pending_save).
+    // Without this, Core 1 continues executing from XIP flash during erase/program,
+    // causing a hard fault (RP2350 reads garbage from invalidated XIP cache).
+    multicore_lockout_victim_init();
+    
     // Initialize protocol
     protocol_init();
     
@@ -159,6 +166,12 @@ void core1_main(void) {
             last_power_meter_send = now;
             power_meter_reading_t reading;
             if (power_meter_get_reading(&reading)) {
+                static bool logged_first_send = false;
+                if (!logged_first_send) {
+                    LOG_PRINT("Power meter: Sending first reading to ESP32 (%.1fV %.1fW)\n",
+                              reading.voltage, reading.power);
+                    logged_first_send = true;
+                }
                 protocol_send_power_meter(&reading);
             }
         }
@@ -446,12 +459,16 @@ int main(void) {
     // Initialize safety system FIRST
     safety_init();
     LOG_PRINT("Safety system initialized\n");
+    watchdog_update();  // Feed watchdog during boot init
     
     // Initialize Class B safety routines (IEC 60730/60335 compliance)
+    // Note: class_b_init() calculates a CRC32 over 256KB of flash which
+    // can take 100-200ms on cold boot (empty XIP cache after power-on).
     if (class_b_init() != CLASS_B_PASS) {
         LOG_PRINT("ERROR: Class B initialization failed!\n");
         // Continue but log the error - safety system will catch issues
     }
+    watchdog_update();  // Feed watchdog after Class B init (long CRC calculation)
     
     // Run Class B startup self-test
     class_b_result_t class_b_result = class_b_startup_test();
@@ -463,12 +480,22 @@ int main(void) {
     } else {
         LOG_PRINT("Class B startup tests PASSED\n");
     }
+    watchdog_update();  // Feed watchdog after startup tests
     
     // Initialize sensors
     sensors_init();
     DEBUG_PRINT("Sensors initialized\n");
     
+    // Initialize flash safety system BEFORE config persistence
+    // config_persistence_init() may write to flash (e.g., saving machine type),
+    // so flash_safe must be initialized first for safe flash operations.
+    // CRITICAL: Must also be done before Core 1 launches, otherwise if Core 1
+    // tries to write flash immediately, the lockout handshake will fail/hang.
+    flash_safe_init();
+    watchdog_update();  // Feed watchdog after flash safety init
+    
     // Initialize configuration persistence (loads from flash)
+    // May trigger a flash write if machine type needs updating or config is invalid.
     bool env_valid = config_persistence_init();
     if (!env_valid) {
         DEBUG_PRINT("ERROR: Environmental configuration not set - machine disabled\n");
@@ -483,17 +510,17 @@ int main(void) {
                     elec_state.steam_heater_power,
                     elec_state.max_current_draw);
     }
+    watchdog_update();  // Feed watchdog after config persistence (may include flash writes)
     
     // Initialize log forwarding (dev mode feature)
     // Must be done after config_persistence_init() so flash is available
-    // Note: Boot logs (lines 348-407) happen before this, so they won't be forwarded
+    // Note: Boot logs happen before this, so they won't be forwarded
     // But all subsequent logs will be forwarded if enabled
     log_forward_init();
     // Enable forwarding in logging system if it was enabled in flash
     if (log_forward_is_enabled()) {
         logging_set_forward_enabled(true);
-        // Use direct printf to avoid recursion during initialization
-        printf("Log forwarding enabled (loaded from flash)\n");
+        LOG_PRINT("Log forwarding enabled (loaded from flash)\n");
     }
     
     // Note: Power meter is no longer auto-initialized at boot from saved config.
@@ -515,22 +542,19 @@ int main(void) {
     // Initialize cleaning mode
     cleaning_init();
     DEBUG_PRINT("Cleaning mode initialized\n");
+    watchdog_update();  // Feed watchdog before Core 1 launch
     
     // Note: Statistics are now tracked by ESP32 (has NTP for accurate timestamps)
     // Pico only sends brew completion events to ESP32 via alarms
-    
-    // Initialize flash safety system on Core 0 BEFORE launching Core 1
-    // This allows Core 1 to pause Core 0 during flash operations (XIP safety)
-    // CRITICAL: Must be done before Core 1 launches, otherwise if Core 1
-    // tries to write flash immediately, the lockout handshake will fail/hang.
-    flash_safe_init();
     
     // Launch Core 1 for communication
     multicore_launch_core1(core1_main);
     DEBUG_PRINT("Core 1 launched\n");
     
     // Wait for Core 1 to be ready
+    // Feed watchdog while waiting to prevent timeout if Core 1 init is slow
     while (!g_core1_ready) {
+        watchdog_update();
         sleep_ms(1);
     }
     
@@ -583,10 +607,8 @@ int main(void) {
         // Update cleaning mode (10Hz)
         cleaning_update();
         
-#if CONFIG_POWER_METER_ENABLED
-        // Process deferred power meter config save (Core 0 only; avoids watchdog during flash write)
-        power_meter_process_pending_save();
-#endif
+        // Note: Power meter config is no longer saved to Pico flash.
+        // ESP32 handles persistence (NVS) and re-enables on each Pico boot.
         
         // Control loop (10Hz)
         if (now - last_control >= CONTROL_LOOP_PERIOD_MS) {

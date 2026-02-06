@@ -2552,7 +2552,6 @@ void BrewWebServer::handleOTAUpload(AsyncWebServerRequest* request, const String
 
 void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const String& filename,
                                           size_t index, uint8_t* data, size_t len, bool final) {
-    static size_t totalSize = 0;
     static size_t uploadedSize = 0;
     static bool updateStarted = false;
     static bool updateFailed = false;
@@ -2560,17 +2559,9 @@ void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const S
     if (index == 0) {
         // First chunk - initialize update
         LOG_I("ESP32 OTA upload started: %s", filename.c_str());
-        totalSize = request->contentLength();
         uploadedSize = 0;
         updateStarted = false;
         updateFailed = false;
-        
-        // Validate firmware size
-        if (totalSize == 0) {
-            LOG_E("ESP32 OTA: Invalid firmware size (0)");
-            updateFailed = true;
-            return;
-        }
         
         // Check if OTA is already in progress
         if (_otaInProgress) {
@@ -2581,11 +2572,13 @@ void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const S
         
         _otaInProgress = true;
         
-        // Broadcast start
-        broadcastLogLevel("info", "ESP32 OTA upload started: %zu bytes", totalSize);
+        // Broadcast start (content-length includes multipart overhead, so it's approximate)
+        size_t contentLen = request->contentLength();
+        broadcastLogLevel("info", "ESP32 OTA upload started (~%zu bytes)", contentLen);
         
-        // Begin OTA update
-        if (!Update.begin(totalSize)) {
+        // Begin OTA update - use UPDATE_SIZE_UNKNOWN since content-length includes
+        // multipart form overhead and doesn't reflect the actual firmware size
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
             LOG_E("ESP32 OTA: Not enough space. Error: %s", Update.errorString());
             broadcastLogLevel("error", "ESP32 OTA failed: Not enough space");
             updateFailed = true;
@@ -2594,7 +2587,7 @@ void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const S
         }
         
         updateStarted = true;
-        LOG_I("ESP32 OTA: Update.begin() successful, ready to receive %zu bytes", totalSize);
+        LOG_I("ESP32 OTA: Update.begin() successful, ready to receive firmware");
     }
     
     // Skip processing if update failed during init
@@ -2616,12 +2609,11 @@ void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const S
         }
         uploadedSize += written;
         
-        // Log progress every 10%
-        static size_t lastProgressPercent = 0;
-        size_t progressPercent = (uploadedSize * 100) / totalSize;
-        if (progressPercent >= lastProgressPercent + 10) {
-            lastProgressPercent = progressPercent;
-            LOG_I("ESP32 OTA progress: %zu%% (%zu/%zu bytes)", progressPercent, uploadedSize, totalSize);
+        // Log progress periodically (every ~256KB)
+        static size_t lastLoggedSize = 0;
+        if (uploadedSize - lastLoggedSize >= 256 * 1024 || index == 0) {
+            lastLoggedSize = uploadedSize;
+            LOG_I("ESP32 OTA progress: %zu bytes uploaded", uploadedSize);
             
             // Broadcast progress to WebSocket clients
             #pragma GCC diagnostic push
@@ -2630,9 +2622,7 @@ void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const S
             #pragma GCC diagnostic pop
             doc["type"] = "ota_progress";
             doc["stage"] = "upload";
-            doc["progress"] = progressPercent;
             doc["uploaded"] = uploadedSize;
-            doc["total"] = totalSize;
             
             char jsonBuffer[256];
             serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
@@ -2642,10 +2632,11 @@ void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const S
     
     // Final chunk - finalize update
     if (final) {
-        LOG_I("ESP32 OTA upload complete: %zu bytes received", uploadedSize);
+        size_t expectedSize = index + len;  // actual file size from the upload callback
+        LOG_I("ESP32 OTA upload complete: %zu bytes received (expected %zu)", uploadedSize, expectedSize);
         
-        if (uploadedSize != totalSize) {
-            LOG_E("ESP32 OTA: Size mismatch. Expected %zu, got %zu", totalSize, uploadedSize);
+        if (uploadedSize != expectedSize) {
+            LOG_E("ESP32 OTA: Size mismatch. Expected %zu, got %zu", expectedSize, uploadedSize);
             broadcastLogLevel("error", "ESP32 OTA failed: Incomplete upload");
             Update.abort();
             _otaInProgress = false;

@@ -187,8 +187,8 @@ static const pcb_config_t PCB_ECM_V1 = {
         // Communication
         .uart_esp32_tx      = 0,   // GPIO0 (UART0 TX)
         .uart_esp32_rx      = 1,   // GPIO1 (UART0 RX)
-        .uart_meter_tx      = 6,   // GPIO6 (UART1 TX, power meter)
-        .uart_meter_rx      = 7,   // GPIO7 (UART1 RX, power meter)
+        .uart_meter_tx      = 7,   // GPIO7 (METER_TX, power meter - PIO UART)
+        .uart_meter_rx      = 8,   // GPIO8 (METER_RX, power meter - PIO UART)
         .i2c_sda            = 8,   // GPIO8 (I2C0 SDA)
         .i2c_scl            = 9,   // GPIO9 (I2C0 SCL)
         

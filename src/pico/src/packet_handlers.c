@@ -620,15 +620,9 @@ void handle_cmd_power_meter(const packet_t* packet) {
         /* Explicit meter_index provided by ESP32 */
         meter_index = packet->payload[1];
     } else {
-        /* No meter_index in payload - use saved config from flash (loaded at boot).
-         * This allows the ESP32 to send a simple "enable" command after Pico boot,
-         * and the Pico re-uses the previously configured meter type. */
-        power_meter_config_t saved;
-        if (power_meter_load_config(&saved) && saved.meter_index != 0xFF) {
-            meter_index = saved.meter_index;
-        } else {
-            meter_index = 0xFF;  /* No saved config - fall back to auto-detect */
-        }
+        /* No meter_index in payload - default to auto-detect.
+         * Config is NOT persisted on Pico flash; ESP32 is source of truth. */
+        meter_index = 0xFF;
     }
 
     power_meter_config_t config = {
@@ -646,11 +640,11 @@ void handle_cmd_power_meter(const packet_t* packet) {
         return;
     }
 
-    /* Only schedule deferred save if NOT auto-detect (auto_detect already saved) */
-    /* and config is enabled with a specific meter index */
-    if (config.enabled && !was_auto_detect) {
-        power_meter_request_save();  /* Defer to Core 0 to avoid watchdog during flash write */
-    }
+    /* Power meter config is NOT saved to Pico flash.
+     * The ESP32 stores the source in NVS and re-sends the enable command on each
+     * Pico boot (handleBoot). Saving to Pico flash caused hard faults due to
+     * flash erase/program while Core 1 executes from XIP, bricking the device
+     * until a full flash erase. */
     protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_SUCCESS);
 }
 

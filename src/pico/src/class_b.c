@@ -28,6 +28,7 @@
 #include "hardware/clocks.h"
 #include "hardware/structs/systick.h"
 #include "hardware/sync.h"  // For save_and_disable_interrupts
+#include "hardware/watchdog.h"  // For watchdog_update() during long CRC
 #include "protocol.h"       // For protocol_get_rx_buffer()
 #include <string.h>
 
@@ -568,9 +569,20 @@ class_b_result_t class_b_init(void) {
     memset(&g_gpio_shadow, 0, sizeof(g_gpio_shadow));
     
     // Calculate reference Flash CRC (full calculation at boot)
+    // Process in chunks and feed watchdog between chunks to prevent timeout
+    // on cold boot (256KB CRC can take 100-200ms with cold XIP cache)
     uint32_t crc = 0xFFFFFFFF;
     const uint8_t* flash_ptr = (const uint8_t*)CLASS_B_FLASH_START;
-    crc = class_b_crc32(flash_ptr, CLASS_B_FLASH_SIZE, crc);
+    size_t remaining = CLASS_B_FLASH_SIZE;
+    size_t offset = 0;
+    while (remaining > 0) {
+        size_t chunk = (remaining < FLASH_CRC_CHUNK_SIZE) ? remaining : FLASH_CRC_CHUNK_SIZE;
+        crc = class_b_crc32(flash_ptr + offset, chunk, crc);
+        offset += chunk;
+        remaining -= chunk;
+        // Feed watchdog between chunks to prevent timeout during boot
+        watchdog_update();
+    }
     g_class_b_status.flash_crc_reference = crc ^ 0xFFFFFFFF;
     
     DEBUG_PRINT("CLASS B: Flash CRC reference = 0x%08lX\n", g_class_b_status.flash_crc_reference);
