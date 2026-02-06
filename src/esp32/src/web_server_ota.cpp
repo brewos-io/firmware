@@ -2657,182 +2657,178 @@ void BrewWebServer::startCombinedOTA(const String& version, bool isPendingOTA) {
     bool picoSuccess = startPicoGitHubOTA(version);
     feedWatchdog();
     
+    // Track if we should skip Pico verification (if Pico OTA failed, proceed to ESP32)
+    bool skipPicoVerification = false;
+    
     if (!picoSuccess) {
-        LOG_E("Pico OTA failed - aborting combined update");
-        cleanupOtaFiles();
-        handleOTAFailure(&_ws);  // Will restart device
-        return;  // Won't reach here due to restart
+        LOG_W("Pico OTA failed - proceeding to ESP32 update");
+        broadcastLogLevel("warn", "Internal controller update failed, continuing with main update...");
+        skipPicoVerification = true;
     }
     
-    // Wait for Pico to stabilize and verify connection
-    // The Pico may disconnect briefly during boot, so we wait and check for reconnection
-    broadcastOtaProgress(&_ws, "flash", 58, "Verifying internal controller...");
-    bool picoOk = false;
-    for (int i = 0; i < 200; i++) {  // Wait up to 20 seconds for Pico to reconnect
-        delay(100);
-        feedWatchdog();
-        _picoUart.loop();  // Process any incoming packets
-        
-        // Check if Pico is connected (may disconnect briefly during boot)
-        if (_picoUart.isConnected()) {
-            picoOk = true;
-            // Wait a bit more to ensure connection is stable
-            if (i >= 10) {  // At least 1 second of stable connection
-                break;
-            }
-        }
-    }
-    
-    if (!picoOk) {
-        LOG_E("Pico not responding after update - aborting");
-        cleanupOtaFiles();
-        handleOTAFailure(&_ws);  // Will restart device
-        return;  // Won't reach here due to restart
-    }
-    LOG_I("Pico responded after update");
-    
-    // CRITICAL: Wait for flash copy to complete before checking version
-    // The bootloader copies firmware from staging to main flash (~3-5 seconds for 108KB)
-    // The Pico may reconnect quickly, but the flash copy might still be in progress.
-    // If we check the version too early, we'll get the old version cached from the initial reconnection.
-    // Wait at least 6 seconds to ensure flash copy is complete, then request fresh boot info.
-    LOG_I("Waiting for flash copy to complete before version check (6 seconds)...");
-    for (int i = 0; i < 60; i++) {  // Wait 6 seconds for flash copy
-        delay(100);
-        feedWatchdog();
-        _picoUart.loop();  // Keep processing packets
-    }
-    
-    // The Pico may have sent boot info with old version during initial reconnection.
-    // After waiting for flash copy, request fresh boot info to get the updated version.
-    // Note: We don't clear connection state here to avoid disconnecting the Pico.
-    // Instead, we'll request boot info multiple times and wait for it to update.
-    LOG_I("Requesting fresh boot info after flash copy delay...");
-    _picoUart.requestBootInfo();
-    
-    // Wait for boot info with retries (up to 5 seconds)
-    // The Pico should send MSG_BOOT with the new version after the flash copy completes
-    const char* picoVersion = nullptr;
-    const char* previousVersion = State.getPicoVersion();  // Store old version for comparison
-    bool isDevOrBeta = (strcmp(version.c_str(), "dev-latest") == 0) || 
-                       (strstr(version.c_str(), "-") != nullptr);
-    
-    for (int attempt = 0; attempt < 50; attempt++) {
-        delay(100);
-        feedWatchdog();
-        _picoUart.loop();
-        
-        // Check if version was received
-        picoVersion = State.getPicoVersion();
-        if (picoVersion && picoVersion[0] != '\0') {
-            // For stable releases, check if version matches expected (best case)
-            if (!isDevOrBeta && strcmp(picoVersion, version.c_str()) == 0) {
-                LOG_I("Pico version matches expected version: %s (after %d ms)", 
-                      picoVersion, (attempt + 1) * 100);
-                break;
-            }
-            // If version changed from what we saw initially, that's progress
-            // (might be updating, or might be the new version if old was already correct)
-            if (previousVersion && strcmp(picoVersion, previousVersion) != 0) {
-                LOG_I("Pico version updated from %s to %s after %d ms", 
-                      previousVersion, picoVersion, (attempt + 1) * 100);
-                // For stable releases, if it matches expected, we're done
-                if (!isDevOrBeta && strcmp(picoVersion, version.c_str()) == 0) {
+    if (!skipPicoVerification) {
+        // Wait for Pico to stabilize and verify connection
+        // The Pico may disconnect briefly during boot, so we wait and check for reconnection
+        broadcastOtaProgress(&_ws, "flash", 58, "Verifying internal controller...");
+        bool picoOk = false;
+        for (int i = 0; i < 200; i++) {  // Wait up to 20 seconds for Pico to reconnect
+            delay(100);
+            feedWatchdog();
+            _picoUart.loop();  // Process any incoming packets
+            
+            // Check if Pico is connected (may disconnect briefly during boot)
+            if (_picoUart.isConnected()) {
+                picoOk = true;
+                // Wait a bit more to ensure connection is stable
+                if (i >= 10) {  // At least 1 second of stable connection
                     break;
                 }
-                // Otherwise continue waiting to see if it updates further
-            }
-            // If we've waited long enough (2+ seconds), proceed to verification
-            // (version check will handle mismatch by forcing reset)
-            if (attempt >= 20) {
-                LOG_I("Pico version received after %d ms: %s", (attempt + 1) * 100, picoVersion);
-                break;
             }
         }
         
-        // Request again every 1 second if not received yet or version hasn't changed
-        if (attempt > 0 && attempt % 10 == 0) {
-            LOG_I("Still waiting for Pico version update, requesting boot info again...");
-            _picoUart.requestBootInfo();
+        if (!picoOk) {
+            LOG_W("Pico not responding after update - proceeding to ESP32 update");
+            broadcastLogLevel("warn", "Internal controller not responding, continuing with main update...");
+            skipPicoVerification = true;
+        } else {
+            LOG_I("Pico responded after update");
         }
     }
     
-    // Verify Pico version after update
-    // Note: isDevOrBeta was already set above
-    if (picoVersion && picoVersion[0] != '\0') {
-        if (isDevOrBeta) {
-            // For dev/beta channels, just log the version - we can't verify against tag name
-            LOG_I("Pico version after update: %s (dev/beta channel: %s - skipping version check)", 
-                  picoVersion, version.c_str());
-        } else {
-            // For stable releases, verify exact version match
-            LOG_I("Pico version after update: %s (expected: %s)", picoVersion, version.c_str());
-            if (strcmp(picoVersion, version.c_str()) != 0) {
-                // Version mismatch - the Pico may have reconnected before flash copy completed
-                // Try forcing a reset to ensure it boots with the new firmware
-                LOG_W("Pico version mismatch detected. Forcing reset to ensure new firmware boots...");
-                _picoUart.resetPico();
-                
-                // Wait for Pico to reconnect after forced reset
-                LOG_I("Waiting for Pico to reconnect after forced reset...");
-                bool reconnected = false;
-                for (int i = 0; i < 100; i++) {  // Wait up to 10 seconds
-                    delay(100);
-                    feedWatchdog();
-                    _picoUart.loop();
-                    
-                    if (_picoUart.isConnected()) {
-                        LOG_I("Pico reconnected after forced reset (%d ms)", i * 100);
-                        reconnected = true;
+    // Only verify Pico version if Pico OTA was attempted and succeeded
+    if (!skipPicoVerification) {
+        // CRITICAL: Wait for flash copy to complete before checking version
+        // The bootloader copies firmware from staging to main flash (~3-5 seconds for 108KB)
+        // The Pico may reconnect quickly, but the flash copy might still be in progress.
+        // If we check the version too early, we'll get the old version cached from the initial reconnection.
+        // Wait at least 6 seconds to ensure flash copy is complete, then request fresh boot info.
+        LOG_I("Waiting for flash copy to complete before version check (6 seconds)...");
+        for (int i = 0; i < 60; i++) {  // Wait 6 seconds for flash copy
+            delay(100);
+            feedWatchdog();
+            _picoUart.loop();  // Keep processing packets
+        }
+        
+        // The Pico may have sent boot info with old version during initial reconnection.
+        // After waiting for flash copy, request fresh boot info to get the updated version.
+        // Note: We don't clear connection state here to avoid disconnecting the Pico.
+        // Instead, we'll request boot info multiple times and wait for it to update.
+        LOG_I("Requesting fresh boot info after flash copy delay...");
+        _picoUart.requestBootInfo();
+        
+        // Wait for boot info with retries (up to 5 seconds)
+        // The Pico should send MSG_BOOT with the new version after the flash copy completes
+        const char* picoVersion = nullptr;
+        const char* previousVersion = State.getPicoVersion();  // Store old version for comparison
+        bool isDevOrBeta = (strcmp(version.c_str(), "dev-latest") == 0) || 
+                           (strstr(version.c_str(), "-") != nullptr);
+        
+        for (int attempt = 0; attempt < 50; attempt++) {
+            delay(100);
+            feedWatchdog();
+            _picoUart.loop();
+            
+            // Check if version was received
+            picoVersion = State.getPicoVersion();
+            if (picoVersion && picoVersion[0] != '\0') {
+                // For stable releases, check if version matches expected (best case)
+                if (!isDevOrBeta && strcmp(picoVersion, version.c_str()) == 0) {
+                    LOG_I("Pico version matches expected version: %s (after %d ms)", 
+                          picoVersion, (attempt + 1) * 100);
+                    break;
+                }
+                // If version changed from what we saw initially, that's progress
+                // (might be updating, or might be the new version if old was already correct)
+                if (previousVersion && strcmp(picoVersion, previousVersion) != 0) {
+                    LOG_I("Pico version updated from %s to %s after %d ms", 
+                          previousVersion, picoVersion, (attempt + 1) * 100);
+                    // For stable releases, if it matches expected, we're done
+                    if (!isDevOrBeta && strcmp(picoVersion, version.c_str()) == 0) {
                         break;
                     }
+                    // Otherwise continue waiting to see if it updates further
                 }
-                
-                if (!reconnected) {
-                    LOG_E("Pico failed to reconnect after forced reset");
-                    broadcastLogLevel("error", "Internal controller update failed");
-                    broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
-                    cleanupOtaFiles();
-                    handleOTAFailure(&_ws);  // Will restart device
-                    return;  // Won't reach here due to restart
-                }
-                
-                // Request boot info again after reset
-                _picoUart.requestBootInfo();
-                delay(1000);  // Wait 1 second for boot info
-                feedWatchdog();
-                _picoUart.loop();
-                
-                // Check version again
-                picoVersion = State.getPicoVersion();
-                if (picoVersion && picoVersion[0] != '\0') {
-                    LOG_I("Pico version after forced reset: %s (expected: %s)", picoVersion, version.c_str());
-                    if (strcmp(picoVersion, version.c_str()) != 0) {
-                        LOG_E("Pico update FAILED! Got %s, expected %s after forced reset", picoVersion, version.c_str());
-                        broadcastLogLevel("error", "Internal controller update failed");
-                        broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
-                        cleanupOtaFiles();
-                        handleOTAFailure(&_ws);  // Will restart device
-                        return;  // Won't reach here due to restart
-                    }
-                } else {
-                    LOG_E("Could not get Pico version after forced reset");
-                    broadcastLogLevel("error", "Internal controller not responding");
-                    broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
-                    cleanupOtaFiles();
-                    handleOTAFailure(&_ws);  // Will restart device
-                    return;  // Won't reach here due to restart
+                // If we've waited long enough (2+ seconds), proceed to verification
+                // (version check will handle mismatch by forcing reset)
+                if (attempt >= 20) {
+                    LOG_I("Pico version received after %d ms: %s", (attempt + 1) * 100, picoVersion);
+                    break;
                 }
             }
+            
+            // Request again every 1 second if not received yet or version hasn't changed
+            if (attempt > 0 && attempt % 10 == 0) {
+                LOG_I("Still waiting for Pico version update, requesting boot info again...");
+                _picoUart.requestBootInfo();
+            }
         }
-        LOG_I("Pico version verified: %s", picoVersion);
+        
+        // Verify Pico version after update
+        // Note: isDevOrBeta was already set above
+        if (picoVersion && picoVersion[0] != '\0') {
+            if (isDevOrBeta) {
+                // For dev/beta channels, just log the version - we can't verify against tag name
+                LOG_I("Pico version after update: %s (dev/beta channel: %s - skipping version check)", 
+                      picoVersion, version.c_str());
+            } else {
+                // For stable releases, verify exact version match
+                LOG_I("Pico version after update: %s (expected: %s)", picoVersion, version.c_str());
+                if (strcmp(picoVersion, version.c_str()) != 0) {
+                    // Version mismatch - the Pico may have reconnected before flash copy completed
+                    // Try forcing a reset to ensure it boots with the new firmware
+                    LOG_W("Pico version mismatch detected. Forcing reset to ensure new firmware boots...");
+                    _picoUart.resetPico();
+                    
+                    // Wait for Pico to reconnect after forced reset
+                    LOG_I("Waiting for Pico to reconnect after forced reset...");
+                    bool reconnected = false;
+                    for (int i = 0; i < 100; i++) {  // Wait up to 10 seconds
+                        delay(100);
+                        feedWatchdog();
+                        _picoUart.loop();
+                        
+                        if (_picoUart.isConnected()) {
+                            LOG_I("Pico reconnected after forced reset (%d ms)", i * 100);
+                            reconnected = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!reconnected) {
+                        // Pico failed to reconnect - continue to ESP32 update anyway
+                        LOG_W("Pico failed to reconnect after forced reset - proceeding to ESP32 update");
+                        broadcastLogLevel("warn", "Internal controller verification failed, continuing with main update...");
+                    } else {
+                        // Request boot info again after reset
+                        _picoUart.requestBootInfo();
+                        delay(1000);  // Wait 1 second for boot info
+                        feedWatchdog();
+                        _picoUart.loop();
+                        
+                        // Check version again
+                        picoVersion = State.getPicoVersion();
+                        if (picoVersion && picoVersion[0] != '\0') {
+                            LOG_I("Pico version after forced reset: %s (expected: %s)", picoVersion, version.c_str());
+                            if (strcmp(picoVersion, version.c_str()) != 0) {
+                                // Version mismatch after forced reset - continue to ESP32 anyway
+                                LOG_W("Pico update version mismatch: got %s, expected %s - proceeding to ESP32 update", picoVersion, version.c_str());
+                                broadcastLogLevel("warn", "Internal controller version mismatch, continuing with main update...");
+                            }
+                        } else {
+                            LOG_W("Could not get Pico version after forced reset - proceeding to ESP32 update");
+                            broadcastLogLevel("warn", "Internal controller not responding, continuing with main update...");
+                        }
+                    }
+                }
+            }
+            LOG_I("Pico version verified: %s", picoVersion);
+        } else {
+            // Could not verify Pico version - continue to ESP32 update anyway
+            LOG_W("Could not verify Pico version after update - proceeding to ESP32 update");
+            broadcastLogLevel("warn", "Internal controller verification skipped, continuing with main update...");
+        }
     } else {
-        LOG_E("Could not verify Pico version after update - aborting");
-        broadcastLogLevel("error", "Internal controller not responding");
-        broadcastOtaProgress(&_ws, "error", 0, "Update failed - restarting...");
-        cleanupOtaFiles();
-        handleOTAFailure(&_ws);  // Will restart device
-        return;  // Won't reach here due to restart
+        LOG_I("Skipping Pico verification (Pico OTA failed or not responding)");
     }
     
     // Check total timeout
