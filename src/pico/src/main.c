@@ -58,6 +58,12 @@ static volatile bool g_core1_alive = false;
 static volatile uint32_t g_core1_last_seen = 0;
 #define CORE1_TIMEOUT_MS 1000  // Core 1 must respond within 1 second
 
+// Allow long-running Core 1 operations (e.g. power meter auto-detect) to signal alive.
+// Without this, blocking operations on Core 1 starve the watchdog on Core 0.
+void core1_signal_alive(void) {
+    g_core1_alive = true;
+}
+
 // Status payload (updated by control loop on Core 0, read by comms on Core 1)
 // Double-buffered for non-blocking access: Core 0 writes to inactive buffer, Core 1 reads from active
 static status_payload_t g_status_buffers[2];

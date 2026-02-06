@@ -10,6 +10,13 @@
  * Each handler is responsible for one command type.
  */
 
+/**
+ * Signal that Core 1 is alive (for watchdog monitoring by Core 0).
+ * Call from long-running Core 1 operations (e.g., power meter auto-detect)
+ * to prevent Core 0 from starving the watchdog.
+ */
+extern void core1_signal_alive(void);
+
 // =============================================================================
 // Individual Packet Handlers
 // =============================================================================

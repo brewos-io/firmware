@@ -441,21 +441,30 @@ void sensors_read(void) {
         g_sensor_data.water_level = read_water_level();
         
         // Read power meter (PZEM, JSY, Eastron, etc.)
-        // power_meter_update() is non-blocking (uses timeout)
-        // Power data doesn't need high frequency, but reading every cycle is fine
-        if (power_meter_is_connected()) {
-            power_meter_update();
-            
-            // Check for persistent errors
-            const char* error = power_meter_get_error();
-            if (error) {
-                g_power_meter_error_count++;
-                if (g_power_meter_error_count % 50 == 0) {
-                    // Report every 50 errors to avoid spam
-                    DEBUG_PRINT("SENSOR ERROR: Power meter: %s (count: %d)\n", error, g_power_meter_error_count);
+        // power_meter_update() has a blocking Modbus timeout (~500ms when no meter responds).
+        // Throttle to 1Hz to avoid starving the control loop and watchdog.
+        // Use is_initialized (not is_connected) so the meter gets polled even before
+        // the first successful read - otherwise it could never become "connected".
+        {
+            static uint32_t last_meter_poll = 0;
+            uint32_t meter_now = time_us_32() / 1000;
+            // Poll every 1s when connected, every 2s when not (reduce blocking when no meter)
+            uint32_t poll_interval = power_meter_is_connected() ? 1000 : 2000;
+            if (power_meter_is_initialized() && (meter_now - last_meter_poll) >= poll_interval) {
+                last_meter_poll = meter_now;
+                power_meter_update();
+                
+                // Check for persistent errors
+                const char* error = power_meter_get_error();
+                if (error) {
+                    g_power_meter_error_count++;
+                    if (g_power_meter_error_count % 50 == 0) {
+                        // Report every 50 errors to avoid spam
+                        DEBUG_PRINT("SENSOR ERROR: Power meter: %s (count: %d)\n", error, g_power_meter_error_count);
+                    }
+                } else {
+                    g_power_meter_error_count = 0;  // Reset on success
                 }
-            } else {
-                g_power_meter_error_count = 0;  // Reset on success
             }
         }
         

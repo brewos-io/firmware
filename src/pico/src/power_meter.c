@@ -15,6 +15,7 @@
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 #include "config_persistence.h"
+#include "packet_handlers.h"  // For core1_signal_alive()
 
 #define UART_ID uart1
 
@@ -165,6 +166,7 @@ static const modbus_register_map_t METER_MAPS[] = {
 // =============================================================================
 
 static bool initialized = false;
+static bool has_ever_read = false;   // True after first successful Modbus read
 static const modbus_register_map_t* current_map = NULL;
 static power_meter_reading_t last_reading = {0};
 static uint32_t last_success_time = 0;
@@ -362,6 +364,7 @@ bool power_meter_init(const power_meter_config_t* config) {
     
     if (!current_config.enabled) {
         initialized = false;
+        has_ever_read = false;
         current_map = NULL;
         return true;  // Disabled, nothing to do
     }
@@ -371,6 +374,7 @@ bool power_meter_init(const power_meter_config_t* config) {
         snprintf(last_error, sizeof(last_error), "Invalid meter index %u", (unsigned)current_config.meter_index);
         current_config.enabled = false;
         initialized = false;
+        has_ever_read = false;
         current_map = NULL;
         return true;  /* Success but disabled */
     }
@@ -456,6 +460,7 @@ void power_meter_update(void) {
     reading.valid = true;
     last_reading = reading;
     last_success_time = reading.timestamp;
+    has_ever_read = true;
     last_error[0] = '\0';
 }
 
@@ -475,8 +480,18 @@ bool power_meter_get_reading(power_meter_reading_t* reading) {
 bool power_meter_is_connected(void) {
     if (!initialized) return false;
     
+    // Don't report connected until at least one successful read has occurred.
+    // Without this, last_success_time=0 causes a false positive for the first
+    // 5 seconds after boot, triggering blocking 500ms Modbus polls at 20Hz
+    // which can exceed the 2000ms watchdog timeout during boot.
+    if (!has_ever_read) return false;
+    
     uint32_t now = time_us_32() / 1000;
     return (now - last_success_time) < CONNECTION_TIMEOUT_MS;
+}
+
+bool power_meter_is_initialized(void) {
+    return initialized;
 }
 
 const char* power_meter_get_name(void) {
@@ -492,6 +507,14 @@ bool power_meter_auto_detect(void) {
         printf("Trying %s @ %u baud...\n", test_map->name, (unsigned int)test_map->baud_rate);
         
         current_map = test_map;
+        
+        // CRITICAL: Signal Core 1 is alive before each meter attempt.
+        // Auto-detect runs on Core 1 (packet handler) and can block for ~800ms per meter.
+        // Without this signal, Core 0 sees Core 1 as dead after 1s and stops feeding
+        // the watchdog, causing a reset after 3s total (1s timeout + 2s watchdog).
+#ifndef UNIT_TEST
+        core1_signal_alive();
+#endif
         
         // Initialize UART for this config
         uart_deinit(UART_ID);
@@ -523,10 +546,14 @@ bool power_meter_auto_detect(void) {
             continue;
         }
         
-        // Receive response
+        // Receive response (blocks up to RESPONSE_TIMEOUT_MS = 500ms)
         uint8_t response_buffer[128];
         int bytes_read = 0;
         if (!receive_modbus_response(response_buffer, sizeof(response_buffer), &bytes_read)) {
+            // Signal alive after the blocking receive timeout
+#ifndef UNIT_TEST
+            core1_signal_alive();
+#endif
             continue;
         }
         
@@ -538,13 +565,14 @@ bool power_meter_auto_detect(void) {
             if (test_reading.voltage > 50 && test_reading.voltage < 300) {
                 printf("Detected: %s\n", test_map->name);
                 initialized = true;
+                has_ever_read = true;
                 last_reading = test_reading;
                 last_success_time = time_us_32() / 1000;
                 
-                // Save config
+                // Save config (deferred to Core 0 to avoid watchdog during flash write)
                 current_config.enabled = true;
                 current_config.meter_index = i;
-                power_meter_save_config();
+                power_meter_request_save();
                 
                 return true;
             }

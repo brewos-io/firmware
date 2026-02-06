@@ -97,9 +97,15 @@ bool power_meter_get_reading(power_meter_reading_t* reading);
 
 /**
  * Check if power meter is connected and responding
- * @return true if meter responded recently
+ * @return true if meter responded recently (requires at least one successful read)
  */
 bool power_meter_is_connected(void);
+
+/**
+ * Check if power meter driver is initialized (UART configured)
+ * @return true if meter was initialized (regardless of connection state)
+ */
+bool power_meter_is_initialized(void);
 
 /**
  * Get meter name
