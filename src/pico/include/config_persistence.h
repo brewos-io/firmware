@@ -108,6 +108,15 @@ bool config_persistence_init(void);
 bool config_persistence_is_env_valid(void);
 
 /**
+ * Process deferred boot-time flash save.
+ * Must be called from the main loop AFTER Core 1 is running.
+ * flash_safe_execute() requires Core 1 for multicore lockout;
+ * calling it before Core 1 launches hangs until timeout.
+ * @return true if a save was processed, false if nothing pending
+ */
+bool config_persistence_process_boot_save(void);
+
+/**
  * Save all configuration to flash
  * @return true on success, false on failure
  */

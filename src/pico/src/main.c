@@ -486,16 +486,15 @@ int main(void) {
     sensors_init();
     DEBUG_PRINT("Sensors initialized\n");
     
-    // Initialize flash safety system BEFORE config persistence
-    // config_persistence_init() may write to flash (e.g., saving machine type),
-    // so flash_safe must be initialized first for safe flash operations.
-    // CRITICAL: Must also be done before Core 1 launches, otherwise if Core 1
-    // tries to write flash immediately, the lockout handshake will fail/hang.
+    // Initialize flash safety system on Core 0 BEFORE launching Core 1.
+    // This registers Core 0 as a multicore lockout victim, allowing Core 1
+    // to safely pause Core 0 during flash operations (XIP safety).
     flash_safe_init();
     watchdog_update();  // Feed watchdog after flash safety init
     
-    // Initialize configuration persistence (loads from flash)
-    // May trigger a flash write if machine type needs updating or config is invalid.
+    // Initialize configuration persistence (loads from flash, applies settings).
+    // Flash writes are DEFERRED to after Core 1 starts - flash_safe_execute()
+    // requires Core 1 for multicore lockout; calling it now would hang.
     bool env_valid = config_persistence_init();
     if (!env_valid) {
         DEBUG_PRINT("ERROR: Environmental configuration not set - machine disabled\n");
@@ -560,6 +559,13 @@ int main(void) {
     
     // Set up packet handler
     protocol_set_callback(handle_packet);
+    
+    // Process deferred boot-time flash save now that Core 1 is running.
+    // flash_safe_execute() requires Core 1 for multicore lockout handshake.
+    // Calling it before Core 1 launches hangs until its 10s timeout,
+    // exceeding the 2s watchdog and causing an infinite restart loop.
+    config_persistence_process_boot_save();
+    watchdog_update();
     
     DEBUG_PRINT("Entering main control loop\n");
     

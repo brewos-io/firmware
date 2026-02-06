@@ -1,7 +1,7 @@
 /**
  * Power Meter Driver Implementation (Raspberry Pi Pico 2)
  * 
- * Hardware: UART1 on GPIO6 (TX) and GPIO7 (RX), GPIO20 for RS485 DE/RE
+ * Hardware: PIO UART on GPIO6 (TX) and GPIO7 (RX), GPIO20 for RS485 DE/RE
  */
 
 #include "power_meter.h"
@@ -15,7 +15,7 @@
 #include "pico/stdlib.h"
 #include "config_persistence.h"
 #include "packet_handlers.h"  // For core1_signal_alive()
-#include "pio_uart.h"         // PIO-based UART (GPIO6/7 are UART1_CTS/RTS, not TX/RX)
+#include "pio_uart.h"         // PIO-based UART on GPIO6 (TX) / GPIO7 (RX)
 
 #else
 // Unit test environment
@@ -27,13 +27,11 @@
 // HARDWARE CONFIGURATION
 // =============================================================================
 
-// Pin mapping based on actual schematic diagram (Sheet 2, MCU pinout):
-//   GP7 = METER_TX (data output to meter)
-//   GP8 = METER_RX (data input from meter)
-// Note: The ASCII text summary incorrectly lists GP6=TX, GP7=RX.
-//       The diagram shows GP6=BREW_SW, GP7=METER_TX, GP8=METER_RX.
-#define UART_TX_PIN_DEFAULT 7
-#define UART_RX_PIN_DEFAULT 8
+// Pin mapping: GPIO6 = TX (data to meter), GPIO7 = RX (data from meter)
+// Confirmed by schematic Sheet 8 signal path and PCB config.
+// Note: RX path goes through JP3 jumper - must bridge pads 2-3 for TTL mode.
+#define UART_TX_PIN_DEFAULT 6
+#define UART_RX_PIN_DEFAULT 7
 #define RS485_DE_RE_PIN 20
 #define RS485_SWITCHING_DELAY_US 100  // Delay for RS485 transceiver switching
 
@@ -185,8 +183,8 @@ static char last_error[64] = {0};
 static power_meter_config_t current_config = {0};
 static volatile bool g_pending_save = false;
 
-// Number of consecutive Modbus failures before trying a TX/RX pin swap
-#define PIN_SWAP_RETRY_THRESHOLD 2
+// Number of consecutive Modbus failures before trying the next pin config
+#define PIN_ROTATE_THRESHOLD 3
 static uint8_t consecutive_failures = 0;
 
 // =============================================================================
@@ -227,8 +225,7 @@ static bool verify_modbus_response(const uint8_t* buffer, int length);
 
 /**
  * Configure PIO UART with the current TX/RX pin assignment.
- * Uses PIO instead of hardware UART because GPIO6/GPIO7 map to
- * UART1_CTS/RTS in RP2350 silicon (not TX/RX). PIO works on any pin.
+ * Uses PIO instead of hardware UART1. PIO works on any GPIO pin.
  */
 static void configure_uart_pins(uint32_t baud_rate) {
     pio_uart_reconfigure(uart_tx_pin, uart_rx_pin, baud_rate);
@@ -464,8 +461,6 @@ bool power_meter_init(const power_meter_config_t* config) {
     }
     
     // If already initialized with the same meter, don't reset pin swap state.
-    // This preserves the auto-swap cycle across repeated init calls
-    // (e.g., ESP32 re-sends enable on boot + user clicks save).
     if (!initialized || current_map != &METER_MAPS[current_config.meter_index]) {
         uart_tx_pin = UART_TX_PIN_DEFAULT;
         uart_rx_pin = UART_RX_PIN_DEFAULT;
@@ -476,11 +471,13 @@ bool power_meter_init(const power_meter_config_t* config) {
                   current_map->name, (unsigned int)current_map->baud_rate,
                   current_map->is_rs485 ? "yes" : "no",
                   uart_tx_pin, uart_rx_pin);
+        LOG_PRINT("Power meter: Will probe for meter on first update cycle\n");
     } else {
         LOG_PRINT("Power meter: Already initialized (%s), keeping pin config (TX=GPIO%d, RX=GPIO%d)\n",
                   current_map->name, uart_tx_pin, uart_rx_pin);
     }
     
+    initialized = true;
     return true;
 }
 
@@ -517,8 +514,7 @@ void power_meter_update(void) {
         }
         
         // After several failures, try swapping TX/RX pins (common wiring mistake)
-        if (consecutive_failures == PIN_SWAP_RETRY_THRESHOLD) {
-            // Swap pins
+        if (consecutive_failures == PIN_ROTATE_THRESHOLD) {
             uint8_t old_tx = uart_tx_pin;
             uart_tx_pin = uart_rx_pin;
             uart_rx_pin = old_tx;
@@ -526,14 +522,13 @@ void power_meter_update(void) {
             configure_uart_pins(current_map->baud_rate);
             snprintf(last_error, sizeof(last_error), "No response - swapped TX/RX (TX=GPIO%d)", uart_tx_pin);
             LOG_PRINT("Power meter: Swapping pins → TX=GPIO%d, RX=GPIO%d\n", uart_tx_pin, uart_rx_pin);
-        } else if (consecutive_failures == PIN_SWAP_RETRY_THRESHOLD * 2) {
-            // Swap back to original if swapped config also fails
+        } else if (consecutive_failures == PIN_ROTATE_THRESHOLD * 2) {
             uint8_t old_tx = uart_tx_pin;
             uart_tx_pin = uart_rx_pin;
             uart_rx_pin = old_tx;
             pins_swapped = !pins_swapped;
             configure_uart_pins(current_map->baud_rate);
-            consecutive_failures = 0;  // Reset cycle
+            consecutive_failures = 0;
             snprintf(last_error, sizeof(last_error), "No response - reverted TX/RX (TX=GPIO%d)", uart_tx_pin);
             LOG_PRINT("Power meter: Reverting pins → TX=GPIO%d, RX=GPIO%d (cycle reset)\n", uart_tx_pin, uart_rx_pin);
         } else {
@@ -708,7 +703,6 @@ bool power_meter_auto_detect(void) {
     snprintf(last_error, sizeof(last_error), "Auto-detection failed");
     initialized = false;
     current_map = NULL;
-    // Reset to default pins
     uart_tx_pin = UART_TX_PIN_DEFAULT;
     uart_rx_pin = UART_RX_PIN_DEFAULT;
     pins_swapped = false;

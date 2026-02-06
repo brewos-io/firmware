@@ -46,6 +46,7 @@ _Static_assert(sizeof(persisted_config_t) <= FLASH_PAGE_SIZE,
 static persisted_config_t g_persisted_config = {0};
 static bool g_config_loaded = false;
 static bool g_env_valid = false;
+static volatile bool g_pending_boot_save = false;  // Deferred flash write after Core 1 starts
 
 // =============================================================================
 // CRC32 Calculation
@@ -273,11 +274,13 @@ bool config_persistence_init(void) {
             
             if (persisted_type == 0 || persisted_type > 4) {
                 // Machine type not set or invalid - save compile-time type
-                LOG_PRINT("Config: Machine type not persisted, saving compile-time type: %d\n", 
+                LOG_PRINT("Config: Machine type not persisted, will save compile-time type: %d\n", 
                          compile_time_type);
                 g_persisted_config.machine_type = (uint8_t)compile_time_type;
-                // Save immediately to persist machine type
-                flash_write_config(&g_persisted_config);
+                // Defer flash write to after Core 1 is running.
+                // flash_safe_execute() needs Core 1 for multicore lockout;
+                // calling it before Core 1 launches hangs until timeout (10s >> 2s watchdog).
+                g_pending_boot_save = true;
             } else if (persisted_type != (uint8_t)compile_time_type) {
                 // Mismatch: persisted type differs from compile-time type
                 // This can happen if firmware for a different machine type is flashed
@@ -286,7 +289,8 @@ bool config_persistence_init(void) {
                 LOG_WARN("Config: Using compile-time type (firmware compiled for different machine)\n");
                 // Update persisted type to match compile-time (firmware was compiled for this type)
                 g_persisted_config.machine_type = (uint8_t)compile_time_type;
-                flash_write_config(&g_persisted_config);
+                // Defer flash write (same reason as above)
+                g_pending_boot_save = true;
             } else {
                 // Match: persisted type matches compile-time type
                 LOG_PRINT("Config: Machine type validated: %d (persisted matches compile-time)\n",
@@ -309,10 +313,13 @@ bool config_persistence_init(void) {
         g_env_valid = false;
         
         // Machine type is set in set_defaults() from compile-time type
-        // Save it to flash so it persists across future firmware flashes
+        // Defer flash write to after Core 1 is running.
+        // flash_safe_execute() needs Core 1 for multicore lockout;
+        // calling it before Core 1 launches hangs until timeout (10s >> 2s watchdog).
         LOG_PRINT("Config: No valid config in flash, using defaults\n");
-        LOG_PRINT("Config: Saving machine type: %d\n", g_persisted_config.machine_type);
-        flash_write_config(&g_persisted_config);  // Save machine type even if env config is invalid
+        LOG_PRINT("Config: Will save defaults after Core 1 starts (machine_type: %d)\n", 
+                 g_persisted_config.machine_type);
+        g_pending_boot_save = true;
         
         LOG_PRINT("Config: Machine disabled - environmental config required\n");
         return false;  // Machine disabled - environmental config not set
@@ -321,6 +328,24 @@ bool config_persistence_init(void) {
 
 bool config_persistence_is_env_valid(void) {
     return g_env_valid;
+}
+
+bool config_persistence_process_boot_save(void) {
+    if (!g_pending_boot_save) {
+        return false;
+    }
+    g_pending_boot_save = false;
+    
+    // Now safe to write - Core 1 is running, flash_safe_execute() can lock it out
+    g_persisted_config.magic = CONFIG_MAGIC;
+    g_persisted_config.version = CONFIG_VERSION;
+    if (flash_write_config(&g_persisted_config)) {
+        LOG_PRINT("Config: Deferred boot save completed successfully\n");
+        return true;
+    } else {
+        LOG_PRINT("Config: ERROR - Deferred boot save failed\n");
+        return false;
+    }
 }
 
 bool config_persistence_save(void) {
