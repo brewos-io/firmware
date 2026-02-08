@@ -10,7 +10,6 @@
 #include "cloud_connection.h"
 #include "state/state_manager.h"
 #include "power_meter/power_meter_manager.h"
-#include "power_meter/mqtt_power_meter.h"
 #include "ui/ui.h"
 #include "esp32_diagnostics.h"
 #include "log_manager.h"
@@ -892,26 +891,28 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
     }
     // "start_power_meter_discovery" command removed (v2.32 - hardware power metering removed)
     else if (cmd == "test_power_meter") {
-        // Test MQTT power meter connectivity:
+        // Non-blocking MQTT power meter test:
         //   1. Check MQTT broker is connected
-        //   2. Subscribe to the topic (uses current or provided topic)
-        //   3. Wait up to 15s for a message, parse it, report results
+        //   2. Check topic is provided
+        //   3. Subscribe to topic and configure meter
+        //   4. Check if data is already available (from previous subscription)
+        //   5. Return immediately - periodic power_meter_status broadcasts (every 5s)
+        //      will update the UI once data starts flowing
+        //
+        // IMPORTANT: Must NOT block - websocket handlers run on the async web server
+        // task. Blocking here causes RTOS watchdog reset and device crash.
         String topic = doc["topic"] | "";
         String format = doc["format"] | "auto";
 
-        #pragma GCC diagnostic push
-        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        StaticJsonDocument<512> response;
-        #pragma GCC diagnostic pop
+        // Use heap-allocated JsonDocument to avoid stack overflow
+        JsonDocument response;
         response["type"] = "power_meter_test_result";
-
-        // Create a steps array for detailed UI feedback
-        JsonArray steps = response.createNestedArray("steps");
+        JsonArray steps = response["steps"].to<JsonArray>();
 
         // Step 1: MQTT connected?
         bool mqttOk = _mqttClient.isConnected();
         {
-            JsonObject step = steps.createNestedObject();
+            JsonObject step = steps.add<JsonObject>();
             step["name"] = "MQTT Broker";
             step["ok"] = mqttOk;
             step["detail"] = mqttOk ? "Connected" : "Not connected - check Network > MQTT settings";
@@ -920,7 +921,7 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
         if (!mqttOk) {
             response["success"] = false;
             response["message"] = "MQTT broker not connected";
-            char buf[512];
+            char buf[256];
             serializeJson(response, buf);
             broadcastRaw(buf);
             return;
@@ -929,7 +930,7 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
         // Step 2: Topic configured?
         bool topicOk = topic.length() > 0;
         {
-            JsonObject step = steps.createNestedObject();
+            JsonObject step = steps.add<JsonObject>();
             step["name"] = "Topic";
             step["ok"] = topicOk;
             step["detail"] = topicOk ? topic.c_str() : "No topic provided";
@@ -938,69 +939,57 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
         if (!topicOk) {
             response["success"] = false;
             response["message"] = "MQTT topic is empty";
-            char buf[512];
+            char buf[256];
             serializeJson(response, buf);
             broadcastRaw(buf);
             return;
         }
 
-        // Step 3: Temporarily subscribe and wait for a message (up to 15s)
-        // We'll configure the meter transiently and check if data arrives
-        MQTTPowerMeter testMeter(topic.c_str(), format.c_str());
-        testMeter.begin();
-
-        // Subscribe using the MQTT client
+        // Step 3: Subscribe to topic and configure meter (non-blocking)
         _mqttClient.setPowerMeterTopic(topic.c_str());
-        // Also temporarily wire the callback to our test meter
-        // Save old callback and power meter manager state
-        auto* savedPm = powerMeterManager;
-        // We need to set a temporary onPowerMeterMessage that routes to testMeter
-        // But that's complex across cores; instead just check if data appears in powerMeterManager
-        // Simplest: configure it, wait for data, then report
         if (powerMeterManager) {
             powerMeterManager->configureMqtt(topic.c_str(), format.c_str());
         }
-
-        broadcastLogLevel("info", "Testing MQTT power meter topic... waiting for data (up to 15s)");
-
-        bool gotData = false;
-        uint32_t startMs = millis();
-        while ((millis() - startMs) < 15000) {
-            delay(250);  // Let MQTT task process messages
-            if (powerMeterManager && powerMeterManager->isConnected()) {
-                gotData = true;
-                break;
-            }
+        {
+            JsonObject step = steps.add<JsonObject>();
+            step["name"] = "Subscribed";
+            step["ok"] = true;
+            step["detail"] = "Listening on topic";
         }
 
+        // Step 4: Check if data is already available (instant check, no waiting)
+        bool gotData = powerMeterManager && powerMeterManager->isConnected();
         {
-            JsonObject step = steps.createNestedObject();
+            JsonObject step = steps.add<JsonObject>();
             step["name"] = "Data Received";
             step["ok"] = gotData;
             if (gotData) {
                 PowerMeterReading reading;
-                if (powerMeterManager && powerMeterManager->getReading(reading)) {
-                    char detail[128];
-                    snprintf(detail, sizeof(detail), 
+                if (powerMeterManager->getReading(reading)) {
+                    char detail[96];
+                    snprintf(detail, sizeof(detail),
                              "Power: %.0fW, Voltage: %.1fV, Current: %.2fA",
                              reading.power, reading.voltage, reading.current);
                     step["detail"] = detail;
                 } else {
-                    step["detail"] = "Data arrived but failed to read";
+                    step["detail"] = "Connected but no reading yet";
                 }
             } else {
-                step["detail"] = "No message received within 15 seconds - check Tasmota topic and TelePeriod";
+                step["detail"] = "Waiting for first message - status will update automatically";
             }
         }
 
         response["success"] = gotData;
         response["message"] = gotData
             ? "Power meter test passed - receiving data"
-            : "No data received on topic within 15 seconds";
+            : "Subscribed to topic - waiting for data (check status above)";
 
         char buf[512];
         serializeJson(response, buf);
         broadcastRaw(buf);
+
+        // Also broadcast the current power meter status so the UI updates
+        broadcastPowerMeterStatus();
     }
 }
 
