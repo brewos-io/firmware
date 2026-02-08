@@ -9,6 +9,7 @@ MQTTPowerMeter::MQTTPowerMeter(const char* topic, const char* format)
     : _topic(topic)
     , _lastUpdateTime(0)
     , _hasData(false)
+    , _deviceOnline(true)  // Assume online until LWT says otherwise
 {
     _lastError[0] = '\0';
     memset(&_lastReading, 0, sizeof(_lastReading));
@@ -40,7 +41,7 @@ void MQTTPowerMeter::loop() {
 }
 
 bool MQTTPowerMeter::read(PowerMeterReading& reading) {
-    if (!_hasData || isStale()) {
+    if (!isConnected()) {
         return false;
     }
     
@@ -53,7 +54,12 @@ const char* MQTTPowerMeter::getName() const {
 }
 
 bool MQTTPowerMeter::isConnected() const {
-    return _hasData && !isStale();
+    // Connected if:
+    //   - We have received data at least once, AND
+    //   - Either the device is online (per LWT), or data is fresh (per stale threshold)
+    // LWT is the primary indicator. The stale threshold is a generous fallback
+    // for devices that don't publish LWT (e.g. Shelly with custom topics).
+    return _hasData && (_deviceOnline || !isStale());
 }
 
 const char* MQTTPowerMeter::getFormat() const {
@@ -77,6 +83,29 @@ void MQTTPowerMeter::setJsonPaths(const char* power, const char* voltage,
     _jsonPathCurrent = current ? current : "";
     _jsonPathEnergy = energy ? energy : "";
     _format = MqttFormat::GENERIC;
+}
+
+void MQTTPowerMeter::onLwtMessage(const char* payload, size_t length) {
+    // Tasmota LWT: "Online" or "Offline"
+    // Shelly LWT: "true" or "false" (some models)
+    bool wasOnline = _deviceOnline;
+    
+    if (length >= 6 && strncasecmp(payload, "Online", 6) == 0) {
+        _deviceOnline = true;
+    } else if (length >= 7 && strncasecmp(payload, "Offline", 7) == 0) {
+        _deviceOnline = false;
+    } else if (length >= 4 && strncasecmp(payload, "true", 4) == 0) {
+        _deviceOnline = true;
+    } else if (length >= 5 && strncasecmp(payload, "false", 5) == 0) {
+        _deviceOnline = false;
+    } else {
+        // Unknown payload, ignore
+        return;
+    }
+    
+    if (wasOnline != _deviceOnline) {
+        LOG_I("MQTT power meter device %s (LWT)", _deviceOnline ? "online" : "offline");
+    }
 }
 
 void MQTTPowerMeter::onMqttData(const char* payload, size_t length) {

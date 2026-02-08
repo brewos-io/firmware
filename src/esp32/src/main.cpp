@@ -409,6 +409,12 @@ static void onPowerMeterMqttMessage(const char* payload, unsigned int length) {
     }
 }
 
+static void onPowerMeterLwtMessage(const char* payload, unsigned int length) {
+    if (powerMeterManager) {
+        powerMeterManager->onMqttLwtMessage(payload, length);
+    }
+}
+
 // =============================================================================
 // Schedule Callback - Static function to avoid std::function PSRAM issues
 // =============================================================================
@@ -1764,12 +1770,17 @@ static void setupInitializeMQTT() {
     Serial.println("[7/8] Initializing MQTT...");
     // Serial.flush(); // Removed - can block on USB CDC
     mqttClient->begin();
-    // Wire MQTT power meter: subscribe to Tasmota/Shelly topic and forward messages
+    // Wire MQTT power meter: subscribe to Tasmota/Shelly SENSOR + LWT topics
     mqttClient->setOnPowerMeterMessage(onPowerMeterMqttMessage);
+    mqttClient->setOnPowerMeterLwt(onPowerMeterLwtMessage);
     if (powerMeterManager) {
         const char* pmTopic = powerMeterManager->getMqttTopic();
         if (pmTopic && pmTopic[0] != '\0') {
             mqttClient->setPowerMeterTopic(pmTopic);
+        }
+        const char* lwtTopic = powerMeterManager->getMqttLwtTopic();
+        if (lwtTopic && lwtTopic[0] != '\0') {
+            mqttClient->setPowerMeterLwtTopic(lwtTopic);
         }
     }
     Serial.println("MQTT initialized OK");

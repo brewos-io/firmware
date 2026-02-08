@@ -10,6 +10,7 @@
 #include "config.h"
 #include <Preferences.h>
 #include <time.h>
+#include <sys/time.h>
 
 // NVS namespace for power meter config
 #define NVS_NAMESPACE "power_meter"
@@ -141,9 +142,45 @@ const char* PowerMeterManager::getMqttTopic() const {
     return nullptr;
 }
 
+const char* PowerMeterManager::getMqttLwtTopic() const {
+    if (_source != PowerMeterSource::MQTT || _mqttMeter == nullptr) {
+        return nullptr;
+    }
+    
+    // Auto-derive LWT topic from SENSOR topic:
+    //   "tele/tasmota_XXXX/SENSOR" -> "tele/tasmota_XXXX/LWT"
+    //   "shellies/shelly-plug-XXX/status" -> "shellies/shelly-plug-XXX/LWT"
+    // Strategy: replace the last path segment with "LWT"
+    const char* sensorTopic = _mqttMeter->getTopic();
+    if (!sensorTopic || sensorTopic[0] == '\0') {
+        return nullptr;
+    }
+    
+    const char* lastSlash = strrchr(sensorTopic, '/');
+    if (!lastSlash) {
+        return nullptr;  // No path separator, can't derive LWT topic
+    }
+    
+    size_t prefixLen = (size_t)(lastSlash - sensorTopic + 1);  // Include the slash
+    if (prefixLen + 3 >= sizeof(_lwtTopicBuf)) {
+        return nullptr;  // Too long
+    }
+    
+    memcpy(_lwtTopicBuf, sensorTopic, prefixLen);
+    memcpy(_lwtTopicBuf + prefixLen, "LWT", 4);  // Includes null terminator
+    
+    return _lwtTopicBuf;
+}
+
 void PowerMeterManager::onMqttPowerMessage(const char* payload, unsigned int length) {
     if (_mqttMeter) {
         _mqttMeter->onMqttData(payload, length);
+    }
+}
+
+void PowerMeterManager::onMqttLwtMessage(const char* payload, unsigned int length) {
+    if (_mqttMeter) {
+        _mqttMeter->onLwtMessage(payload, length);
     }
 }
 
@@ -195,15 +232,27 @@ void PowerMeterManager::getStatus(JsonDocument& doc) {
     doc["configured"] = (_source != PowerMeterSource::NONE);
     doc["discovering"] = false;
     
-    if (connected && _lastReading.valid && (millis() - _lastReadTime) < 5000) {
+    // Include MQTT topic/format so the UI can pre-fill the config form
+    if (_source == PowerMeterSource::MQTT && _mqttMeter) {
+        doc["mqttTopic"] = _mqttMeter->getTopic();
+        doc["mqttFormat"] = _mqttMeter->getFormat();
+    }
+    
+    if (connected && _lastReading.valid) {
         JsonObject reading = doc["reading"].to<JsonObject>();
         reading["voltage"] = _lastReading.voltage;
         reading["current"] = _lastReading.current;
         reading["power"] = _lastReading.power;
-        reading["energy"] = _lastReading.energy_import;
+        reading["energy"] = getTodayKwh();                // Today's energy (not lifetime total)
+        reading["energyTotal"] = _lastReading.energy_import;  // Lifetime total from meter
         reading["frequency"] = _lastReading.frequency;
         reading["powerFactor"] = _lastReading.power_factor;
-        doc["lastUpdate"] = _lastReadTime;
+        // Convert millis() uptime to Unix epoch ms for the frontend
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        uint64_t nowMs = (uint64_t)tv.tv_sec * 1000ULL + tv.tv_usec / 1000ULL;
+        uint32_t ageMs = millis() - _lastReadTime;
+        doc["lastUpdate"] = nowMs - ageMs;
     } else {
         doc["reading"] = nullptr;
         doc["lastUpdate"] = nullptr;
@@ -243,15 +292,23 @@ bool PowerMeterManager::loadConfig() {
     }
     
     uint8_t sourceVal = prefs.getUChar("source", (uint8_t)PowerMeterSource::NONE);
-    _source = (PowerMeterSource)sourceVal;
     
-    // Legacy migration: if saved config was HARDWARE_MODBUS (value 1), reset to NONE
-    if (sourceVal == 1) {  // Old HARDWARE_MODBUS enum value
-        LOG_W("Legacy hardware meter config found, resetting to NONE (hardware removed v2.32)");
-        _source = PowerMeterSource::NONE;
-        prefs.end();
-        return false;
+    // Legacy migration: old HARDWARE_MODBUS was enum value 1, but now MQTT is also value 1
+    // (since HARDWARE_MODBUS was removed from the enum). Distinguish by checking if an
+    // mqtt_topic is saved: if yes, it's a genuine MQTT config; if no, it was old hardware.
+    if (sourceVal == 1) {
+        String savedTopic = prefs.getString("mqtt_topic", "");
+        if (savedTopic.length() == 0) {
+            // No MQTT topic saved -> this was old HARDWARE_MODBUS config
+            LOG_W("Legacy hardware meter config found, resetting to NONE (hardware removed v2.32)");
+            _source = PowerMeterSource::NONE;
+            prefs.end();
+            return false;
+        }
+        // Has a topic -> genuine MQTT config
     }
+    
+    _source = (PowerMeterSource)sourceVal;
     
     if (_source == PowerMeterSource::MQTT) {
         String topic = prefs.getString("mqtt_topic", "");

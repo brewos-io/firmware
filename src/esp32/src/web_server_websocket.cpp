@@ -863,6 +863,7 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
         if (source == "none") {
             powerMeterManager->setSource(PowerMeterSource::NONE);
             _mqttClient.setPowerMeterTopic("");  // Unsubscribe from power meter topic
+            _mqttClient.setPowerMeterLwtTopic("");  // Unsubscribe from LWT topic
             broadcastLogLevel("info", "Power metering disabled");
         }
         // "hardware" source removed (v2.32 - hardware power metering eliminated from PCB)
@@ -872,8 +873,10 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
             
             if (topic.length() > 0) {
                 if (powerMeterManager && powerMeterManager->configureMqtt(topic.c_str(), format.c_str())) {
-                    // Subscribe to the power meter topic so messages are forwarded (Tasmota/Shelly SENSOR)
+                    // Subscribe to SENSOR + LWT topics so messages are forwarded
                     _mqttClient.setPowerMeterTopic(topic.c_str());
+                    const char* lwtTopic = powerMeterManager->getMqttLwtTopic();
+                    if (lwtTopic) _mqttClient.setPowerMeterLwtTopic(lwtTopic);
                     // Pre-format message to avoid String.c_str() issues
                     char mqttMsg[64];
                     snprintf(mqttMsg, sizeof(mqttMsg), "MQTT power meter configured: %s", topic.c_str());
@@ -945,10 +948,12 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
             return;
         }
 
-        // Step 3: Subscribe to topic and configure meter (non-blocking)
+        // Step 3: Subscribe to SENSOR + LWT topics and configure meter (non-blocking)
         _mqttClient.setPowerMeterTopic(topic.c_str());
         if (powerMeterManager) {
             powerMeterManager->configureMqtt(topic.c_str(), format.c_str());
+            const char* lwtTopic = powerMeterManager->getMqttLwtTopic();
+            if (lwtTopic) _mqttClient.setPowerMeterLwtTopic(lwtTopic);
         }
         {
             JsonObject step = steps.add<JsonObject>();

@@ -183,7 +183,9 @@ public:
      * Pass nullptr or "" to clear.
      */
     void setPowerMeterTopic(const char* topic);
+    void setPowerMeterLwtTopic(const char* topic);
     void setOnPowerMeterMessage(void (*callback)(const char* payload, unsigned int length)) { _onPowerMeterMessage = callback; }
+    void setOnPowerMeterLwt(void (*callback)(const char* payload, unsigned int length)) { _onPowerMeterLwt = callback; }
     
     /**
      * Command callback - called when a command is received via MQTT
@@ -210,10 +212,12 @@ private:
     mqtt_event_callback_t _onDisconnected = nullptr;
     mqtt_command_callback_t _commandCallback = nullptr;
     void (*_onPowerMeterMessage)(const char* payload, unsigned int length) = nullptr;
+    void (*_onPowerMeterLwt)(const char* payload, unsigned int length) = nullptr;
     
-    // Power meter MQTT topic (subscribe and forward payloads to _onPowerMeterMessage)
+    // Power meter MQTT topics (subscribe and forward payloads)
     static const size_t POWER_METER_TOPIC_MAX = 128;
-    char _powerMeterTopic[POWER_METER_TOPIC_MAX];
+    char _powerMeterTopic[POWER_METER_TOPIC_MAX];      // SENSOR data topic
+    char _powerMeterLwtTopic[POWER_METER_TOPIC_MAX];    // LWT status topic
     
     // FreeRTOS task management
     TaskHandle_t _taskHandle = nullptr;

@@ -42,10 +42,22 @@ public:
     const char* getMqttTopic() const;
     
     /**
+     * MQTT power meter: auto-derived LWT topic (e.g. tele/device/LWT from tele/device/SENSOR).
+     * Returns nullptr if not configured for MQTT or topic can't be derived.
+     */
+    const char* getMqttLwtTopic() const;
+    
+    /**
      * MQTT power meter: called when a message arrives on the configured topic.
      * Forwards payload to the internal MQTTPowerMeter parser.
      */
     void onMqttPowerMessage(const char* payload, unsigned int length);
+    
+    /**
+     * MQTT power meter: called when a LWT message arrives (Online/Offline).
+     * Forwards to the internal MQTTPowerMeter.
+     */
+    void onMqttLwtMessage(const char* payload, unsigned int length);
     
     // Data access
     bool getReading(PowerMeterReading& reading);
@@ -73,6 +85,9 @@ private:
     
     // MQTT meter (only supported source since v2.32)
     MQTTPowerMeter* _mqttMeter;
+    
+    // Auto-derived LWT topic buffer (e.g. "tele/device/LWT" from "tele/device/SENSOR")
+    mutable char _lwtTopicBuf[128];
     
     // Helper methods
     void cleanupMeter();

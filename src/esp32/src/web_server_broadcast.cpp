@@ -14,6 +14,7 @@
 #include <esp_heap_caps.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 // External references for status broadcast
 extern BrewByWeight* brewByWeight;
@@ -825,13 +826,23 @@ void BrewWebServer::broadcastFullStatus(const ui_state_t& state) {
         meter["source"] = powerMeterManager ? powerMeterSourceToString(powerMeterManager->getSource()) : "none";
         meter["connected"] = powerMeterManager ? powerMeterManager->isConnected() : false;
         meter["meterType"] = powerMeterManager ? powerMeterManager->getMeterName() : "";
-        meter["lastUpdate"] = meterReading.timestamp;
+        // Include MQTT topic/format so UI can pre-fill config after refresh
+        const char* pmTopic = powerMeterManager ? powerMeterManager->getMqttTopic() : nullptr;
+        if (pmTopic) meter["mqttTopic"] = pmTopic;
+        // Send lastUpdate as Unix epoch milliseconds (what the frontend expects)
+        // meterReading.timestamp is millis() (ESP32 uptime), so convert using current time
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        uint64_t nowMs = (uint64_t)tv.tv_sec * 1000ULL + tv.tv_usec / 1000ULL;
+        uint32_t ageMs = millis() - meterReading.timestamp;
+        meter["lastUpdate"] = nowMs - ageMs;
         
         JsonObject reading = meter["reading"].to<JsonObject>();
         reading["voltage"] = meterReading.voltage;
         reading["current"] = meterReading.current;
         reading["power"] = meterReading.power;
-        reading["energy"] = meterReading.energy_import;
+        reading["energy"] = powerMeterManager->getTodayKwh();  // Today's energy (not lifetime total)
+        reading["energyTotal"] = meterReading.energy_import;   // Lifetime total from meter
         reading["frequency"] = meterReading.frequency;
         reading["powerFactor"] = meterReading.power_factor;
     } else {

@@ -59,6 +59,7 @@ MQTTClient::MQTTClient()
         LOG_E("Failed to create MQTT command queue");
     }
     _powerMeterTopic[0] = '\0';
+    _powerMeterLwtTopic[0] = '\0';
 }
 
 bool MQTTClient::begin() {
@@ -406,10 +407,14 @@ bool MQTTClient::connect() {
         _client.subscribe(cmdTopic, 1);
         LOG_I("Subscribed to: %s", cmdTopic);
         
-        // Subscribe to power meter topic if configured (Tasmota/Shelly SENSOR)
+        // Subscribe to power meter topics if configured (Tasmota/Shelly SENSOR + LWT)
         if (_powerMeterTopic[0] != '\0') {
             _client.subscribe(_powerMeterTopic, 0);
             LOG_I("Subscribed to power meter topic: %s", _powerMeterTopic);
+        }
+        if (_powerMeterLwtTopic[0] != '\0') {
+            _client.subscribe(_powerMeterLwtTopic, 1);  // QoS 1 for LWT (retained)
+            LOG_I("Subscribed to power meter LWT topic: %s", _powerMeterLwtTopic);
         }
         
         // Publish Home Assistant discovery if enabled
@@ -1419,6 +1424,20 @@ void MQTTClient::setPowerMeterTopic(const char* topic) {
     }
 }
 
+void MQTTClient::setPowerMeterLwtTopic(const char* topic) {
+    if (topic == nullptr || topic[0] == '\0') {
+        _powerMeterLwtTopic[0] = '\0';
+        return;
+    }
+    strncpy(_powerMeterLwtTopic, topic, POWER_METER_TOPIC_MAX - 1);
+    _powerMeterLwtTopic[POWER_METER_TOPIC_MAX - 1] = '\0';
+    // If already connected, subscribe immediately
+    if (_client.connected() && _powerMeterLwtTopic[0] != '\0') {
+        _client.subscribe(_powerMeterLwtTopic, 1);
+        LOG_I("Subscribed to power meter LWT topic: %s", _powerMeterLwtTopic);
+    }
+}
+
 void MQTTClient::onMessage(char* topicName, byte* payload, unsigned int length) {
     // Null-terminate payload
     char message[256];
@@ -1428,10 +1447,18 @@ void MQTTClient::onMessage(char* topicName, byte* payload, unsigned int length) 
     
     LOG_D("MQTT message: topic=%s, payload=%s", topicName, message);
     
-    // Forward power meter topic to callback (Tasmota/Shelly SENSOR)
+    // Forward power meter SENSOR topic to callback (Tasmota/Shelly)
     if (_powerMeterTopic[0] != '\0' && strcmp(topicName, _powerMeterTopic) == 0) {
         if (_onPowerMeterMessage) {
             _onPowerMeterMessage(reinterpret_cast<const char*>(payload), length);
+        }
+        return;
+    }
+    
+    // Forward power meter LWT topic to callback (Online/Offline)
+    if (_powerMeterLwtTopic[0] != '\0' && strcmp(topicName, _powerMeterLwtTopic) == 0) {
+        if (_onPowerMeterLwt) {
+            _onPowerMeterLwt(reinterpret_cast<const char*>(payload), length);
         }
         return;
     }

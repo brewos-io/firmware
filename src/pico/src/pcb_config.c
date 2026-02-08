@@ -95,8 +95,8 @@ bool pcb_validate_pins(void) {
     CHECK_PIN(pins->buzzer);
     CHECK_PIN(pins->uart_esp32_tx);
     CHECK_PIN(pins->uart_esp32_rx);
-    CHECK_PIN(pins->uart_meter_tx);
-    CHECK_PIN(pins->uart_meter_rx);
+    CHECK_PIN(pins->_reserved_meter_tx);
+    CHECK_PIN(pins->_reserved_meter_rx);
     CHECK_PIN(pins->i2c_sda);
     CHECK_PIN(pins->i2c_scl);
     CHECK_PIN(pins->input_weight_stop);

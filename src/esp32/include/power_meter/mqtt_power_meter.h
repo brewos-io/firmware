@@ -36,6 +36,12 @@ public:
     void onMqttData(const char* payload, size_t length);
     void onMqttData(JsonDocument& doc);
     
+    // LWT callback - called when Online/Offline status arrives
+    void onLwtMessage(const char* payload, size_t length);
+    
+    // Device online status (from LWT)
+    bool isDeviceOnline() const { return _deviceOnline; }
+    
     // Configuration
     const char* getTopic() const { return _topic.c_str(); }
     const char* getFormat() const;
@@ -51,6 +57,7 @@ private:
     PowerMeterReading _lastReading;
     uint32_t _lastUpdateTime;
     bool _hasData;
+    bool _deviceOnline;   // True when LWT says "Online" (or no LWT received yet but has data)
     char _lastError[64];
     
     // Custom JSON paths for GENERIC format
@@ -68,8 +75,10 @@ private:
     // JSON path extraction helper
     bool extractJsonValue(JsonDocument& doc, const String& path, float& value);
     
-    // Timeout threshold
-    static constexpr uint32_t STALE_THRESHOLD_MS = 10000;
+    // Stale threshold: how long after the last SENSOR message before we consider
+    // data "stale". Only used as fallback when LWT is not available.
+    // Set generously to accommodate Tasmota TelePeriod (default 300s).
+    static constexpr uint32_t STALE_THRESHOLD_MS = 330000;  // 5.5 minutes
 };
 
 #endif // MQTT_POWER_METER_H
