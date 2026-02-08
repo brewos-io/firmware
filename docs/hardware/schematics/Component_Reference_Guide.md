@@ -19,7 +19,6 @@
 | U5  | LM4040DIM3-3.0 | Precision 3.0V voltage reference               | SOT-23-3 |
 | U6  | OPA342UA       | Level probe oscillator (op-amp)                | SOIC-8   |
 | U7  | TLV3201AIDBVR  | Level probe comparator                         | SOT-23-5 |
-| U8  | MAX3485ESA+    | RS485 transceiver                              | SOIC-8   |
 | U9  | OPA2342UA      | ADC reference buffer (dual op-amp)             | SOIC-8   |
 
 ---
@@ -63,7 +62,6 @@
 | D16        | BAT54S      | Pressure ADC overvoltage clamp (fast Schottky)                   | SOT-23  |
 | D_PRESSURE | PESD3V3S1BL | Pressure ADC hard clamp (3.3V TVS, low-leakage, parallel to D16) | SOD-323 |
 | D20        | SMBJ5.0A    | 5V rail TVS protection                                           | SMB     |
-| D21        | SM712       | RS485 A/B line surge protection                                  | SOT-23  |
 
 ---
 
@@ -113,7 +111,6 @@
 | R16 | 10kΩ  | 5%        | Water switch pull-up  |
 | R17 | 10kΩ  | 5%        | Tank level pull-up    |
 | R18 | 10kΩ  | 5%        | Brew handle pull-up   |
-| R19 | 4.7kΩ | 5%        | RS485 DE/RE pull-down |
 
 #### Transistor Base Resistors (R20-R25)
 
@@ -144,10 +141,6 @@
 | ---- | ----- | --------- | ---------------------------------------------------------------- |
 | R40  | 1kΩ   | 5%        | ESP32 UART TX series (5V tolerance protection) + TVS (D_UART_TX) |
 | R41  | 1kΩ   | 5%        | ESP32 UART RX series (5V tolerance protection) + TVS (D_UART_RX) |
-| R44  | 1kΩ   | 5%        | Power meter TX series (5V tolerance protection)                  |
-| R45  | 2.2kΩ | 1%        | J17 RX level shift (upper)                                       |
-| R45A | 3.3kΩ | 1%        | J17 RX level shift (lower)                                       |
-| R45B | 33Ω   | 5%        | J17 RX series (post-divider)                                     |
 
 #### Control Signal Pull-ups (R71, R73)
 
@@ -172,14 +165,12 @@
 | R88 | 100kΩ | 1%        | Comparator reference (lower) |
 | R89 | 1MΩ   | 5%        | Comparator hysteresis        |
 
-#### Ratiometric Compensation & RS485 Biasing (R91-R94)
+#### Ratiometric Compensation (R91-R92)
 
 | Ref     | Value | Tolerance | Function                                                                                               |
 | ------- | ----- | --------- | ------------------------------------------------------------------------------------------------------ |
 | R91     | 10kΩ  | 1%        | 5V monitor divider (upper)                                                                             |
 | R92     | 5.6kΩ | 1%        | 5V monitor divider (lower)                                                                             |
-| R93     | 20kΩ  | 5%        | RS485 A line failsafe pull-up                                                                          |
-| R94     | 20kΩ  | 5%        | RS485 B line failsafe pull-down                                                                        |
 | R_SWDIO | 47Ω   | 5%        | SWDIO series protection (J15-6)                                                                        |
 | R_SWCLK | 22Ω   | 5%        | SWCLK series protection (J15-8, optimized)                                                             |
 | R_XTAL  | 1kΩ   | 5%        | Crystal series resistor (recommended to prevent overdriving crystal, per Raspberry Pi recommendations) |
@@ -228,7 +219,6 @@
 
 | Ref     | Value | Voltage | Type    | Function                                                                          |
 | ------- | ----- | ------- | ------- | --------------------------------------------------------------------------------- |
-| C70     | 100nF | 25V     | Ceramic | MAX3485 VCC decoupling                                                            |
 | C80     | 100nF | 25V     | Ceramic | OPA2342 VCC decoupling                                                            |
 | C81     | 100nF | 25V     | Ceramic | 5V monitor filter                                                                 |
 | C_XTAL  | 22pF  | 50V     | 0603    | Crystal load capacitors (×2, calculated: C_L = 2×(15pF-3pF) = 24pF, use 22pF std) |
@@ -244,8 +234,6 @@
 | --- | ----- | ------- | ------------------------------ |
 | JP1 | 2-pad | OPEN    | Brew NTC selection (50k/10k)   |
 | JP2 | 2-pad | OPEN    | Steam NTC selection (50k/10k)  |
-| JP3 | 2-pad | OPEN    | J17 RX voltage level (5V/3.3V) |
-| JP4 | 3-pad | 1-2     | GPIO7 source (RS485 or TTL)    |
 
 ---
 
@@ -265,8 +253,6 @@
 | Ref | Type           | Pins | Function                                      |
 | --- | -------------- | ---- | --------------------------------------------- |
 | J15 | JST-XH 2.54mm  | 8    | ESP32 display + brew-by-weight                |
-| J17 | JST-XH 2.54mm  | 6    | Power meter interface (LV)                    |
-| J24 | Screw terminal | 2    | Power meter HV input (L, N only - PE removed) |
 | J26 | Screw terminal | 18   | Unified LV terminal (sensors, SSRs)           |
 
 ---
@@ -310,7 +296,7 @@
 
 | Ref | Signal     | Voltage | Function                         |
 | --- | ---------- | ------- | -------------------------------- |
-| TP1 | GPIO20     | 3.3V    | RS485 direction control monitor  |
+| TP1 | GND        | 0V      | Ground reference                 |
 | TP2 | ADC_VREF   | 3.0V    | Precision reference verification |
 | TP3 | 5V_MONITOR | ~1.8V   | Ratiometric calibration point    |
 

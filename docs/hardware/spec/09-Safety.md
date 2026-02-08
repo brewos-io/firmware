@@ -90,7 +90,6 @@ Machine MCB (16A): House circuit protection
 | ADC1 (Steam NTC) | ESD clamp      | PESD5V0S1BL (D15)          | SOD-323                                              |
 | ADC2 (Pressure)  | Schottky + TVS | BAT54S (D16) + PESD3V3S1BL | Overvoltage protection (dual clamp, low-leakage TVS) |
 | 5V Rail          | TVS            | SMBJ5.0A (D20)             | Surge protection                                     |
-| RS485 A/B        | TVS            | SM712 (D21)                | Asymmetric (-7V/+12V)                                |
 | Service TX/RX    | Zener clamp    | BZT52C3V3 (D23/D24)        | 5V TTL protection                                    |
 | USB D+/D-        | ESD clamp      | PESD5V0S1BL (D_USB_DP/DM)  | USB ESD protection (J_USB)                           |
 
@@ -158,7 +157,7 @@ PRESS_SIG ────────┬──────────────�
 | HV section (relays, MOVs, fuse) | ✅ Yes      | Prevents tracking from contamination  |
 | Level probe trace area          | ✅ Yes      | High-impedance, sensitive to moisture |
 | LV analog section               | ✅ Yes      | Protects ADC inputs from drift        |
-| Connectors (J15, J17, J26)      | ❌ Mask off | Must remain solderable                |
+| Connectors (J15, J26)           | ❌ Mask off | Must remain solderable                |
 | Pico module socket              | ❌ Mask off | Module must be removable              |
 | Relay contacts                  | ❌ Mask off | Internal, already sealed              |
 | Test points (TP1-TP3)           | ❌ Mask off | Must remain accessible                |
@@ -183,8 +182,7 @@ PRESS_SIG ────────┬──────────────�
 
 1. **Only relay-switched loads flow through control board** (pump, valves ~6A max)
 2. **Heater power does NOT flow through PCB** (external SSRs connect directly to mains)
-3. **Power metering HV does NOT flow through PCB** (external modules handle their own mains)
-4. **Fused live bus** (10A) feeds relay COMs only
+3. **Fused live bus** (10A) feeds relay COMs only
 5. **6mm creepage/clearance** required between HV and LV sections
 6. **All mounting holes (MH1-MH4) = NPTH** (isolated) - no PE connection on PCB
 7. **J5 (SRif) provides single chassis reference** - connects PCB GND to chassis via dedicated wire
@@ -467,7 +465,6 @@ Test points enable systematic board verification during commissioning and field 
 | ---- | -------- | ------------------- | ------------------- | --------------------- |
 | TP9  | UART0_TX | Serial debug output | 3.3V idle           | Scope for TX activity |
 | TP10 | UART0_RX | Serial debug input  | 3.3V idle           | Scope for RX activity |
-| TP11 | RS485_DE | Direction control   | 0V (RX) / 3.3V (TX) | Verify bus direction  |
 
 ### Commissioning Checklist
 
@@ -475,4 +472,3 @@ Test points enable systematic board verification during commissioning and field 
 2. **Analog calibration:** Measure TP5 with 4.5-digit DMM, record for firmware offset
 3. **Sensor verification:** Compare TP6/TP7 readings against reference thermometer
 4. **Communication test:** Verify UART activity on TP9/TP10 during ESP32 handshake
-5. **RS485 verification:** Monitor TP11 during meter polling (should toggle)

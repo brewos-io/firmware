@@ -21,7 +21,7 @@ Add high-voltage warning symbols and text:
 
 - "⚡ DANGER: HIGH VOLTAGE ⚡" label
 - "230VAC - DISCONNECT BEFORE SERVICING" text
-- IEC 60417-6042 symbol (lightning bolt in triangle) near J1, J2-J4, J24
+- IEC 60417-6042 symbol (lightning bolt in triangle) near J1, J2-J4
 - **Warning near HV connectors:** "NO PE CONNECTION - HV SECTION FLOATING"
 - Dashed line or hatched area boundary between HV and LV sections
 
@@ -109,20 +109,6 @@ Use dual-row labeling: pin numbers above, function labels below. Use compact lab
 
 ---
 
-### J17 - Power Meter Interface (6-pin JST-XH)
-
-| Pin | Label |
-| --- | ----- |
-| 1   | 3V3   |
-| 2   | 5V    |
-| 3   | G     |
-| 4   | RX    |
-| 5   | TX    |
-| 6   | DE    |
-
----
-
-
 ### J5 - Chassis Reference (SRif) - 6.3mm Spade
 
 | Pin | Label | Notes                                         |
@@ -137,19 +123,6 @@ Use dual-row labeling: pin numbers above, function labels below. Use compact lab
 - **CRITICAL:** This is NOT Protective Earth - it's a chassis reference for level probe return path
 
 **Wiring Note:** This connector provides the return path for the level probe signal. Connect to a solid chassis screw or boiler mounting bolt using 18AWG Green/Yellow wire.
-
----
-
-### J24 - External Power Meter HV (2-pos Screw Terminal)
-
-| Pin | Label | Notes                |
-| --- | ----- | -------------------- |
-| 1   | L     | Fused live (from F1) |
-| 2   | N     | Neutral              |
-
-**⚠️ CRITICAL:** PE (Protective Earth) pin **REMOVED**. HV section is floating - no Earth connection on PCB.
-
-**Safety Markings:** Add high-voltage warning symbol (⚡) and "230VAC" label near connector.
 
 ---
 
@@ -203,61 +176,6 @@ JP2
 [█]─[█]  CLOSED = 10kΩ
 ```
 
-### JP3 - Power Meter RX Level (2-pad)
-
-| Position | Label | Function                |
-| -------- | ----- | ----------------------- |
-| OPEN     | 5V    | 5V TTL meters (default) |
-| CLOSED   | 3.3V  | 3.3V logic meters       |
-
-**Silkscreen:**
-
-```
-JP3
-[ ]─[ ]  OPEN = 5V
-[█]─[█]  CLOSED = 3.3V
-```
-
-### JP4 - Power Meter Interface (3-pad)
-
-| Position | Label | Function                     |
-| -------- | ----- | ---------------------------- |
-| 1-2      | RS485 | RS485 differential (default) |
-| 2-3      | TTL   | TTL UART                     |
-
-**Silkscreen:**
-
-```
-JP4
-[1]─[2]─[3]
-│   │   │
-RS485 TTL
-(default)
-```
-
-**Position indicators:** Label pads 1, 2, 3 clearly. Show default position (1-2).
-
-### JP5 - GPIO7 Input Source Selection (3-pad)
-
-| Position | Label | Function                       |
-| -------- | ----- | ------------------------------ |
-| 1-2      | RS485 | MAX3485 RO → GPIO7 (default)   |
-| 2-3      | TTL   | J17_DIV (External) → GPIO7     |
-
-**Silkscreen:**
-
-```
-JP5
-[1]─[2]─[3]
-│   │   │
-RS485 TTL
-(default)
-```
-
-**Purpose:** Hardware isolation for GPIO7 input source. Prevents bus contention if firmware crashes - physically selects either RS485 receiver or external TTL meter input.
-
-**⚠️ CRITICAL:** Must match JP4 setting. If JP4 is set to RS485 mode, JP5 must also be 1-2. If JP4 is set to TTL mode, JP5 must be 2-3.
-
 ---
 
 ## Additional Silkscreen Elements
@@ -266,7 +184,7 @@ RS485 TTL
 
 Add text block with:
 
-- "BrewOS Controller v2.31"
+- "BrewOS Controller v2.32"
 - "brewos.io"
 - "RP2354 MCU"
 
@@ -287,7 +205,6 @@ Label critical test points for debugging:
 | TP9        | ADC2      | Pressure Signal (GPIO28)         | 0.32-2.88V     | Pressure ADC                 |
 | TP10       | UART0_TX  | RP2354 TX (GPIO0)                | 3.3V idle      | Near J15                     |
 | TP11       | UART0_RX  | RP2354 RX (GPIO1)                | 3.3V idle      | Near J15                     |
-| TP12       | RS485_DE  | RS485 Direction Control (GPIO20) | 0V/3.3V        | Near U8 (MAX3485)            |
 
 **Notes:**
 
@@ -313,7 +230,7 @@ Label fiducial markers: FID1, FID2, FID3
 
 Create clear visual separation between high and low voltage areas:
 
-**High Voltage Zone:** J1, J2, J3, J4, J24
+**High Voltage Zone:** J1, J2, J3, J4
 
 - Add "⚡ HIGH VOLTAGE ZONE ⚡" label
 - Add warning: "NO PE CONNECTION - HV SECTION FLOATING"
@@ -321,7 +238,7 @@ Create clear visual separation between high and low voltage areas:
 - Minimum 6mm creepage distance (label "CREEPAGE" or "MILLED SLOT" in gap area)
 - **Milled slot** must be visible on silkscreen (physical cutout between HV and LV sections)
 
-**Low Voltage Zone:** J5, J15, J17, J26, J_USB
+**Low Voltage Zone:** J5, J15, J26, J_USB
 
 - Add "LOW VOLTAGE ZONE (5V/3.3V)" label
 - Add note near J5: "SRif - Chassis Reference (NOT Protective Earth)"
@@ -339,8 +256,6 @@ Create clear visual separation between high and low voltage areas:
 | J4         | Spade     | 1     | Relay K3 (Solenoid)          | Solenoid valve                     |
 | **J5**     | **Spade** | **1** | **Chassis Reference (SRif)** | **Connect to chassis/boiler bolt** |
 | J15        | JST-XH    | 8     | ESP32 display + SWD          | SWD on Pins 6/8 (factory flash)    |
-| J17        | JST-XH    | 6     | Power meter interface        | TTL/RS485 selectable (JP4/JP5)     |
-| J24        | Screw     | **2** | Meter HV passthrough (L, N)  | **PE removed - HV floating**       |
 | J26        | Screw     | 18    | Unified LV terminal          | All sensors + SSR control          |
 | J_USB      | USB-C     | -     | USB programming port         | ⚠️ Disconnect mains before use     |
 

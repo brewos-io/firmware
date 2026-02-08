@@ -64,7 +64,7 @@
 
 ### Connector Placement Exception
 
-Connectors (J1-J5, J15, J17, J24, J26) may be placed at the board edge, but:
+Connectors (J1-J5, J15, J26) may be placed at the board edge, but:
 
 - **Connector body:** May extend to or slightly beyond board edge
 - **Connector pads:** Must maintain ≥2mm clearance from board edge
@@ -90,15 +90,15 @@ When generating Gerber files, ensure DRC rules include:
 
 | Priority          | Edge          | Connectors                                        | Notes                        |
 | ----------------- | ------------- | ------------------------------------------------- | ---------------------------- |
-| **1 (Required)**  | BOTTOM        | All HV spades (J1-J4), Screw terminals (J24, J26) | Mandatory - mains wiring     |
-| **2 (Preferred)** | BOTTOM        | J15 (ESP32), J17 (Power meter)                    | Keep with HV if space allows |
-| **3 (Fallback)**  | LEFT or RIGHT | J15, J17 if bottom is full                        | Maximum 2 edges total        |
+| **1 (Required)**  | BOTTOM        | All HV spades (J1-J4), Screw terminal (J26)       | Mandatory - mains wiring     |
+| **2 (Preferred)** | BOTTOM        | J15 (ESP32)                                        | Keep with HV if space allows |
+| **3 (Fallback)**  | LEFT or RIGHT | J15 if bottom is full                              | Maximum 2 edges total        |
 
 ### ⚠️ Constraint: Maximum 2 Accessible Edges
 
 If all connectors cannot fit on the bottom edge:
 
-- **Bottom edge:** All HV connectors (J1-J4, J24) + J26 (sensor screw terminal) + J5 (SRif) + J15 (ESP32) + J17 (Power meter)
+- **Bottom edge:** All HV connectors (J1-J4) + J26 (sensor screw terminal) + J5 (SRif) + J15 (ESP32)
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -108,14 +108,12 @@ If all connectors cannot fit on the bottom edge:
 │                                                     │
 │  ┌─────┐                                           │
 ├──┤ J15 │  ← LV connectors on LEFT edge (fallback)  │
-│  ├─────┤                                           │
-│  │ J17 │                                           │
 │  └─────┘                                           │
 │                                                     │
 └─────────────────────────────────────────────────────┘
   ║    ║    ║    ║         ║              ║
- J1   J2   J3   J4       J24            J26
- L/N  LED  PUMP SOL    METER HV      SENSORS
+ J1   J2   J3   J4                     J26
+ L/N  LED  PUMP SOL                 SENSORS
       ↑                    ↑              ↑
       └────────────────────┴──────────────┘
               BOTTOM EDGE (PRIMARY)
@@ -135,11 +133,11 @@ If all connectors cannot fit on the bottom edge:
 │   └─────────┘  └────────┘  └─────────────────────────────────────────────┘ │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-  ║   ║   ║   ║   ║       ║         ║                    ║
- J1  J2  J3  J4  J24     J26       J15                  J17
- L/N LED PMP SOL MTR-HV SENSORS   ESP32              METER-LV
- ↑_____↑___↑___↑___↑______↑________↑___________________↑
-                    ALL CONNECTORS ON BOTTOM EDGE
+  ║   ║   ║   ║           ║         ║
+ J1  J2  J3  J4         J26       J15
+ L/N LED PMP SOL       SENSORS   ESP32
+ ↑_____↑___↑___↑________↑________↑
+              ALL CONNECTORS ON BOTTOM EDGE
 ```
 
 ## Mounting Holes
@@ -283,11 +281,11 @@ If cost constraints require 2-layer, the following stackup is acceptable but wit
 │    │        SLOT         ║                                                │   │
 │    ════════════════════════════════════════════════════════════════════════    │
 │    BOTTOM EDGE - ALL CONNECTORS (enclosure opening)                             │
-│    ┌───┬───┬───┬───┬─────┬──────────────────┬────────┬────────┬────┬──────┐ │
-│    │J1 │J2 │J3 │J4 │ J24 │       J26        │  J15   │  J17   │ J5 │J_USB │ │
-│    │L/N│LED│PMP│SOL│MTR  │    SENSORS       │ ESP32  │ METER  │SRif│ USB-C│ │
-│    │   │   │   │   │ HV  │    (18-pos)      │(8-pin) │(6-pin) │    │      │ │
-│    └───┴───┴───┴───┴─────┴──────────────────┴────────┴────────┴────┴──────┘ │
+│    ┌───┬───┬───┬───┬──────────────────┬────────┬────┬──────┐              │
+│    │J1 │J2 │J3 │J4 │       J26        │  J15   │ J5 │J_USB │              │
+│    │L/N│LED│PMP│SOL│    SENSORS       │ ESP32  │SRif│ USB-C│              │
+│    │   │   │   │   │    (18-pos)      │(8-pin) │    │      │              │
+│    └───┴───┴───┴───┴──────────────────┴────────┴────┴──────┘              │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -317,15 +315,14 @@ If bottom edge cannot accommodate all connectors:
     │            │
     │ COMPONENTS │  80mm
 J15─┤            │
-J17─┤            │
     │            │
     └────────────┘
-     J1 J2 J3 J4 J24 J26
+     J1 J2 J3 J4 J26
      ════════════════════
      BOTTOM (HV + Sensors)
 ```
 
-**Rule:** HV connectors (J1-J4, J24) MUST be on bottom edge. LV connectors (J15, J17) should be on bottom edge if space allows, otherwise may move to left edge.
+**Rule:** HV connectors (J1-J4) MUST be on bottom edge. LV connectors (J15) should be on bottom edge if space allows, otherwise may move to left edge.
 
 ---
 
@@ -572,7 +569,7 @@ Standard FR4 coating is NOT sufficient for high-voltage isolation. IPC-2221B sta
 - Safety warnings near HV section ("⚠️ HIGH VOLTAGE")
 - Pin 1 indicators on all connectors
 - Polarity markings (diodes, caps, LEDs)
-- Jumper configuration labels (JP1-JP4)
+- Jumper configuration labels (JP1-JP2)
 - Test point labels (TP1-TP3)
 - Component references
 

@@ -4,7 +4,8 @@
 
 | Rev      | Date         | Description                                                                               |
 | -------- | ------------ | ----------------------------------------------------------------------------------------- |
-| **2.31** | **Jan 2026** | **CURRENT** - RP2354 Discrete MCU Migration (Module → Chip, SWD Support)                  |
+| **2.32** | **Feb 2026** | **CURRENT** - Remove Hardware Power Metering (MQTT-Only)                                  |
+| 2.31     | Jan 2026     | RP2354 Discrete MCU Migration (Module → Chip, SWD Support)                                |
 | 2.30     | Jan 06 2026  | SMD Transition (SMD Fuses, V-Chip Caps) & SRif Grounding                                  |
 | 2.29     | Dec 22 2025  | SRif Grounding Architecture (Remove PE from PCB, Chassis Reference System)                |
 | 2.28     | Dec 14 2025  | RP2350 Engineering Verification ECOs (5V tolerance, bulk cap, safety docs)                |
@@ -22,6 +23,88 @@
 | 2.19     | Dec 2025     | Removed spare relay K4                                                                    |
 | 2.17     | Nov 2025     | Brew-by-weight support (J15 8-pin)                                                        |
 | 2.16     | Nov 2025     | Production-ready specification                                                            |
+
+---
+
+## v2.32 (February 2026) - Remove Hardware Power Metering (MQTT-Only)
+
+**Design Simplification: Hardware Power Metering Removed**
+
+This revision removes all hardware power metering support from the PCB. Power monitoring is now handled exclusively via MQTT smart plugs (Shelly, Tasmota, generic). This eliminates ~15 components, 2 connectors, and frees 3 GPIOs.
+
+### Components Removed
+
+| Component | Part Number | Function | Notes |
+| --------- | ----------- | -------- | ----- |
+| **J17** | JST B6B-XH-A | Power meter LV connector (6-pin) | UART/RS485 interface |
+| **J24** | Screw 2-pos | Power meter HV connector (L, N) | Mains pass-through |
+| **U8** | MAX3485ESA+ | RS485 transceiver | SOIC-8 |
+| **D21** | SM712 | RS485 TVS protection | SOT-23 |
+| **R44** | 1kΩ | Meter TX series protection | 0805 |
+| **R45** | 2.2kΩ | J17 RX level shift (upper) | 0805 |
+| **R45A** | 3.3kΩ | J17 RX level shift (lower) | 0805 |
+| **R45B** | 33Ω | J17 RX series protection | 0805 |
+| **R93** | 20kΩ | RS485 A line failsafe bias | 0805 |
+| **R94** | 20kΩ | RS485 B line failsafe bias | 0805 |
+| **R19** | 4.7kΩ | RS485 DE/RE pull-down | 0805 |
+| **C70** | 100nF | MAX3485 VCC decoupling | 0805 |
+| **JP3** | 2-pad | Power meter RX voltage select | Solder jumper |
+| **JP4** | 3-pad | Power meter interface select | Solder jumper |
+| **TP1** | Test point | RS485 DE/RE monitor (GPIO20) | 1.5mm pad |
+
+### GPIOs Freed
+
+| GPIO | Old Function | New Status |
+| ---- | ------------ | ---------- |
+| GPIO6 | UART1 TX (Meter) | **Available** |
+| GPIO7 | UART1 RX (Meter) | **Available** |
+| GPIO20 | RS485 DE/RE | **Available** |
+
+GPIO utilization: 22/30 → 19/30 (3 additional GPIOs available for future use)
+
+### Rationale
+
+- Power metering via MQTT smart plugs (Shelly, Tasmota) provides equivalent functionality without PCB complexity
+- Eliminates J17 wiring, J24 HV wiring, and CT clamp installation
+- Reduces BOM cost by ~$5-8 per board
+- Simplifies PCB layout (frees bottom-edge connector space)
+- MQTT integration already fully implemented on ESP32
+
+### Firmware Impact
+
+- **Pico:** Remove `power_meter.c/h`, UART1 initialization, MSG_POWER_METER protocol
+- **ESP32:** Remove HARDWARE_MODBUS source type, keep MQTT power meter code
+- **Protocol:** MSG_POWER_METER (0x0B), MSG_CMD_POWER_METER_CONFIG (0x21), MSG_CMD_POWER_METER_DISCOVER (0x22) marked as deprecated/reserved
+
+### BOM Impact
+
+| Change Type | Count | Est. Cost Impact |
+| ----------- | ----- | ---------------- |
+| Removed components | 15 | **-$5.00** |
+| **Total BOM Δ** | **-15** | **~-$5.00 savings** |
+
+### Files Modified
+
+| File | Changes |
+| ---- | ------- |
+| `spec/01-Overview.md` | Removed power monitoring from design goals |
+| `spec/02-GPIO-Allocation.md` | Freed GPIO6/7/20, updated utilization |
+| `spec/06-Connectors.md` | Removed J17, J24 sections |
+| `spec/07-BOM.md` | Removed 15 components |
+| `spec/08-PCB-Layout.md` | Removed J17/J24 from layout |
+| `spec/09-Safety.md` | Removed power meter safety references |
+| `schematics/Schematic_Reference.md` | Removed Sheet 8 (Power Metering) |
+| `schematics/netlist.csv` | Removed 15 component entries |
+| `schematics/Component_Reference_Guide.md` | Removed power meter references |
+| `Specification.md` | Updated interfaces and GPIO summary |
+| `README.md` | Updated connector reference |
+| `CHANGELOG.md` | This entry |
+
+### Design Verdict
+
+**Status:** Production Ready - Design Simplification
+
+This change reduces PCB complexity while maintaining full power monitoring capability via MQTT. The ESP32 MQTT power meter integration provides equivalent data (voltage, current, power, energy, frequency, power factor) from smart plugs, without requiring any on-board metering hardware.
 
 ---
 

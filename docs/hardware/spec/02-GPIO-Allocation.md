@@ -82,12 +82,11 @@
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-│  │  POWER METERING (Universal External via UART/RS485)                     │  │
-│  │  ├── GPIO6 ─── METER TX (UART to meter RX / RS485 DI)                  │  │
-│  │  ├── GPIO7 ─── METER RX (UART from meter TX / RS485 RO)                │  │
-│  │  └── GPIO20 ── RS485 DE/RE (Direction control for MAX3485)             │  │
-│  │  Supports: PZEM-004T, JSY-MK-163T/194T, Eastron SDM, and more          │  │
-│  │  No HV measurement circuitry on PCB - J24 provides pass-through to meter│  │
+│  │  FORMERLY POWER METERING (REMOVED v2.32 - MQTT only)                   │  │
+│  │  ├── GPIO6 ─── **NOW AVAILABLE** (was UART1 TX / Meter)               │  │
+│  │  ├── GPIO7 ─── **NOW AVAILABLE** (was UART1 RX / Meter)               │  │
+│  │  └── GPIO20 ── **NOW AVAILABLE** (was RS485 DE/RE)                    │  │
+│  │  Power metering now handled via MQTT smart plugs (no hardware needed)  │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐  │
@@ -112,7 +111,7 @@
 │  │  ⚠️ WARNING: Disconnect mains before connecting USB! (Safety)          │  │
 │  └─────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
-│  GPIO UTILIZATION: 22/30 used (GPIO8,9,16,22,23,24,25 available)              │
+│  GPIO UTILIZATION: 19/30 used (GPIO6,7,8,9,16,20,22,23,24,25 available)              │
 │  ✅ GPIO8,9: NOW AVAILABLE (I2C accessory port removed)                      │
 │  ✅ GPIO16,22: NOW AVAILABLE (disconnected from J15, traces to SWD)          │
 │  ✅ GPIO23-25: NOW AVAILABLE (previously internal to Pico module)            │
@@ -131,8 +130,8 @@
 | 3      | Tank Level Sensor               | Input     | Digital     | Internal PU   | ESD clamp                                          |
 | 4      | Steam Boiler Level (Comparator) | Input     | Digital     | None          | TLV3201 output                                     |
 | 5      | Brew Handle Switch              | Input     | Digital     | Internal PU   | ESD clamp                                          |
-| 6      | Meter TX (UART1)                | Output    | Digital     | None          | 1kΩ series R44 (5V tolerance protection)           |
-| 7      | Meter RX (UART1)                | Input     | Digital     | None          | 5V→3.3V divider (R45/R45A) + 33Ω R45B (ESD/ringing protection) |
+| 6      | **Available**                   | **I/O**   | **Digital** | **None**      | **Was Meter TX (removed v2.32)**                   |
+| 7      | **Available**                   | **I/O**   | **Digital** | **None**      | **Was Meter RX (removed v2.32)**                   |
 | 8      | **Available**                   | **I/O**   | **Digital** | **None**      | **Unused GPIO**                                    |
 | 9      | **Available**                   | **I/O**   | **Digital** | **None**      | **Unused GPIO**                                    |
 | 10     | Relay K1 + LED                  | Output    | Digital     | None          | -                                                  |
@@ -145,7 +144,7 @@
 | 17     | SPI0 CS (Spare)                 | Output    | Digital     | None          | -                                                  |
 | 18     | SPI0 SCK (Spare)                | Output    | Digital     | None          | -                                                  |
 | 19     | Buzzer PWM                      | Output    | PWM         | None          | -                                                  |
-| 20     | RS485 DE/RE                     | Output    | Digital     | Pull-down     | MAX3485 direction (TTL mode: NC)                   |
+| 20     | **Available**                   | **I/O**   | **Digital** | **None**      | **Was RS485 DE/RE (removed v2.32)**                |
 | 21     | WEIGHT_STOP (ESP32→RP2354)      | Input     | Digital     | Pull-down     | Brew-by-weight signal (J15 Pin 7)                  |
 | 22     | **Available**                   | **I/O**   | **Digital** | **None**      | **Disconnected from J15 (traces moved to SWD)**    |
 | **23** | **Available**                   | **I/O**   | **Digital** | **None**      | **Previously internal to Pico module**             |
@@ -175,8 +174,8 @@ Series resistors (1kΩ) and TVS diodes are used on UART lines for 5V tolerance p
 | ---- | -------- | -------- | --------- | ------------------------------------------------------ |
 | 0    | UART0 TX | R40 1kΩ  | D_UART_TX | 5V tolerance protection, limits fault current to <500µA during power sequencing |
 | 1    | UART0 RX | R41 1kΩ  | D_UART_RX | 5V tolerance protection, limits fault current to <500µA during power sequencing |
-| 6    | Meter TX | R44 1kΩ  | -         | 5V tolerance protection for external meter interface  |
-| 7    | Meter RX | R45/R45A divider + R45B 33Ω | - | 5V→3.3V level shifter (2.2kΩ/3.3kΩ) + series protection |
+| 6    | **Available** | -    | -         | **Was Meter TX (removed v2.32)**                     |
+| 7    | **Available** | -    | -         | **Was Meter RX (removed v2.32)**                     |
 
 **⚠️ CRITICAL:** The RP2354 "5V Tolerant" GPIO feature requires IOVDD (3.3V) to be present. If an external peripheral (ESP32 via separate USB power) initializes before the Pico's buck converter, a condition exists where V_GPIO=5V and IOVDD=0V. In this state, internal protection diodes are unpowered, causing forward-bias through parasitic diodes to the 3.3V rail, resulting in silicon latch-up or burnout. The 1kΩ series resistors limit fault current to <500µA, providing safe margin even when IOVDD is absent.
 
@@ -208,7 +207,7 @@ The RP2354 has a documented errata (E9) where GPIO inputs can latch in a high st
 | Input GPIO | Function          | Protection                                      | Notes                   |
 | ---------- | ----------------- | ----------------------------------------------- | ----------------------- |
 | GPIO2-5    | Switches          | Internal pull-up + external pull-down (R10-R13) | Ensures defined state   |
-| GPIO20-21  | RS485/WEIGHT_STOP | 4.7kΩ pull-down (R19/R73)                       | Prevents false triggers |
+| GPIO21     | WEIGHT_STOP       | 4.7kΩ pull-down (R73)                           | Prevents false triggers |
 | GPIO16,22  | Available         | None                                            | Disconnected from J15   |
 
 **All digital inputs have either internal pull-ups OR external pull-down resistors**, ensuring they cannot float and trigger the E9 errata condition.

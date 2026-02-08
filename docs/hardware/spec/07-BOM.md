@@ -11,7 +11,6 @@
 | 1     | U5     | Precision Voltage Ref      | LM4040DIM3-3.0    | SOT-23-3     | 3.0V shunt                                               |
 | 1     | U6     | Op-Amp                     | OPA342UA          | SOIC-8       | Level probe oscillator                                   |
 | 1     | U7     | Comparator                 | TLV3201AIDBVR     | SOT-23-5     | Level probe detector                                     |
-| 1     | U8     | RS485 Transceiver          | MAX3485ESA+       | SOIC-8       | For industrial meters                                    |
 | 1     | U9     | Dual Op-Amp                | OPA2342UA         | SOIC-8       | VREF buffer + spare                                      |
 
 ## Transistors and Diodes
@@ -24,7 +23,6 @@
 | 1     | D16                      | Schottky Clamp | BAT54S          | SOT-23      | Pressure ADC protection                                                                         |
 | **1** | **D_PRESSURE**           | **TVS Diode**  | **PESD3V3S1BL** | **SOD-323** | **Pressure ADC hard clamp (parallel to D16, low-leakage)**                                      |
 | 1     | D20                      | TVS Diode      | SMBJ5.0A        | SMB         | 5V rail protection                                                                              |
-| 1     | D21                      | RS485 TVS      | SM712           | SOT-23      | A/B line protection                                                                             |
 | **2** | **D_UART_TX, D_UART_RX** | **TVS Diode**  | **ESDALC6V1**   | **SOD-323** | **UART ESD protection (J15)**                                                                   |
 | **1** | **D_VBUS**               | **Schottky**   | **SS14**        | **SMA**     | **VBUS to VSYS isolation (1A rating required for ESP32 load, prevents backfeeding HLK module)** |
 | **2** | **D_USB_DP, D_USB_DM**   | **TVS Diode**  | **PESD5V0S1BL** | **SOD-323** | **USB D+/D- ESD protection (J_USB)**                                                            |
@@ -55,7 +53,7 @@
 | --- | ----------- | ----- | --------- | ------- | ----------------------------- |
 | 3   | R16-R18     | 10kΩ  | 5%        | 0805    | Switch pull-ups               |
 | 1   | R71         | 10kΩ  | 5%        | 0805    | Pico RUN pull-up              |
-| 6   | R11-R15,R19 | 4.7kΩ | 5%        | 0805    | Driver pull-downs (RP2350 E9) |
+| 5   | R11-R15     | 4.7kΩ | 5%        | 0805    | Driver pull-downs (RP2350 E9) |
 | 1   | R73         | 4.7kΩ | 5%        | 0805    | WEIGHT_STOP pull-down         |
 | 1   | R74         | 4.7kΩ | 5%        | 0805    | SPARE1 pull-down (GPIO16)     |
 | 1   | R75         | 4.7kΩ | 5%        | 0805    | SPARE2 pull-down (GPIO22)     |
@@ -73,11 +71,6 @@
 | Qty   | Ref                    | Value        | Tolerance | Package  | Notes                                                                                                  |
 | ----- | ---------------------- | ------------ | --------- | -------- | ------------------------------------------------------------------------------------------------------ |
 | 2     | R40-R41                | **1kΩ**      | 5%        | 0805     | UART series (5V tolerance protection) + TVS diodes (D_UART_TX/RX)                                      |
-| 1     | R44                    | 1kΩ          | 5%        | 0805     | Power meter TX series (5V tolerance protection)                                                        |
-| 1     | R45                    | 2.2kΩ        | 1%        | 0805     | J17 RX level shift (upper)                                                                             |
-| 1     | R45A                   | 3.3kΩ        | 1%        | 0805     | J17 RX level shift (lower)                                                                             |
-| 1     | R45B                   | 33Ω          | 5%        | 0805     | J17 RX series                                                                                          |
-| 2     | R93-R94                | 20kΩ         | 5%        | 0805     | RS485 failsafe bias                                                                                    |
 | **1** | **R_SWDIO**            | **47Ω**      | **5%**    | **0805** | **SWDIO Series Protection (J15-6)**                                                                  |
 | **1** | **R_SWCLK**            | **22Ω**      | **5%**    | **0805** | **SWCLK Series Protection (J15-8, optimized for signal integrity)**                                  |
 | **1** | **R_XTAL**             | **1kΩ**      | **5%**    | **0805** | **Crystal series resistor (recommended to prevent overdriving crystal)**                               |
@@ -136,7 +129,7 @@
 | **~6** | **C_IOVDD**                 | **100nF** | **25V**          | **0805** | **RP2354 IOVDD decoupling (one per pin)**                                                        |
 | **1**  | **C_DVDD**                  | **10µF**  | **10V**          | **1206** | **RP2354 DVDD bulk (external LDO output)**                                                       |
 | **1**  | **C_DVDD2**                 | **100nF** | **25V**          | **0805** | **RP2354 DVDD decoupling (external LDO output)**                                                 |
-| ~15    | Various                     | 100nF     | 25V              | 0805     | Decoupling                                                                                       |
+| ~14    | Various                     | 100nF     | 25V              | 0805     | Decoupling                                                                                       |
 | 2      | C61-C62                     | 10nF      | 50V              | 0805     | Wien bridge timing                                                                               |
 | 1      | C64                         | 1µF       | 25V              | 0805     | Level probe AC coupling                                                                          |
 | **2**  | **C_HUM_BREW, C_HUM_STEAM** | **10nF**  | **25V**          | **0805** | **Mains hum filter (50/60Hz rejection, fc≈1.6kHz)**                                              |
@@ -189,8 +182,6 @@
 | 1     | J5        | 6.3mm Spade           | Keystone 1285                   | Chassis Reference (SRif)                                       |
 | 1     | **J26**   | Screw Terminal 18-pos | Phoenix MKDS 1/18-5.08          | All LV connections                                             |
 | 1     | J15       | JST-XH 8-pin          | JST B8B-XH-A                    | ESP32 module (SWD support on Pins 6,8)                         |
-| 1     | J17       | JST-XH 6-pin          | JST B6B-XH-A                    | Power meter                                                    |
-| 1     | J24       | Screw Terminal 2-pos  | 5.08mm pitch                    | Power meter HV (L, N only - PE removed)                        |
 | **1** | **J_USB** | **USB-C Connector**   | **USB-C 2.0 (e.g., USB-C-016)** | **RP2354 USB programming/debug (VBUS, D+, D-, GND, CC1, CC2)** |
 
 ## Solder Jumpers
@@ -199,8 +190,6 @@
 | --- | --- | ----- | --------------------- | ----------- |
 | 1   | JP1 | 2-pad | Brew NTC selection    | OPEN (50kΩ) |
 | 1   | JP2 | 2-pad | Steam NTC selection   | OPEN (50kΩ) |
-| 1   | JP3 | 2-pad | Power meter RX level  | OPEN (5V)   |
-| 1   | JP4 | 3-pad | Power meter interface | 1-2 (RS485) |
 
 ## Test Points
 
@@ -230,7 +219,6 @@ Test points are organized by function for systematic board bring-up and debuggin
 | --- | ---- | -------- | -------- | -------------------------------- |
 | 1   | TP9  | UART0_TX | Near J15 | ESP32 TX (GPIO0)                 |
 | 1   | TP10 | UART0_RX | Near J15 | ESP32 RX (GPIO1)                 |
-| 1   | TP11 | RS485_DE | Near U8  | RS485 direction control (GPIO20) |
 
 ## Mounting Hardware
 
@@ -248,4 +236,3 @@ Test points are organized by function for systematic board bring-up and debuggin
 | Pressure Transducer  | 0-16 bar, 0.5-4.5V    | Group head pressure |
 | NTC Sensors (×2)     | 50kΩ @ 25°C (or 10kΩ) | Boiler temperatures |
 | ESP32 Display Module | Custom PCB            | User interface      |
-| Power Meter          | PZEM-004T or similar  | Power monitoring    |

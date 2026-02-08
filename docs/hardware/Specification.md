@@ -1,6 +1,6 @@
 # ECM Synchronika Custom Control Board
 
-## Production Design Specification v2.31
+## Production Design Specification v2.32
 
 **Target:** Plug & play replacement for GICAR control board and PID controller  
 **Status:** Draft specification - Ready for review and prototype
@@ -57,15 +57,13 @@
 | 3× ADC          | Brew NTC, Steam NTC, Pressure transducer           |
 | 4× Digital In   | Water switch, Tank level, Brew handle, Steam level |
 | UART0           | ESP32 display module                               |
-| UART1           | Power meter (TTL/RS485)                            |
 | USB-C (J_USB)   | Programming, debugging, serial logging             |
 
 ### Critical Design Points
 
 1. **Only relay-switched loads flow through control board** (pump, valves ~6A max)
 2. **Heater power does NOT flow through PCB** (external SSRs connect directly to mains)
-3. **Power metering HV does NOT flow through PCB** (external modules handle their own mains)
-4. **Fused live bus** (10A) feeds relay COMs only
+3. **Fused live bus** (10A) feeds relay COMs only
 5. **6mm creepage/clearance** required between HV and LV sections
 6. **All connectors on bottom edge** (enclosure opens from bottom only to prevent water ingress)
 
@@ -102,14 +100,14 @@
 | ----- | ---------------- | --------- |
 | 0-1   | UART0 (ESP32)    | TX/RX     |
 | 2-5   | Switches         | Input     |
-| 6-7   | UART1 (Meter)    | TX/RX     |
-| 8-9   | I2C              | SDA/SCL   |
+| 6-7   | **SPARE**        | -         |
+| 8-9   | **SPARE**        | -         |
 | 10-12 | Relay drivers    | Output    |
 | 13-14 | SSR drivers      | Output    |
 | 15    | Status LED       | Output    |
 | 16-18 | **SPARE** (SPI0) | -         |
 | 19    | Buzzer           | PWM       |
-| 20    | RS485 DE/RE      | Output    |
+| 20    | SPARE            | -         |
 | 21    | WEIGHT_STOP      | Input     |
 | 22    | SPARE            | -         |
 | 26-28 | ADC0-2           | Analog    |
@@ -122,6 +120,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 | Version | Date     | Changes                                                        |
 | ------- | -------- | -------------------------------------------------------------- |
+| 2.32    | Feb 2026 | Removed hardware power metering (MQTT-only), freed GPIO6/7/20  |
 | 2.31    | Jan 2026 | RP2354 discrete migration, external LDO, SRif C-R network, 105°C capacitors |
 | 2.28    | Dec 2025 | RP2350 Engineering Verification ECOs (5V tolerance, bulk cap)  |
 | 2.27    | Dec 2025 | Schematic diagram clarifications, netlist cleanup              |

@@ -17,7 +17,6 @@ This specification defines a custom control PCB to replace the factory GICAR con
 | Pressure Monitoring | Real-time pressure display and profiling           |
 | Safety Interlocks   | Water level, over-temperature, watchdog protection |
 | Connectivity        | ESP32 display module for WiFi, MQTT, Web API       |
-| Power Monitoring    | Total machine power consumption metering           |
 | User Feedback       | Status LEDs, buzzer for alerts                     |
 | Serviceability      | Accessible test points                             |
 
@@ -35,11 +34,11 @@ This specification defines a custom control PCB to replace the factory GICAR con
 │   │                 │     │  │  POWER SUPPLY    ║      SECTION         │   │    │
 │   └─────────────────┘     │  │  (HLK-15M05C)    ║                      │   │    │
 │                           │  │       │          ║   ┌──────────────┐   │   │    │
-│   ┌─────────────────┐     │  │       ▼          ║   │   RP2354     │   │   │    │
-│   │  POWER METER    │     │  │    5V Rail ──────╫──►│  Microcontroller │   │    │
-│   │  (External)     │◄────│  │       │          ║   │   (QFN-60)   │   │   │    │
-│   │  + CT Clamp     │     │  │       ▼          ║   └──────┬───────┘   │   │    │
-│   └─────────────────┘     │  │   3.3V Rail ─────╫──────────┘           │   │    │
+│                           │  │       ▼          ║   │   RP2354     │   │   │    │
+│                           │  │    5V Rail ──────╫──►│  Microcontroller │   │    │
+│                           │  │       │          ║   │   (QFN-60)   │   │   │    │
+│                           │  │       ▼          ║   └──────┬───────┘   │   │    │
+│                           │  │   3.3V Rail ─────╫──────────┘           │   │    │
 │                           │  │                  ║                      │   │    │
 │   ┌─────────────────┐     │  │   RELAY DRIVERS  ║   SENSOR INPUTS      │   │    │
 │   │   RELAYS (3x)   │◄────│  │   + INDICATOR    ║   + PROTECTION       │   │  │
@@ -100,7 +99,6 @@ This specification defines a custom control PCB to replace the factory GICAR con
 | --------------------- | -------------- | -------------------------------------- |
 | Mains → 5V DC         | Reinforced     | 3000V AC for 1 minute                  |
 | Relay Contacts → Coil | Basic          | 2500V AC                               |
-| Power Meter → Logic   | Functional     | Via opto-isolated UART in meter module |
 
 ### Environmental
 
@@ -145,7 +143,6 @@ This specification defines a custom control PCB to replace the factory GICAR con
 | Interface | Type       | Purpose                               | Connector |
 | --------- | ---------- | ------------------------------------- | --------- |
 | ESP32     | UART0      | Display module, WiFi, user interface  | J15       |
-| Meter     | UART/RS485 | External power meter communication    | J17       |
 | USB       | USB 2.0    | Programming, debugging, serial logging | J_USB     |
 
 ### User Interface (Onboard)

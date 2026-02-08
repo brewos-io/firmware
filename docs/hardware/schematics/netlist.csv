@@ -6,7 +6,6 @@ U4,LDO,TLV74311PDBVR,SOT-23-5,VIN=+3.3V,VOUT=DVDD,GND=GND,1.1V LDO for RP2354 DV
 U5,Voltage_Ref,LM4040DIM3-3.0,SOT-23,VREF=LM4040_VREF,GND=GND,,Precision 3.0V shunt reference (feeds U9A buffer)
 U6,Op_Amp,OPA342UA,SOIC-8,VCC=+3.3V,OUT=AC_OUT,GND=GND,Level probe oscillator (Wien bridge)
 U7,Comparator,TLV3201AIDBVR,SOT-23-5,VCC=+3.3V,OUT=GPIO4,GND=GND,Level probe detector with hysteresis
-U8,RS485_Transceiver,MAX3485ESA+,SOIC-8,VCC=+3.3V,DI=GPIO6,RO=U8_RO,A=RS485_A,B=RS485_B,RS485 transceiver for industrial meters (DE/RE=GPIO20) - RO routed via JP4
 U9,Dual_Op_Amp,OPA2342UA,SOIC-8,VCC=+3.3V,OUT_A=U9A_OUT,IN_A+=LM4040_VREF,IN_A-=U9A_OUT,VREF buffer (U9A unity-gain follower) + spare (U9B)
 K1,Relay_SPST,APAN3105,Relay_SPST,Coil+=+5V,Coil-=K1_COIL,COM=J2_COM,NO=J2_NO,Mains indicator lamp relay 3A (slim 5mm)
 K2,Relay_SPST,G5LE-1A4-E_DC5,Relay_SPST,Coil+=+5V,Coil-=K2_COIL,COM=J3_COM,NO=J3_NO,Pump relay 16A (high-capacity -E variant required)
@@ -28,7 +27,6 @@ D15,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=ADC1,,Steam NTC ESD
 D16,Schottky_Diode,BAT54S,SOT-23,A1=GPIO28,A2=GND,K=+3.3V,Pressure ADC2 overvoltage protection (fast Schottky clamp)
 D_PRESSURE,TVS_Diode,PESD3V3S1BL,SOD-323,A=GND,K=GPIO28,,Pressure ADC2 hard clamp (3.3V TVS, low-leakage, parallel to D16 for redundant protection)
 D20,TVS_Diode,SMBJ5.0A,SMB,A=GND,K=+5V,,5V rail protection
-D21,TVS_Diode,SM712,SOT-23,1=RS485_A,2=GND,3=RS485_B,RS485 A/B line surge protection (-7V to +12V asymmetric)
 D_UART_TX,TVS_Diode,ESDALC6V1,SOD-323,A=GND,K=J15_3,,UART TX ESD protection (near J15 connector)
 D_UART_RX,TVS_Diode,ESDALC6V1,SOD-323,A=GND,K=J15_4,,UART RX ESD protection (near J15 connector)
 LED1,LED,Green_0805,0805,A=LED1_A,K=K1_COIL,,K1 indicator (parallel with relay coil)
@@ -63,7 +61,6 @@ R15,Resistor,4.7k,0805,1=GPIO14,2=GND,,SSR2 driver pull-down (per RP2350 errata 
 R16,Resistor,10k,0805,1=+3.3V,2=GPIO2,,Water reservoir switch pull-up
 R17,Resistor,10k,0805,1=+3.3V,2=GPIO3,,Tank level sensor pull-up
 R18,Resistor,10k,0805,1=+3.3V,2=GPIO5,,Brew handle switch pull-up
-R19,Resistor,4.7k,0805,1=GPIO20,2=GND,,RS485 DE/RE pull-down (per RP2350 errata E9)
 R20,Resistor,470R,0805,1=GPIO10,2=GPIO10_R,,Q1 base resistor
 R21,Resistor,470R,0805,1=GPIO11,2=GPIO11_R,,Q2 base resistor
 R22,Resistor,470R,0805,1=GPIO12,2=GPIO12_R,,Q3 base resistor
@@ -76,10 +73,6 @@ R34,Resistor,330R,0805,1=GPIO13,2=LED5_A,,SSR1 LED current limit (logic side)
 R35,Resistor,330R,0805,1=GPIO14,2=LED6_A,,SSR2 LED current limit (logic side)
 R40,Resistor,1k,0805,1=GPIO0,2=J15_3,,UART0 TX series (5V tolerance protection, limits fault current to <500µA)
 R41,Resistor,1k,0805,1=GPIO1,2=J15_4,,UART0 RX series (5V tolerance protection, limits fault current to <500µA)
-R44,Resistor,1k,0805,1=GPIO6,2=U8_DI,,PZEM/RS485 TX series (5V tolerance protection, to MAX3485 DI)
-R45,Resistor,2.2k_1%,0805,1=J17_RX,2=J17_DIV,,J17 RX 5V→3.3V level shifter (upper divider)
-R45A,Resistor,3.3k_1%,0805,1=J17_DIV,2=GND,,J17 RX 5V→3.3V level shifter (lower divider)
-R45B,Resistor,33R,0805,1=J17_DIV,2=GPIO7,,J17 RX series protection (after divider)
 R48,Resistor,330R,0805,1=GPIO15,2=LED7_A,,Status LED current limit
 R49,Resistor,100R,0805,1=GPIO19,2=BZ1,,Buzzer series
 R71,Resistor,10k,0805,1=+3.3V,2=RP2354_RUN,,RP2354 RUN pull-up
@@ -101,8 +94,6 @@ R88,Resistor,100k_1%,0805,1=VREF,2=GND,,Level probe reference lower
 R89,Resistor,1M,0805,1=GPIO4,2=COMP_POS,,Level probe hysteresis
 R91,Resistor,10k_1%,0805,1=+5V,2=5V_DIV,,5V monitor upper (ratiometric compensation)
 R92,Resistor,5.6k_1%,0805,1=5V_DIV,2=GND,,5V monitor lower (ratiometric compensation)
-R93,Resistor,20k,0805,1=+3.3V,2=RS485_A,,RS485 failsafe bias pull-up on A line (bus idle state definition)
-R94,Resistor,20k,0805,1=RS485_B,2=GND,,RS485 failsafe bias pull-down on B line (bus idle state definition)
 C1,Capacitor,100nF_X2,Radial,1=L_FUSED,2=N_FUSED,,Mains EMI filter
 C2,Capacitor,470uF_6.3V,105C_AlPolymer,1=+5V,2=GND,,5V bulk cap (105°C Aluminum Polymer, e.g., Panasonic OS-CON) - Required for >5 year life at 65°C ambient
 C3,Capacitor,22uF_25V,1206,1=+5V,2=GND,,Buck input cap (ceramic X5R)
@@ -132,7 +123,6 @@ C62,Capacitor,10nF,0805,1=WIEN2,2=GND,,Level probe Wien bridge timing (~1.6kHz f
 C63,Capacitor,100nF,0805,1=+3.3V,2=GND,,TLV3201 VCC decoupling
 C64,Capacitor,1uF,0805,1=AC_OUT,2=AC_SENSE,,Level probe AC coupling
 C65,Capacitor,100nF,0805,1=AC_SENSE,2=GND,,Level probe sense filter
-C70,Capacitor,100nF,0805,1=+3.3V,2=GND,,MAX3485 VCC decoupling
 C80,Capacitor,100nF,0805,1=+3.3V,2=GND,,OPA2342 (U9) VCC decoupling
 C81,Capacitor,100nF,0805,1=5V_DIV,2=GND,,5V monitor filter
 L1,Inductor,2.2uH_3A,1210,1=SW,2=+3.3V,,Buck inductor (TPS563200) - 2.2µH per TI datasheet for 3.3V output
@@ -148,8 +138,6 @@ BZ1,Buzzer,Passive_12mm,TH,1=BZ1_POS,2=GND,,Passive piezo buzzer
 FB1,Ferrite_Bead,600R_100MHz,0603,1=+3.3V,2=3V3_ANALOG,,ADC reference section isolation (feeds R7→LM4040→U9A→ADC_VREF)
 JP1,Solder_Jumper,Open,2-pad,1=ADC_VREF,2=R1A,,Brew NTC selection (OPEN=50kΩ ECM/Profitec, CLOSE=10kΩ Rocket/Gaggia)
 JP2,Solder_Jumper,Open,2-pad,1=ADC_VREF,2=R2A,,Steam NTC selection (OPEN=50kΩ ECM/Profitec, CLOSE=10kΩ Rocket/Gaggia)
-JP3,Solder_Jumper,Open,2-pad,1=J17_RX,2=J17_DIV,,Power meter RX level (OPEN=5V TTL meters, CLOSE=3.3V logic meters)
-JP4,Solder_Jumper,Center+A,3-pad,1=U8_RO,2=GPIO7,3=J17_DIV,,Power meter interface select (1-2=RS485 differential, 2-3=TTL UART)
 J1,Connector,Terminal_2pos,6.3mm_Spade,1=L,2=N,Mains input (L, N only - PE removed, HV section floating)
 J2,Connector,Terminal_2pos,6.3mm_Spade,1=J2_COM,2=J2_NO,,K1 output (Mains indicator lamp)
 J3,Connector,Terminal_2pos,6.3mm_Spade,1=J3_COM,2=J3_NO,,K2 output (Pump)
@@ -157,9 +145,7 @@ J4,Connector,Terminal_2pos,6.3mm_Spade,1=J4_COM,2=J4_NO,,K3 output (Solenoid)
 J5,Connector,Terminal_1pos,6.3mm_Spade,1=J5,Chassis Reference (SRif) - connects to PCB GND via C-R network (R_SRif + C_SRif parallel)
 J15,Connector,JST-XH_8pos,2.54mm,1=+5V,2=GND,3=RP2354_TX,4=RP2354_RX,5=J15_RUN,6=SWDIO,7=WEIGHT_STOP,8=SWCLK,ESP32 display (v2.31: SWD on dedicated pins 6/8, not GPIO16/22) - Pin 5 via R_RUN_EXT to prevent short-circuit with SW1
 R_RUN_EXT,Resistor,1k,0805,1=J15_5,2=RP2354_RUN,,Series resistor for external reset (prevents short-circuit when SW1 pressed while ESP32 drives HIGH, limits current to ~3.3mA)
-J17,Connector,JST-XH_6pos,2.54mm,1=+3.3V,2=+5V,3=GND,4=J17_RX,5=J17_TX,6=RS485_DERE,Power meter interface (TTL/RS485) - 6-pin per v2.21 spec
 J20,Connector,Header_2x20,2.54mm,,,,"Pico socket"
-J24,Connector,Screw_2pos,5.08mm,1=L_FUSED,2=N,External power meter HV input (L/N only - PE removed, HV section floating)
 J26,Connector,Screw_18pos,5.08mm,1=GPIO2,2=GND,3=GPIO3,4=GND,5=PROBE,6=GPIO5,7=GND,8=ADC0,9=GND,10=ADC1,11=GND,12=+5V,13=GND,14=PRESS_SIG,15=+5V,16=SSR1_NEG,17=+5V,18=SSR2_NEG,Unified LV terminal 18-pos (switches + NTCs + pressure + SSRs)
 J_USB,Connector,USB-C_2.0,USB-C,1=VBUS,2=USB_DP_CONN,3=USB_DM_CONN,4=GND,5=CC1,6=CC2,RP2354 USB-C programming/debug port (VBUS→VSYS via F_USB/D_VBUS, D+/D- to RP2354 USB pins via R_USB_DP/DM)
 R_CC1,Resistor,5.1k_1%,0603,1=CC1,2=GND,,USB-C CC1 pull-down (5.1kΩ for 5V power delivery)
@@ -170,7 +156,6 @@ R_USB_DP,Resistor,27R_1%,0603,1=USB_DP_CONN,2=USB_DP_MCU,,USB D+ series terminat
 R_USB_DM,Resistor,27R_1%,0603,1=USB_DM_CONN,2=USB_DM_MCU,,USB D- series termination (27Ω required for RP2354 USB impedance matching, place close to MCU pin before ESD diode)
 D_USB_DP,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=USB_DP_CONN,,USB D+ ESD protection (Place close to USB Connector J_USB - shunts ESD spikes at entry point before they enter board)
 D_USB_DM,ESD_Diode,PESD5V0S1BL,SOD-323,A=GND,K=USB_DM_CONN,,USB D- ESD protection (Place close to USB Connector J_USB - shunts ESD spikes at entry point before they enter board)
-TP1,Test_Point,GPIO20_Spare,1.5mm,1=GPIO20,,,GPIO20/RS485_DE test point
 TP2,Test_Point,ADC_VREF,1.5mm,1=ADC_VREF,,,ADC reference test point (3.0V buffered)
 TP3,Test_Point,5V_MONITOR,1.5mm,1=5V_DIV,,,5V monitor test point (~1.8V at 5V nominal) - for ratiometric calibration
 MH1,Mounting_Hole,M3,3.2mm,1=NC,,,NPTH - Isolated (no PE connection, SRif architecture)

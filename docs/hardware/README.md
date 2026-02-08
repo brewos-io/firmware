@@ -2,7 +2,7 @@
 
 Custom control PCB for ECM Synchronika dual-boiler espresso machine.
 
-**Current Version:** 2.31 (January 2026)
+**Current Version:** 2.32 (February 2026)
 
 ---
 
@@ -47,10 +47,9 @@ All 9 schematic sheets are embedded in the [Schematic Reference](schematics/Sche
 | 3 - [Relay Drivers](schematics/SCH_Schematic1_3-Relay%20Drivers_2025-12-22.png)                                            | K1-K3 driver circuits                          |
 | 4 - [SSR Drivers](schematics/SCH_Schematic1_4-SSR%20Drivers_2025-12-22.png)                                                | Heater SSR triggers                            |
 | 5 - [Sensor Inputs](schematics/SCH_Schematic1_5-Sensor%20Inputs_2025-12-22.png)                                            | NTC, pressure, level probe                     |
-| 6 - [Communication](schematics/SCH_Schematic1_6-Communication%20Interfaces_2025-12-22.png)                                 | ESP32, RS485                                  |
+| 6 - [Communication](schematics/SCH_Schematic1_6-Communication%20Interfaces_2025-12-22.png)                                 | ESP32 UART                                    |
 | 7 - [User Interface](schematics/SCH_Schematic1_7-User%20Interface_2025-12-22.png)                                          | LEDs, buzzer, reset                            |
-| 8 - [Power Metering](schematics/SCH_Schematic1_8-Power%20Metering%20%28Universal%20External%20Interface%29_2025-12-22.png) | External meter interface                       |
-| 9 - [Protection](schematics/SCH_Schematic1_9-Protection%20%26%20Filtering_2025-12-22.png)                                  | TVS, ESD, filtering                            |
+| 8 - [Protection](schematics/SCH_Schematic1_9-Protection%20%26%20Filtering_2025-12-22.png)                                  | TVS, ESD, filtering                            |
 
 #### PCB Layout
 
@@ -77,7 +76,6 @@ Plug & play replacement for the factory GICAR control board and PID controller:
 
 - **Temperature Control:** Dual PID for brew and steam boilers (NTC sensors)
 - **Pressure Monitoring:** Real-time brew pressure via 0.5-4.5V transducer
-- **Power Metering:** External module support (PZEM, JSY, Eastron)
 - **Smart Features:** Brew-by-weight, shot timers, profiles via ESP32 display
 - **Connectivity:** WiFi, MQTT, OTA updates via ESP32
 
@@ -101,7 +99,6 @@ Plug & play replacement for the factory GICAR control board and PID controller:
 | J1        | 6.3mm Spade (2-pin)  | Mains input (L, N only - PE removed)          |
 | J2-J4     | 6.3mm Spade          | Relay outputs (LED, Pump, Solenoid)           |
 | J5        | 6.3mm Spade          | Chassis Reference (SRif)                      |
-| J24       | Screw Terminal 2-pos | Power meter HV (L fused, N only - PE removed) |
 
 ### Low Voltage (3.3V/5V)
 
@@ -109,7 +106,6 @@ Plug & play replacement for the factory GICAR control board and PID controller:
 | --------- | --------------------- | -------------------------------------------------- |
 | J26       | Screw Terminal 18-pos | All sensors & SSR control                          |
 | J15       | JST-XH 8-pin          | ESP32 display + brew-by-weight + expansion (Pin 8) |
-| J17       | JST-XH 6-pin          | Power meter UART/RS485                             |
 
 ---
 
@@ -119,8 +115,6 @@ Plug & play replacement for the factory GICAR control board and PID controller:
 | ------- | ------- | ------------------------------------------------------ |
 | **JP1** | OPEN    | Brew NTC: OPEN=50kΩ (ECM), CLOSE=10kΩ (Rocket/Gaggia)  |
 | **JP2** | OPEN    | Steam NTC: OPEN=50kΩ (ECM), CLOSE=10kΩ (Rocket/Gaggia) |
-| **JP3** | OPEN    | Power meter voltage: OPEN=5V, CLOSE=3.3V               |
-| **JP4** | 1-2     | Power meter type: 1-2=RS485, 2-3=TTL                   |
 
 **See:** [Component Reference Guide](schematics/Component_Reference_Guide.md) for complete component listings.
 
@@ -138,7 +132,6 @@ See [BOM](spec/07-BOM.md) for complete bill of materials.
 | --------------- | ---------------------------- | ------------------------------ |
 | NTC Sensors     | 50kΩ @ 25°C (or 10kΩ)        | Machine-dependent, see JP2/JP3 |
 | Pressure Sensor | **0.5-4.5V ratiometric**     | G1/4" or 1/8" NPT thread       |
-| Power Meter     | PZEM-004T, JSY-MK-163T, etc. | External module with CT clamp  |
 | SSRs            | 40A solid state relay × 2    | For brew and steam heaters     |
 
 ---
@@ -163,7 +156,7 @@ See [BOM](spec/07-BOM.md) for complete bill of materials.
 
 ## 📁 Related Documentation
 
-- **Firmware:** `docs/pico/` - Pico firmware and power metering integration
+- **Firmware:** `docs/pico/` - Pico firmware documentation
 - **Web Interface:** See `app/` repository - React dashboard and settings
 - **ESP32 Display:** `src/esp32/` - Display module firmware
 
