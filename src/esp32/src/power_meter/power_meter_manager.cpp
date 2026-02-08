@@ -72,6 +72,13 @@ void PowerMeterManager::loop() {
     
     // Hardware meter readings come from Pico via onPicoPowerData callback
     
+    // Auto-discovery timeout: Pico auto-detect takes ~10-15s max.
+    // If we haven't received a result after 20s, assume it failed (ACK was lost).
+    if (_autoDiscovering && (millis() - _discoveryStepStartTime) > 20000) {
+        LOG_W("Power meter discovery timed out (no ACK from Pico)");
+        _autoDiscovering = false;
+    }
+    
     // Check for daily reset
     time_t now = time(nullptr);
     if (now > 1000000) {  // Time is valid (NTP synced)
@@ -212,6 +219,20 @@ void PowerMeterManager::startAutoDiscovery() {
     }
 }
 
+void PowerMeterManager::onDiscoveryResult(bool success) {
+    if (!_autoDiscovering) {
+        return;  // Not expecting a result
+    }
+    
+    _autoDiscovering = false;
+    
+    if (success) {
+        LOG_I("Power meter discovery: meter found!");
+    } else {
+        LOG_W("Power meter discovery: no meter detected");
+    }
+}
+
 DiscoveryStatus PowerMeterManager::getDiscoveryStatus() const {
     DiscoveryStatus status;
     status.discovering = _autoDiscovering;
@@ -223,7 +244,7 @@ DiscoveryStatus PowerMeterManager::getDiscoveryStatus() const {
         status.currentAction = "Discovering...";
     } else if (_source == PowerMeterSource::HARDWARE_MODBUS && _lastReading.valid) {
         status.currentAction = "Complete";
-        status.discoveredMeter = "Hardware Meter";  // Pico will report specific type
+        status.discoveredMeter = getMeterName();
     } else {
         status.currentAction = "None found";
     }
@@ -284,9 +305,13 @@ const char* PowerMeterManager::getLastError() const {
 }
 
 void PowerMeterManager::getStatus(JsonDocument& doc) {
+    bool connected = isConnected();
+    
     doc["source"] = powerMeterSourceToString(_source);
-    doc["connected"] = isConnected();
+    doc["connected"] = connected;
+    // Only report meter type when actually communicating, otherwise show configured type with qualifier
     doc["meterType"] = getMeterName();
+    doc["configured"] = (_source != PowerMeterSource::NONE);
     
     if (_autoDiscovering) {
         DiscoveryStatus discovery = getDiscoveryStatus();
@@ -298,7 +323,7 @@ void PowerMeterManager::getStatus(JsonDocument& doc) {
         doc["discovering"] = false;
     }
     
-    if (_lastReading.valid && (millis() - _lastReadTime) < 5000) {
+    if (connected && _lastReading.valid && (millis() - _lastReadTime) < 5000) {
         JsonObject reading = doc["reading"].to<JsonObject>();
         reading["voltage"] = _lastReading.voltage;
         reading["current"] = _lastReading.current;
@@ -313,7 +338,9 @@ void PowerMeterManager::getStatus(JsonDocument& doc) {
     }
     
     const char* error = getLastError();
-    if (error && strlen(error) > 0) {
+    if (_source == PowerMeterSource::HARDWARE_MODBUS && !connected) {
+        doc["error"] = "No response from meter";
+    } else if (error && strlen(error) > 0) {
         doc["error"] = error;
     } else {
         doc["error"] = nullptr;

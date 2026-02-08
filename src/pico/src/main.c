@@ -511,16 +511,14 @@ int main(void) {
     }
     watchdog_update();  // Feed watchdog after config persistence (may include flash writes)
     
-    // Initialize log forwarding (dev mode feature)
-    // Must be done after config_persistence_init() so flash is available
-    // Note: Boot logs happen before this, so they won't be forwarded
-    // But all subsequent logs will be forwarded if enabled
+    // Initialize log forwarding state (dev mode feature)
+    // Must be done after config_persistence_init() so flash config is available.
+    // IMPORTANT: Do NOT enable forwarding here - the ESP32 UART isn't initialized
+    // until protocol_init() runs on Core 1. Enabling forwarding now would cause
+    // every LOG_PRINT to call protocol_send_log() → uart_write_nonblocking() on
+    // an uninitialized UART peripheral, which hangs the bus on RP2350.
+    // Forwarding is enabled after Core 1 starts (see below).
     log_forward_init();
-    // Enable forwarding in logging system if it was enabled in flash
-    if (log_forward_is_enabled()) {
-        logging_set_forward_enabled(true);
-        LOG_PRINT("Log forwarding enabled (loaded from flash)\n");
-    }
     
     // Note: Power meter is no longer auto-initialized at boot from saved config.
     // The ESP32 re-sends the enable command after Pico connects (handleBoot).
@@ -566,6 +564,14 @@ int main(void) {
     // exceeding the 2s watchdog and causing an infinite restart loop.
     config_persistence_process_boot_save();
     watchdog_update();
+    
+    // NOW safe to enable log forwarding - Core 1 has initialized protocol/UART.
+    // Before this point, protocol_send_log() would write to an uninitialized
+    // UART peripheral, hanging the RP2350 bus and causing a watchdog reset loop.
+    if (log_forward_is_enabled()) {
+        logging_set_forward_enabled(true);
+        LOG_PRINT("Log forwarding enabled (loaded from flash)\n");
+    }
     
     DEBUG_PRINT("Entering main control loop\n");
     

@@ -50,6 +50,7 @@ public:
     
     // Auto-discovery for hardware meters (forwarded to Pico)
     void startAutoDiscovery();
+    void onDiscoveryResult(bool success);  // Called when Pico ACK arrives
     bool isDiscovering() const { return _autoDiscovering; }
     DiscoveryStatus getDiscoveryStatus() const;
     

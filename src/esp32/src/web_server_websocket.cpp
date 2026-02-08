@@ -910,8 +910,7 @@ void BrewWebServer::handlePowerMeterCommand(JsonDocument& doc, const String& cmd
         broadcastPowerMeterStatus();
     }
     else if (cmd == "start_power_meter_discovery") {
-        // Forward discovery command to Pico
-        _picoUart.sendCommand(MSG_CMD_POWER_METER_DISCOVER, nullptr, 0);
+        // startAutoDiscovery() sends the command to Pico internally
         powerMeterManager->startAutoDiscovery();
         broadcastLogLevel("info", "Starting power meter auto-discovery...");
     }

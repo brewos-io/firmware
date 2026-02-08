@@ -2675,9 +2675,15 @@ void BrewWebServer::handleESP32OTAUpload(AsyncWebServerRequest* request, const S
         
         _otaInProgress = false;
         
-        // Delay to allow response to be sent, then reboot
-        delay(2000);
-        ESP.restart();
+        // Schedule reboot in a separate FreeRTOS task so the async web server
+        // can finish sending the HTTP 200 response before we restart.
+        // Using delay() here would block the async event loop and prevent
+        // the response from being sent, causing curl to see only "100 Continue".
+        xTaskCreate([](void*) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            ESP.restart();
+            vTaskDelete(nullptr);  // Won't reach here, but good practice
+        }, "ota_restart", 2048, nullptr, 1, nullptr);
     }
 }
 

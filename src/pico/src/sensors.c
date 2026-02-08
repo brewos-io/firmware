@@ -6,6 +6,7 @@
  */
 
 #include "pico/stdlib.h"
+#include "hardware/gpio.h"
 #include "sensors.h"
 #include "config.h"
 #include "hardware.h"
@@ -454,8 +455,9 @@ void sensors_read(void) {
             bool meter_init = power_meter_is_initialized();
             if (meter_init && (meter_now - last_meter_poll) >= poll_interval) {
                 if (!logged_first_poll) {
-                    LOG_PRINT("Power meter: First poll (initialized=%d, connected=%d, interval=%lums)\n",
-                              meter_init, power_meter_is_connected(), (unsigned long)poll_interval);
+                    LOG_PRINT("Power meter: First poll (initialized=%d, connected=%d, interval=%lums, GPIO20=%d)\n",
+                              meter_init, power_meter_is_connected(), (unsigned long)poll_interval,
+                              gpio_get(20));
                     logged_first_poll = true;
                 }
                 last_meter_poll = meter_now;

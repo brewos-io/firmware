@@ -551,6 +551,12 @@ static void handlePicoACK(const PicoPacket& packet) {
             }
             LOG_W("Pico ACK error: %s (cmd=0x%02X, result=0x%02X)", errorMsg, cmdType, resultCode);
         }
+        
+        // Notify PowerMeterManager of discovery result
+        if ((cmdType == MSG_CMD_POWER_METER_DISCOVER || cmdType == MSG_CMD_POWER_METER_CONFIG) 
+            && powerMeterManager && powerMeterManager->isDiscovering()) {
+            powerMeterManager->onDiscoveryResult(resultCode == ACK_SUCCESS);
+        }
     }
 }
 

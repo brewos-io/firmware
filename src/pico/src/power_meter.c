@@ -406,6 +406,20 @@ static bool parse_response(const uint8_t* buffer, int length, power_meter_readin
 // =============================================================================
 
 bool power_meter_init(const power_meter_config_t* config) {
+    // CRITICAL: Always configure GPIO20 (RS485 DE/RE) as output LOW FIRST.
+    // The MAX3485 transceiver's A/B outputs are permanently connected to J17 pins 4/5,
+    // which are shared with the TTL signal path. If GPIO20 is left floating at boot,
+    // DE may float HIGH, putting the MAX3485 in transmit mode. This causes the MAX3485
+    // to actively drive J17 pins 4/5 with differential signals, overpowering any TTL
+    // signals and making communication with TTL meters (PZEM, JSY) impossible.
+    // This must happen BEFORE any early returns, including the disabled check.
+    gpio_put(RS485_DE_RE_PIN, 0);   // Set LOW first (before enabling output to avoid glitch)
+    gpio_init(RS485_DE_RE_PIN);
+    gpio_set_dir(RS485_DE_RE_PIN, GPIO_OUT);
+    gpio_put(RS485_DE_RE_PIN, 0);  // LOW = receive mode (A/B are high-impedance inputs)
+    // Note: LOG_PRINT here would be lost - ring buffer not drained before log forwarding is active.
+    // GPIO20 state is confirmed in power_meter_update's first-poll log instead.
+    
     // Load or use provided config
     if (config) {
         // Runtime enable (from ESP32 command) - use provided config
@@ -454,15 +468,7 @@ bool power_meter_init(const power_meter_config_t* config) {
         return false;
     }
     
-    // CRITICAL: Always configure RS485 DE/RE pin as output LOW (receive mode).
-    // The MAX3485 transceiver's A/B outputs are permanently connected to J10 pins 4/5,
-    // which are shared with the TTL signal path. If GPIO20 (DE/RE) is left floating,
-    // DE may float HIGH, putting the MAX3485 in transmit mode. This causes the MAX3485
-    // to actively drive J10 pins 4/5 with differential signals, overpowering the TTL
-    // signals and making communication with TTL meters (PZEM, JSY) impossible.
-    gpio_init(RS485_DE_RE_PIN);
-    gpio_set_dir(RS485_DE_RE_PIN, GPIO_OUT);
-    gpio_put(RS485_DE_RE_PIN, 0);  // LOW = receive mode (A/B are high-impedance inputs)
+    // GPIO20 (DE/RE) already configured as output LOW at the top of this function.
     
     // Preserve pin swap state when re-initializing with the same meter type.
     // power_meter_init() is called from Core 1 (packet handler) and can race with
@@ -524,32 +530,35 @@ void power_meter_update(void) {
     uint8_t response_buffer[128];
     int bytes_read = 0;
     if (!receive_modbus_response(response_buffer, sizeof(response_buffer), &bytes_read)) {
-        consecutive_failures++;
+        // Capture in local to prevent TOCTOU race with Core 1 resetting the volatile.
+        uint8_t failures = ++consecutive_failures;
         
-        // Log every failure for the first few, then periodically
-        if (consecutive_failures <= 3 || consecutive_failures % 10 == 0) {
-            LOG_PRINT("Power meter: No response (attempt %d, TX=GPIO%d, RX=GPIO%d, stale=%d bytes)\n",
-                      consecutive_failures, uart_tx_pin, uart_rx_pin, stale_bytes);
+        // Log every failure in the swap cycle (1-6), then periodically
+        if (failures <= PIN_ROTATE_THRESHOLD * 2 || failures % 10 == 0) {
+            LOG_PRINT("Power meter: No response (attempt %d, TX=GPIO%d, RX=GPIO%d, DE=%d, stale=%d)\n",
+                      failures, uart_tx_pin, uart_rx_pin, gpio_get(RS485_DE_RE_PIN), stale_bytes);
         }
         
         // After several failures, try swapping TX/RX pins (common wiring mistake)
-        if (consecutive_failures == PIN_ROTATE_THRESHOLD) {
+        if (failures == PIN_ROTATE_THRESHOLD) {
             uint8_t old_tx = uart_tx_pin;
             uart_tx_pin = uart_rx_pin;
             uart_rx_pin = old_tx;
             pins_swapped = !pins_swapped;
+            // Log BEFORE configure_uart_pins to ensure message is queued in ring buffer
+            // before the PIO UART init message. Otherwise ring buffer overflow drops it.
+            LOG_PRINT("Power meter: Swapping pins → TX=GPIO%d, RX=GPIO%d\n", uart_tx_pin, uart_rx_pin);
             configure_uart_pins(current_map->baud_rate);
             snprintf(last_error, sizeof(last_error), "No response - swapped TX/RX (TX=GPIO%d)", uart_tx_pin);
-            LOG_PRINT("Power meter: Swapping pins → TX=GPIO%d, RX=GPIO%d\n", uart_tx_pin, uart_rx_pin);
-        } else if (consecutive_failures == PIN_ROTATE_THRESHOLD * 2) {
+        } else if (failures == PIN_ROTATE_THRESHOLD * 2) {
             uint8_t old_tx = uart_tx_pin;
             uart_tx_pin = uart_rx_pin;
             uart_rx_pin = old_tx;
             pins_swapped = !pins_swapped;
+            LOG_PRINT("Power meter: Reverting pins → TX=GPIO%d, RX=GPIO%d (cycle reset)\n", uart_tx_pin, uart_rx_pin);
             configure_uart_pins(current_map->baud_rate);
             consecutive_failures = 0;
             snprintf(last_error, sizeof(last_error), "No response - reverted TX/RX (TX=GPIO%d)", uart_tx_pin);
-            LOG_PRINT("Power meter: Reverting pins → TX=GPIO%d, RX=GPIO%d (cycle reset)\n", uart_tx_pin, uart_rx_pin);
         } else {
             snprintf(last_error, sizeof(last_error), "No response from meter");
         }
@@ -631,17 +640,17 @@ const char* power_meter_get_name(void) {
 bool power_meter_auto_detect(void) {
     printf("Starting power meter auto-detection (both pin configs)...\n");
     
+    // CRITICAL: Ensure GPIO20 (DE/RE) is output LOW before probing ANY meter.
+    // The MAX3485 A/B outputs share J17 pins 4/5 with the TTL signal path.
+    // If DE is floating/HIGH, the transceiver drives those pins and blocks TTL meters.
+    gpio_init(RS485_DE_RE_PIN);
+    gpio_set_dir(RS485_DE_RE_PIN, GPIO_OUT);
+    gpio_put(RS485_DE_RE_PIN, 0);
+    
     // Try each known meter configuration, with both pin orientations
     for (uint8_t i = 0; i < METER_MAPS_COUNT; i++) {
         const modbus_register_map_t* test_map = &METER_MAPS[i];
         current_map = test_map;
-        
-        // Configure RS485 if needed (once per meter type)
-        if (test_map->is_rs485) {
-            gpio_init(RS485_DE_RE_PIN);
-            gpio_set_dir(RS485_DE_RE_PIN, GPIO_OUT);
-            gpio_put(RS485_DE_RE_PIN, 0);
-        }
         
         // Try both pin configurations: default and swapped
         for (uint8_t pin_try = 0; pin_try < 2; pin_try++) {

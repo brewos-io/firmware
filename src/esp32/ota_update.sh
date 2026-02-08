@@ -98,14 +98,21 @@ echo -e "${YELLOW}      (ESP32 will reboot automatically after flash)${NC}"
 echo ""
 
 # Use the new direct ESP32 OTA endpoint that flashes immediately
-RESPONSE=$(curl -X POST "http://$ESP32_IP/api/ota/esp32/upload" \
+# Note: Progress bar goes to stderr (visible in terminal), response body to temp file,
+# and HTTP code is captured separately via -w to avoid mixing progress bar into response.
+BODY_FILE=$(mktemp)
+HTTP_CODE=$(curl -X POST "http://$ESP32_IP/api/ota/esp32/upload" \
     -F "firmware=@$FIRMWARE" \
     --progress-bar \
     --max-time 120 \
-    -w "\n%{http_code}" 2>&1)
+    -o "$BODY_FILE" \
+    -w "%{http_code}" 2>&1)
+CURL_EXIT=$?
+BODY=$(cat "$BODY_FILE" 2>/dev/null)
+rm -f "$BODY_FILE"
 
-HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-BODY=$(echo "$RESPONSE" | sed '$d')
+# Extract just the HTTP code (last 3 chars) in case progress bar leaked into output
+HTTP_CODE=$(echo "$HTTP_CODE" | grep -oE '[0-9]+$')
 
 echo ""
 if [ "$HTTP_CODE" = "200" ]; then
@@ -115,17 +122,22 @@ if [ "$HTTP_CODE" = "200" ]; then
     echo ""
     echo -e "${BLUE}ESP32 is rebooting with new firmware...${NC}"
     echo -e "${BLUE}Wait ~5 seconds, then access: http://$ESP32_IP${NC}"
-elif [ "$HTTP_CODE" = "000" ]; then
-    # Connection closed - expected when ESP32 reboots
+elif [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "100" ] || [ "$CURL_EXIT" = "56" ] || [ "$CURL_EXIT" = "52" ]; then
+    # Connection closed/reset - expected when ESP32 reboots after successful flash
+    # HTTP 000 = no response received, HTTP 100 = only "Continue" received before reboot
+    # curl exit 56 = recv failure (connection reset), exit 52 = empty reply
     echo -e "${GREEN}╔══════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║  ✓ ESP32 OTA Update Successful!      ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${BLUE}ESP32 is rebooting with new firmware...${NC}"
+    echo -e "${BLUE}ESP32 rebooted before confirming (this is normal).${NC}"
     echo -e "${BLUE}Wait ~5 seconds, then access: http://$ESP32_IP${NC}"
 else
     echo -e "${RED}OTA Upload Failed!${NC}"
     echo "HTTP Code: $HTTP_CODE"
-    echo "Response: $BODY"
+    echo "curl exit code: $CURL_EXIT"
+    if [ -n "$BODY" ]; then
+        echo "Response: $BODY"
+    fi
     exit 1
 fi
