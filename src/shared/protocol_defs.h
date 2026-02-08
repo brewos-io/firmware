@@ -63,7 +63,7 @@ extern "C" {
 #define MSG_ENV_CONFIG          0x08    // Environmental config (voltage, current limits)
 #define MSG_STATISTICS          0x09    // Statistics response
 #define MSG_DIAGNOSTICS         0x0A    // Diagnostics response
-#define MSG_POWER_METER         0x0B    // Power meter reading (from Pico)
+#define MSG_POWER_METER         0x0B    // DEPRECATED (v2.32) - Hardware power meter removed, MQTT only. ID reserved.
 #define MSG_HANDSHAKE           0x0C    // Protocol handshake for version negotiation
 #define MSG_NACK                0x0D    // Negative acknowledgment (busy/rejected)
 
@@ -98,7 +98,7 @@ extern "C" {
 
 // Communication (Section 3.3)
 #define DIAG_TEST_ESP32_COMM    0x0B    // ESP32 UART0 link (GPIO0/1)
-#define DIAG_TEST_POWER_METER   0x0A    // Power meter UART1 (GPIO6/7) - PZEM, JSY, Eastron
+#define DIAG_TEST_POWER_METER   0x0A    // DEPRECATED (v2.32) - Hardware power meter removed. ID reserved.
 
 // User Interface (Section 3.4)
 #define DIAG_TEST_BUZZER        0x0C    // Piezo buzzer PWM (GPIO19 on Pico)
@@ -156,8 +156,8 @@ extern "C" {
 #define MSG_CMD_SET_ECO         0x1E    // Set eco mode configuration
 #define MSG_CMD_BOOTLOADER      0x1F    // Enter bootloader mode
 #define MSG_CMD_DIAGNOSTICS     0x20    // Run diagnostic test(s)
-#define MSG_CMD_POWER_METER_CONFIG 0x21 // Configure power meter
-#define MSG_CMD_POWER_METER_DISCOVER 0x22 // Start power meter auto-discovery
+#define MSG_CMD_POWER_METER_CONFIG 0x21 // DEPRECATED (v2.32) - Hardware power meter removed. ID reserved.
+#define MSG_CMD_POWER_METER_DISCOVER 0x22 // DEPRECATED (v2.32) - Hardware power meter removed. ID reserved.
 #define MSG_CMD_GET_BOOT        0x23    // Request boot info (version, machine type)
 #define MSG_CMD_LOG_CONFIG      0x24    // Configure log forwarding (Pico -> ESP32)
 #define MSG_LOG                 0x25    // Log message from Pico

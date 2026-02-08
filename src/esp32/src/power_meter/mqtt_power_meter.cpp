@@ -207,19 +207,20 @@ bool MQTTPowerMeter::parseTasmota(JsonDocument& doc) {
     if (doc["ENERGY"].is<JsonObject>()) {
         JsonObject energy = doc["ENERGY"].as<JsonObject>();
         
-        if (energy["Power"].is<float>()) {
+        // Tasmota may send Power/Voltage/Current/Total/Factor as int or float
+        if (energy["Power"].is<float>() || energy["Power"].is<int>()) {
             _lastReading.power = energy["Power"].as<float>();
         }
-        if (energy["Voltage"].is<float>()) {
+        if (energy["Voltage"].is<float>() || energy["Voltage"].is<int>()) {
             _lastReading.voltage = energy["Voltage"].as<float>();
         }
-        if (energy["Current"].is<float>()) {
+        if (energy["Current"].is<float>() || energy["Current"].is<int>()) {
             _lastReading.current = energy["Current"].as<float>();
         }
-        if (energy["Total"].is<float>()) {
+        if (energy["Total"].is<float>() || energy["Total"].is<int>()) {
             _lastReading.energy_import = energy["Total"].as<float>();
         }
-        if (energy["Factor"].is<float>()) {
+        if (energy["Factor"].is<float>() || energy["Factor"].is<int>()) {
             _lastReading.power_factor = energy["Factor"].as<float>();
         }
         

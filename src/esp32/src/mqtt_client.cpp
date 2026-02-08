@@ -58,6 +58,7 @@ MQTTClient::MQTTClient()
     if (_commandQueue == nullptr) {
         LOG_E("Failed to create MQTT command queue");
     }
+    _powerMeterTopic[0] = '\0';
 }
 
 bool MQTTClient::begin() {
@@ -404,6 +405,12 @@ bool MQTTClient::connect() {
         getTopic("command", cmdTopic, sizeof(cmdTopic));
         _client.subscribe(cmdTopic, 1);
         LOG_I("Subscribed to: %s", cmdTopic);
+        
+        // Subscribe to power meter topic if configured (Tasmota/Shelly SENSOR)
+        if (_powerMeterTopic[0] != '\0') {
+            _client.subscribe(_powerMeterTopic, 0);
+            LOG_I("Subscribed to power meter topic: %s", _powerMeterTopic);
+        }
         
         // Publish Home Assistant discovery if enabled
         if (_config.ha_discovery) {
@@ -1398,6 +1405,20 @@ void MQTTClient::publishHomeAssistantDiscovery() {
     }
 }
 
+void MQTTClient::setPowerMeterTopic(const char* topic) {
+    if (topic == nullptr || topic[0] == '\0') {
+        _powerMeterTopic[0] = '\0';
+        return;
+    }
+    strncpy(_powerMeterTopic, topic, POWER_METER_TOPIC_MAX - 1);
+    _powerMeterTopic[POWER_METER_TOPIC_MAX - 1] = '\0';
+    // If already connected, subscribe immediately (e.g. after user configures via web UI)
+    if (_client.connected() && _powerMeterTopic[0] != '\0') {
+        _client.subscribe(_powerMeterTopic, 0);
+        LOG_I("Subscribed to power meter topic: %s", _powerMeterTopic);
+    }
+}
+
 void MQTTClient::onMessage(char* topicName, byte* payload, unsigned int length) {
     // Null-terminate payload
     char message[256];
@@ -1406,6 +1427,14 @@ void MQTTClient::onMessage(char* topicName, byte* payload, unsigned int length) 
     message[len] = '\0';
     
     LOG_D("MQTT message: topic=%s, payload=%s", topicName, message);
+    
+    // Forward power meter topic to callback (Tasmota/Shelly SENSOR)
+    if (_powerMeterTopic[0] != '\0' && strcmp(topicName, _powerMeterTopic) == 0) {
+        if (_onPowerMeterMessage) {
+            _onPowerMeterMessage(reinterpret_cast<const char*>(payload), length);
+        }
+        return;
+    }
     
     // Parse command
     char cmdTopicBuf[64];

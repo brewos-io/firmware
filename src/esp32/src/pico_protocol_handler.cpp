@@ -52,13 +52,7 @@ void PicoProtocolHandler::handlePacket(const PicoPacket& packet) {
             handleStatus(packet.payload, packet.length);
             break;
             
-        case MSG_POWER_METER:
-            if (packet.length >= sizeof(PowerMeterReading) && _powerMeter) {
-                PowerMeterReading reading;
-                memcpy(&reading, packet.payload, sizeof(PowerMeterReading));
-                _powerMeter->onPicoPowerData(reading);
-            }
-            break;
+        // MSG_POWER_METER removed (v2.32 - hardware power metering removed, MQTT only)
             
         case MSG_ALARM:
         case MSG_CONFIG:
@@ -263,17 +257,7 @@ void PicoProtocolHandler::handleBoot(const PicoPacket& packet) {
         }
     }
     
-    // Restore power meter config to Pico on boot.
-    // The Pico does NOT persist power meter config (flash writes caused bricking).
-    // ESP32 is the source of truth - re-send the enable command with meter type.
-    if (_uart && _powerMeter && _powerMeter->getSource() == PowerMeterSource::HARDWARE_MODBUS) {
-        uint8_t meterIndex = _powerMeter->getMeterIndex();
-        uint8_t payload[2] = {1, meterIndex};  // enabled=1, meter_index
-        size_t payloadLen = (meterIndex == 0xFF) ? 1u : 2u;
-        if (_uart->sendCommand(MSG_CMD_POWER_METER_CONFIG, payload, payloadLen)) {
-            LOG_I("Sent power meter enable to Pico (meter_index=%d)", meterIndex);
-        }
-    }
+    // Hardware power meter Pico commands removed (v2.32 - MQTT only)
 }
 
 void PicoProtocolHandler::updateBackoff(uint32_t now) {

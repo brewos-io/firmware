@@ -39,7 +39,7 @@ extern int run_protocol_advanced_tests(void);
 extern int run_pid_tests(void);
 extern int run_cleaning_tests(void);
 extern int run_config_validation_tests(void);
-extern int run_power_meter_tests(void);
+// run_power_meter_tests() removed (v2.32 - hardware power metering removed)
 extern int run_class_b_tests(void);
 extern int run_preinfusion_tests(void);
 extern int run_validation_tests(void);
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
     total_failures += run_config_validation_tests();
     
     printf("Running Power Meter Tests...\n");
-    total_failures += run_power_meter_tests();
+    // run_power_meter_tests() removed (v2.32 - hardware power metering removed)
     
     printf("Running Class B Safety Tests...\n");
     total_failures += run_class_b_tests();

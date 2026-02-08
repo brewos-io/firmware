@@ -84,7 +84,7 @@
 | **Heating Strategy: SMART_STAGGER** | ✅     | `control_common.c`            | Intelligent staggering with current limiting                     |
 | **Strategy Validation**             | ✅     | `control_common.c`            | Validates against electrical limits                              |
 | **Current Limiting**                | ✅     | `control_common.c`            | Real-time current limiting for parallel strategies               |
-| **Power Measurement**               | ✅     | `control_common.c` + `pzem.c` | Real-time from PZEM, fallback to theoretical estimation          |
+| **Power Estimation**                | ✅     | `control_common.c`            | Theoretical estimation from SSR duty cycles                      |
 
 ---
 
@@ -341,12 +341,11 @@ make
 
 | Feature                         | Status | Module             | Notes                                                    |
 | ------------------------------- | ------ | ------------------ | -------------------------------------------------------- |
-| **PZEM-004T Integration**       | ✅     | `pzem.c`           | Modbus RTU protocol, reads at 20Hz in sensor cycle       |
-| **Real Power Measurement**      | ✅     | `pzem.c`           | Voltage, current, power, energy, frequency, power factor |
-| **Power Estimation (Fallback)** | ✅     | `control_common.c` | Theoretical calculation when PZEM unavailable            |
-| **Current Monitoring**          | ✅     | `pzem.c`           | Real-time current from PZEM, fallback to estimation      |
+| **MQTT Power Metering**         | ✅     | ESP32 `power_meter/` | Shelly, Tasmota, generic smart plugs via MQTT           |
+| **Power Estimation (Fallback)** | ✅     | `control_common.c` | Theoretical calculation based on SSR duty cycles         |
 | **Power Limit Enforcement**     | ✅     | `control_common.c` | Validates heating strategies against limits              |
-| **Modbus RTU Protocol**         | ✅     | `pzem.c`           | CRC16 validation, error handling, timeout management     |
+
+> **Note:** Hardware power meters (PZEM-004T, JSY, Eastron via Modbus UART/RS485) were removed in v2.32. Power monitoring is now MQTT-only via smart plugs.
 
 ---
 
@@ -417,12 +416,11 @@ make
 
 ### Medium Priority (Optional Enhancements)
 
-1. ✅ **PZEM-004T Integration** (COMPLETE)
+1. **Hardware Power Metering** (REMOVED v2.32)
 
-   - ✅ UART driver for PZEM-004T (Modbus RTU)
-   - ✅ Real-time power monitoring (voltage, current, power, energy, frequency, PF)
-   - ✅ Integrated into sensor reading cycle (20Hz)
-   - ✅ Automatic fallback to theoretical estimation if unavailable
+   - Hardware power meters (PZEM, JSY, Eastron) removed from PCB
+   - Power monitoring now via MQTT smart plugs on ESP32
+   - Theoretical power estimation retained as fallback
 
 2. ✅ **Statistics Feature** (COMPLETE - ESP32)
 
@@ -490,7 +488,7 @@ make
 | **Cloud Integration**      | ✅     | `cloud/`                  | Remote monitoring and control        |
 | **OTA Updates**            | ✅     | `web_server.cpp`          | ESP32 and Pico firmware updates      |
 | **First Run Wizard**       | ✅     | Web UI                    | Guided setup flow                    |
-| **Power Meter Manager**    | ✅     | `power_meter/`            | MQTT smart plugs, hardware meters    |
+| **Power Meter Manager**    | ✅     | `power_meter/`            | MQTT smart plugs (MQTT-only since v2.32) |
 | **User Preferences**       | ✅     | `state/state_manager.cpp` | Currency, units, heating strategy    |
 
 ### MQTT / Home Assistant

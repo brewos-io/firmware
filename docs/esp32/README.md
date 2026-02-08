@@ -33,9 +33,9 @@ The ESP32-S3 handles connectivity, user interface, and advanced features for the
 
 | Document                                                              | Description                              |
 | --------------------------------------------------------------------- | ---------------------------------------- |
-| [MQTT Power Metering](https://github.com/brewos-io/app/blob/main/docs/Power_Metering.md#mqtt-smart-plug-setup) | Smart plug integration (Shelly, Tasmota) |
+| [MQTT Power Metering](https://github.com/brewos-io/app/blob/main/docs/Power_Metering.md) | Smart plug integration (Shelly, Tasmota) |
 
-> **Note:** Hardware power meters (PZEM, JSY, Eastron) are handled by Pico. See [Pico Power Metering](../pico/Power_Metering.md).
+> **Note:** Power monitoring is handled exclusively via MQTT smart plugs (Shelly, Tasmota, generic). Hardware power meters were removed in v2.32.
 
 ## Hardware
 

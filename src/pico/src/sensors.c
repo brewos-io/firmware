@@ -13,7 +13,6 @@
 #include "sensor_utils.h"
 #include "pcb_config.h"
 #include "machine_config.h"
-#include "power_meter.h"
 #include <stdlib.h>
 #include <math.h>
 
@@ -75,7 +74,6 @@ static bool g_pressure_sensor_fault = false;
 static uint16_t g_brew_ntc_error_count = 0;
 static uint16_t g_steam_ntc_error_count = 0;
 static uint16_t g_pressure_error_count = 0;
-static uint16_t g_power_meter_error_count = 0;
 
 #define SENSOR_ERROR_THRESHOLD 10  // Report error after 10 consecutive failures
 
@@ -441,43 +439,7 @@ void sensors_read(void) {
         // Read water level
         g_sensor_data.water_level = read_water_level();
         
-        // Read power meter (PZEM, JSY, Eastron, etc.)
-        // power_meter_update() has a blocking Modbus timeout (~500ms when no meter responds).
-        // Throttle to 1Hz to avoid starving the control loop and watchdog.
-        // Use is_initialized (not is_connected) so the meter gets polled even before
-        // the first successful read - otherwise it could never become "connected".
-        {
-            static uint32_t last_meter_poll = 0;
-            static bool logged_first_poll = false;
-            uint32_t meter_now = time_us_32() / 1000;
-            // Poll every 1s when connected, every 2s when not (reduce blocking when no meter)
-            uint32_t poll_interval = power_meter_is_connected() ? 1000 : 2000;
-            bool meter_init = power_meter_is_initialized();
-            if (meter_init && (meter_now - last_meter_poll) >= poll_interval) {
-                if (!logged_first_poll) {
-                    LOG_PRINT("Power meter: First poll (initialized=%d, connected=%d, interval=%lums, GPIO20=%d)\n",
-                              meter_init, power_meter_is_connected(), (unsigned long)poll_interval,
-                              gpio_get(20));
-                    logged_first_poll = true;
-                }
-                last_meter_poll = meter_now;
-                power_meter_update();
-                
-                // Check for persistent errors
-                const char* error = power_meter_get_error();
-                if (error) {
-                    g_power_meter_error_count++;
-                    if (g_power_meter_error_count <= 3 || g_power_meter_error_count % 10 == 0) {
-                        LOG_PRINT("Power meter: Error #%d: %s\n", g_power_meter_error_count, error);
-                    }
-                } else {
-                    if (g_power_meter_error_count > 0) {
-                        LOG_PRINT("Power meter: Recovered after %d errors\n", g_power_meter_error_count);
-                    }
-                    g_power_meter_error_count = 0;  // Reset on success
-                }
-            }
-        }
+        // Hardware power metering removed (v2.32). Power monitoring via MQTT smart plugs on ESP32.
         
     } else {
         // Fallback: Old simulation mode (should not be used if hardware abstraction is available)

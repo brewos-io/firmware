@@ -14,7 +14,6 @@
 #include "sensors.h"
 #include "pcb_config.h"
 #include "machine_config.h"
-#include "power_meter.h"
 #include "safety.h"
 #include "protocol_defs.h"
 #include "protocol.h"
@@ -105,7 +104,7 @@ bool diagnostics_run_all(diag_report_t* report) {
         { DIAG_TEST_SSR_STEAM, diag_test_ssr_steam },
         { DIAG_TEST_RELAY_PUMP, diag_test_relay_pump },
         { DIAG_TEST_RELAY_SOLENOID, diag_test_relay_solenoid },
-        { DIAG_TEST_POWER_METER, diag_test_power_meter },
+        // DIAG_TEST_POWER_METER removed (v2.32 - MQTT only)
         { DIAG_TEST_ESP32_COMM, diag_test_esp32_comm },
         { DIAG_TEST_BUZZER, diag_test_buzzer },
         { DIAG_TEST_LED, diag_test_led },
@@ -182,8 +181,7 @@ uint8_t diagnostics_run_test(uint8_t test_id, diag_result_t* result) {
         case DIAG_TEST_RELAY_SOLENOID:
             diag_test_relay_solenoid(result);
             break;
-        case DIAG_TEST_POWER_METER:
-            diag_test_power_meter(result);
+        // case DIAG_TEST_POWER_METER removed (v2.32 - MQTT only)
             break;
         case DIAG_TEST_ESP32_COMM:
             diag_test_esp32_comm(result);
@@ -583,34 +581,7 @@ uint8_t diag_test_relay_solenoid(diag_result_t* result) {
     return result->status;
 }
 
-uint8_t diag_test_power_meter(diag_result_t* result) {
-    init_result(result, DIAG_TEST_POWER_METER);
-    
-    if (!power_meter_is_connected()) {
-        set_result(result, DIAG_STATUS_SKIP, "Power meter not configured");
-        return result->status;
-    }
-    
-    // Try to read from power meter
-    power_meter_reading_t reading;
-    if (!power_meter_get_reading(&reading) || !reading.valid) {
-        set_result(result, DIAG_STATUS_FAIL, "Read failed");
-        return result->status;
-    }
-    
-    result->raw_value = (int16_t)(reading.voltage * 10);
-    
-    // Check for reasonable voltage (85-265V)
-    if (reading.voltage < 85.0f || reading.voltage > 265.0f) {
-        set_result(result, DIAG_STATUS_WARN, "Unexpected voltage");
-    } else {
-        set_result(result, DIAG_STATUS_PASS, "OK");
-    }
-    
-    const char* meter_name = power_meter_get_name();
-    DEBUG_PRINT("Power meter (%s): %.1fV, %.2fA\n", meter_name, reading.voltage, reading.current);
-    return result->status;
-}
+// diag_test_power_meter() removed (v2.32 - hardware power metering removed, MQTT only)
 
 uint8_t diag_test_esp32_comm(diag_result_t* result) {
     init_result(result, DIAG_TEST_ESP32_COMM);

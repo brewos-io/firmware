@@ -88,16 +88,9 @@ if(NOT DEFINED PCB_TYPE)
 endif()
 message(STATUS "Building for PCB: ${PCB_TYPE}")
 
-# -----------------------------------------------------------------------------
-# Power Meter (PZEM / JSY / Eastron)
-# -----------------------------------------------------------------------------
-# Set to 0 to disable power meter UART (GPIO6/7) - use if meter circuit or
-# JP3/JP4 jumper area is damaged and causes boot/reset loops.
-# Build with: cmake .. -DCONFIG_POWER_METER_ENABLED=0
-if(DEFINED CONFIG_POWER_METER_ENABLED)
-    add_compile_definitions(CONFIG_POWER_METER_ENABLED=${CONFIG_POWER_METER_ENABLED})
-    message(STATUS "Power meter: ${CONFIG_POWER_METER_ENABLED}")
-endif()
+# Power Meter - REMOVED (v2.32)
+# Hardware power metering (PZEM/JSY/Eastron via UART1) has been removed.
+# Power metering is now handled via MQTT smart plugs on ESP32.
 
 # -----------------------------------------------------------------------------
 # Common Source Files (shared by all machine types)
@@ -119,8 +112,8 @@ set(COMMON_SOURCES
     src/water_management.c
     src/config_persistence.c
     src/flash_safe.c          # Flash safety utilities (XIP crash prevention)
-    src/power_meter.c         # Generic power meter (PZEM, JSY, Eastron)
-    src/pio_uart.c            # PIO-based UART for power meter (GPIO6/7 = CTS/RTS, not TX/RX)
+    # power_meter.c removed (v2.32 - MQTT only)
+    # pio_uart.c removed (v2.32 - no longer needed without hardware power meter)
     src/cleaning.c
     src/log_forward.c         # Log forwarding to ESP32 (dev mode)
     src/bootloader.c
@@ -156,7 +149,7 @@ set(COMMON_LIBS
     hardware_pwm
     hardware_watchdog
     hardware_sync       # For atomic operations and critical sections
-    hardware_pio        # For PIO-based UART (power meter on GPIO6/7)
+    # hardware_pio removed (v2.32 - no PIO UART needed without power meter)
 )
 
 # -----------------------------------------------------------------------------

@@ -91,7 +91,7 @@ CRC is transmitted little-endian (low byte first).
 | MSG_DEBUG       | 0x06  | Debug log message (see [Debugging.md](Debugging.md))      | On log event      |
 | MSG_DEBUG_RESP  | 0x07  | Debug command response                                    | On debug command  |
 | MSG_ENV_CONFIG  | 0x08  | **Environmental config** (voltage, current limits)        | On request/change |
-| MSG_POWER_METER | 0x0B  | **Power meter reading** (voltage, current, power, energy) | 1 second          |
+| ~~MSG_POWER_METER~~ | ~~0x0B~~ | ~~Power meter reading~~ **(REMOVED v2.32 - MQTT only)** | - |
 | MSG_HANDSHAKE   | 0x0C  | **Protocol handshake** (version negotiation)              | Once on boot      |
 | MSG_NACK        | 0x0D  | **Negative ACK** (busy/backpressure signal)               | On overload       |
 
@@ -108,8 +108,8 @@ CRC is transmitted little-endian (low byte first).
 | MSG_CMD_GET_ENV_CONFIG       | 0x17  | **Request environmental configuration**           |
 | MSG_CMD_DEBUG                | 0x1D  | Debug commands (see [Debugging.md](Debugging.md)) |
 | MSG_CMD_BOOTLOADER           | 0x1F  | Enter bootloader for OTA                          |
-| MSG_CMD_POWER_METER_CONFIG   | 0x21  | Configure power meter (enable/disable)            |
-| MSG_CMD_POWER_METER_DISCOVER | 0x22  | Start power meter auto-discovery                  |
+| ~~MSG_CMD_POWER_METER_CONFIG~~ | ~~0x21~~ | ~~Configure power meter~~ **(REMOVED v2.32 - MQTT only)** |
+| ~~MSG_CMD_POWER_METER_DISCOVER~~ | ~~0x22~~ | ~~Start power meter auto-discovery~~ **(REMOVED v2.32)** |
 
 ### Bidirectional
 
@@ -214,7 +214,7 @@ typedef struct __attribute__((packed)) {
 | 0x0009 | CRITICAL | No water reservoir |
 | 0x000A | CRITICAL | Tank level low |
 | 0x0020 | WARNING | Thermocouple fault |
-| 0x0021 | WARNING | PZEM communication timeout |
+| ~~0x0021~~ | ~~WARNING~~ | ~~PZEM communication timeout~~ **(REMOVED v2.32)** |
 | 0x0022 | WARNING | ESP32 communication timeout |
 | 0x0030 | INFO | Brew started |
 | 0x0031 | INFO | Brew completed |
@@ -630,9 +630,11 @@ Use cases:
 
 ---
 
-### MSG_POWER_METER (0x0B) - Pico → ESP32
+### MSG_POWER_METER (0x0B) - REMOVED (v2.32)
 
-**Power meter reading** from hardware modules (PZEM, JSY, Eastron). Sent every 1 second when power metering is enabled.
+> **REMOVED:** Hardware power metering has been removed in v2.32. Power monitoring is now handled via MQTT smart plugs on the ESP32. The message ID 0x0B is reserved and must not be reused.
+
+~~**Power meter reading** from hardware modules (PZEM, JSY, Eastron). Sent every 1 second when power metering is enabled.~~
 
 ```c
 typedef struct __attribute__((packed)) {
@@ -661,9 +663,11 @@ typedef struct __attribute__((packed)) {
 
 ---
 
-### MSG_CMD_POWER_METER_CONFIG (0x21) - ESP32 → Pico
+### MSG_CMD_POWER_METER_CONFIG (0x21) - REMOVED (v2.32)
 
-Enable or disable power metering.
+> **REMOVED:** Hardware power metering has been removed. ID 0x21 is reserved.
+
+~~Enable or disable power metering.~~
 
 ```c
 typedef struct __attribute__((packed)) {
@@ -679,9 +683,11 @@ typedef struct __attribute__((packed)) {
 
 ---
 
-### MSG_CMD_POWER_METER_DISCOVER (0x22) - ESP32 → Pico
+### MSG_CMD_POWER_METER_DISCOVER (0x22) - REMOVED (v2.32)
 
-Start auto-discovery of connected power meter.
+> **REMOVED:** Hardware power metering has been removed. ID 0x22 is reserved.
+
+~~Start auto-discovery of connected power meter.~~
 
 ```c
 // No payload - LENGTH = 0
@@ -753,7 +759,6 @@ typedef struct __attribute__((packed)) {
 | Message         | Direction    | Interval                   | Priority |
 | --------------- | ------------ | -------------------------- | -------- |
 | MSG_STATUS      | Pico → ESP32 | 500ms                      | Normal   |
-| MSG_POWER_METER | Pico → ESP32 | 1000ms (when enabled)      | Normal   |
 | MSG_CONFIG      | Pico → ESP32 | On boot + on change        | Normal   |
 | MSG_ALARM       | Pico → ESP32 | Immediate                  | High     |
 | MSG_PING        | Either       | 5000ms (timeout detection) | Low      |
@@ -763,7 +768,6 @@ typedef struct __attribute__((packed)) {
 
 ```
 Pico boots → MSG_BOOT → MSG_CONFIG → MSG_ENV_CONFIG → MSG_STATUS (repeating)
-                                                     → MSG_POWER_METER (repeating, if enabled)
 ```
 
 ### After Config Change

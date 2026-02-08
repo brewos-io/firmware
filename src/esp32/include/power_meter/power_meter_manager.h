@@ -1,11 +1,8 @@
 /**
  * Power Meter Manager (ESP32)
  * 
- * Manages power meter data from two sources:
- * 1. Hardware meters (PZEM, JSY, Eastron) - Connected to Pico via UART1, data forwarded from Pico
- * 2. MQTT sources (Shelly, Tasmota) - Handled directly by ESP32
- * 
- * User selects one source via webapp configuration
+ * Manages power meter data from MQTT sources (Shelly, Tasmota, generic smart plugs).
+ * Hardware meters (PZEM, JSY, Eastron) removed in v2.32.
  */
 
 #ifndef POWER_METER_MANAGER_H
@@ -16,15 +13,6 @@
 
 // Forward declarations
 class MQTTPowerMeter;
-
-// Discovery status
-struct DiscoveryStatus {
-    bool discovering;
-    int currentStep;
-    int totalSteps;
-    const char* currentAction;
-    const char* discoveredMeter;
-};
 
 class PowerMeterManager {
 public:
@@ -44,18 +32,20 @@ public:
     
     // Configuration
     bool setSource(PowerMeterSource source);
-    bool configureHardware();  // Hardware meters configured on Pico
     bool configureMqtt(const char* topic, const char* format = "auto");
     PowerMeterSource getSource() const { return _source; }
     
-    // Auto-discovery for hardware meters (forwarded to Pico)
-    void startAutoDiscovery();
-    void onDiscoveryResult(bool success);  // Called when Pico ACK arrives
-    bool isDiscovering() const { return _autoDiscovering; }
-    DiscoveryStatus getDiscoveryStatus() const;
+    /**
+     * MQTT power meter: topic to subscribe to (when source is MQTT).
+     * Returns nullptr if not configured for MQTT.
+     */
+    const char* getMqttTopic() const;
     
-    // Handle power data from Pico (hardware meter readings)
-    void onPicoPowerData(const PowerMeterReading& reading);
+    /**
+     * MQTT power meter: called when a message arrives on the configured topic.
+     * Forwards payload to the internal MQTTPowerMeter parser.
+     */
+    void onMqttPowerMessage(const char* payload, unsigned int length);
     
     // Data access
     bool getReading(PowerMeterReading& reading);
@@ -76,27 +66,16 @@ public:
     bool saveConfig();
     bool loadConfig();
     
-    // Get/set hardware meter index (0-4 = specific type, 0xFF = auto-detect)
-    uint8_t getMeterIndex() const { return _meterIndex; }
-    void setMeterIndex(uint8_t index) { _meterIndex = index; }
-    
 private:
     PowerMeterSource _source;
     PowerMeterReading _lastReading;
     uint32_t _lastReadTime;
-    uint8_t _meterIndex = 0xFF;  // Hardware meter type index (persisted in NVS)
     
-    // MQTT meter (only MQTT handled by ESP32, hardware is on Pico)
+    // MQTT meter (only supported source since v2.32)
     MQTTPowerMeter* _mqttMeter;
-    
-    // Auto-discovery state
-    bool _autoDiscovering;
-    int _discoveryStep;
-    uint32_t _discoveryStepStartTime;
     
     // Helper methods
     void cleanupMeter();
-    void performDiscoveryStep();
     
     // Polling interval (don't query too frequently)
     static constexpr uint32_t POLL_INTERVAL_MS = 1000;

@@ -12,7 +12,7 @@
 
 /**
  * Signal that Core 1 is alive (for watchdog monitoring by Core 0).
- * Call from long-running Core 1 operations (e.g., power meter auto-detect)
+ * Call from long-running Core 1 operations
  * to prevent Core 0 from starving the watchdog.
  */
 extern void core1_signal_alive(void);
@@ -105,11 +105,7 @@ void handle_cmd_bootloader(const packet_t* packet);
  */
 void handle_cmd_diagnostics(const packet_t* packet);
 
-/**
- * Handle POWER_METER commands
- * @param packet Received packet
- */
-void handle_cmd_power_meter(const packet_t* packet);
+// handle_cmd_power_meter() removed (v2.32 - hardware power metering removed)
 
 /**
  * Handle GET_BOOT command

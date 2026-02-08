@@ -103,8 +103,8 @@ typedef struct {
     // ═══════════════════════════════════════════════════════════════
     int8_t  uart_esp32_tx;       // UART TX to ESP32
     int8_t  uart_esp32_rx;       // UART RX from ESP32
-    int8_t  uart_meter_tx;       // UART TX to power meter (PZEM, JSY, Eastron)
-    int8_t  uart_meter_rx;       // UART RX from power meter
+    int8_t  _reserved_meter_tx;  // Reserved (was UART TX to power meter, removed v2.32)
+    int8_t  _reserved_meter_rx;  // Reserved (was UART RX from power meter, removed v2.32)
     int8_t  i2c_sda;             // I2C SDA
     int8_t  i2c_scl;             // I2C SCL
     
@@ -187,8 +187,8 @@ static const pcb_config_t PCB_ECM_V1 = {
         // Communication
         .uart_esp32_tx      = 0,   // GPIO0 (UART0 TX)
         .uart_esp32_rx      = 1,   // GPIO1 (UART0 RX)
-        .uart_meter_tx      = 7,   // GPIO7 (METER_TX, power meter - PIO UART)
-        .uart_meter_rx      = 8,   // GPIO8 (METER_RX, power meter - PIO UART)
+        ._reserved_meter_tx = -1,  // Power meter removed (v2.32)
+        ._reserved_meter_rx = -1,  // Power meter removed (v2.32)
         .i2c_sda            = 8,   // GPIO8 (I2C0 SDA)
         .i2c_scl            = 9,   // GPIO9 (I2C0 SCL)
         

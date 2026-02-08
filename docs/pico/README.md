@@ -17,7 +17,6 @@ The Raspberry Pi Pico handles real-time machine control for the BrewOS coffee ma
 | ------------------------------------------------------------- | -------------------------------- |
 | [Machine Configurations](Machine_Configurations.md)           | Machine type settings            |
 | [Environmental Configuration](Environmental_Configuration.md) | Voltage/current config           |
-| [Power Metering](Power_Metering.md)                           | Hardware power meter integration |
 | [Versioning](Versioning.md)                                   | Version management               |
 
 ## Safety

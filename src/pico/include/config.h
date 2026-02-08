@@ -95,14 +95,11 @@
 #endif
 
 // -----------------------------------------------------------------------------
-// Power Meter (PZEM / JSY / Eastron)
+// Power Meter - REMOVED (v2.32)
+// Hardware power metering (PZEM/JSY/Eastron via UART1) has been removed.
+// Power metering is now handled via MQTT smart plugs on the ESP32.
+// GPIO6, GPIO7, and GPIO20 are now available for future use.
 // -----------------------------------------------------------------------------
-// Set to 1 to enable power meter on UART1 (GPIO6/7). Set to 0 to disable
-// entirely (no UART1 init, no GPIO6/7 use). Use 0 if the meter circuit or
-// JP3/JP4 jumper area is damaged and causes boot/reset loops.
-#ifndef CONFIG_POWER_METER_ENABLED
-    #define CONFIG_POWER_METER_ENABLED 1
-#endif
 
 // -----------------------------------------------------------------------------
 // Logging

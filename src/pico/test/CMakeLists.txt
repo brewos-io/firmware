@@ -63,7 +63,7 @@ set(TEST_SOURCES
     test_pid.c
     test_cleaning.c
     test_config_validation.c
-    test_power_meter.c
+    # test_power_meter.c removed (v2.32 - hardware power metering removed)
     test_class_b.c
     test_preinfusion.c
     test_validation.c

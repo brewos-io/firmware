@@ -400,6 +400,16 @@ static void onBBWTare() {
 }
 
 // =============================================================================
+// MQTT Power Meter Callback - Forwards Tasmota/Shelly SENSOR payloads to PowerMeterManager
+// =============================================================================
+
+static void onPowerMeterMqttMessage(const char* payload, unsigned int length) {
+    if (powerMeterManager) {
+        powerMeterManager->onMqttPowerMessage(payload, length);
+    }
+}
+
+// =============================================================================
 // Schedule Callback - Static function to avoid std::function PSRAM issues
 // =============================================================================
 
@@ -552,11 +562,7 @@ static void handlePicoACK(const PicoPacket& packet) {
             LOG_W("Pico ACK error: %s (cmd=0x%02X, result=0x%02X)", errorMsg, cmdType, resultCode);
         }
         
-        // Notify PowerMeterManager of discovery result
-        if ((cmdType == MSG_CMD_POWER_METER_DISCOVER || cmdType == MSG_CMD_POWER_METER_CONFIG) 
-            && powerMeterManager && powerMeterManager->isDiscovering()) {
-            powerMeterManager->onDiscoveryResult(resultCode == ACK_SUCCESS);
-        }
+        // Hardware power meter discovery removed (v2.32 - MQTT only)
     }
 }
 
@@ -1758,6 +1764,14 @@ static void setupInitializeMQTT() {
     Serial.println("[7/8] Initializing MQTT...");
     // Serial.flush(); // Removed - can block on USB CDC
     mqttClient->begin();
+    // Wire MQTT power meter: subscribe to Tasmota/Shelly topic and forward messages
+    mqttClient->setOnPowerMeterMessage(onPowerMeterMqttMessage);
+    if (powerMeterManager) {
+        const char* pmTopic = powerMeterManager->getMqttTopic();
+        if (pmTopic && pmTopic[0] != '\0') {
+            mqttClient->setPowerMeterTopic(pmTopic);
+        }
+    }
     Serial.println("MQTT initialized OK");
     // Serial.flush(); // Removed - can block on USB CDC
 }

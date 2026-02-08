@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Erase Pico flash completely, then prompt to flash the application UF2.
 # Use this when the Pico boot loops or has corrupt persisted config (e.g. after
-# disabling power meter or config changes). Persisted config lives in the last
+# config changes). Persisted config lives in the last
 # flash sector; a normal UF2 copy does not overwrite it.
 #
 # Requires: picotool on PATH (from Pico SDK).

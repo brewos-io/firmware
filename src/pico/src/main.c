@@ -36,7 +36,6 @@
 #include "config_persistence.h"
 #include "cleaning.h"
 #include "bootloader.h"
-#include "power_meter.h"
 #include "diagnostics.h"
 #include "flash_safe.h"
 #include "class_b.h"
@@ -58,7 +57,7 @@ static volatile bool g_core1_alive = false;
 static volatile uint32_t g_core1_last_seen = 0;
 #define CORE1_TIMEOUT_MS 1000  // Core 1 must respond within 1 second
 
-// Allow long-running Core 1 operations (e.g. power meter auto-detect) to signal alive.
+// Allow long-running Core 1 operations to signal alive.
 // Without this, blocking operations on Core 1 starve the watchdog on Core 0.
 void core1_signal_alive(void) {
     g_core1_alive = true;
@@ -99,7 +98,6 @@ void core1_main(void) {
     
     // Register Core 1 as a multicore lockout victim.
     // This allows Core 0 to safely pause Core 1 during flash operations
-    // (e.g., deferred config saves from power_meter_process_pending_save).
     // Without this, Core 1 continues executing from XIP flash during erase/program,
     // causing a hard fault (RP2350 reads garbage from invalidated XIP cache).
     multicore_lockout_victim_init();
@@ -121,7 +119,6 @@ void core1_main(void) {
     uint32_t last_status_send = 0;
     uint32_t last_boot_info_send = 0;  // For periodic boot info resend
     uint32_t last_protocol_stats_log = 0;  // For periodic protocol diagnostics
-    uint32_t last_power_meter_send = 0;  // For periodic power meter readings (1Hz)
     
     while (true) {
         uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -160,22 +157,7 @@ void core1_main(void) {
             }
         }
         
-        // Send power meter readings to ESP32 (1Hz when connected)
-#if CONFIG_POWER_METER_ENABLED
-        if (power_meter_is_connected() && (now - last_power_meter_send >= 1000)) {
-            last_power_meter_send = now;
-            power_meter_reading_t reading;
-            if (power_meter_get_reading(&reading)) {
-                static bool logged_first_send = false;
-                if (!logged_first_send) {
-                    LOG_PRINT("Power meter: Sending first reading to ESP32 (%.1fV %.1fW)\n",
-                              reading.voltage, reading.power);
-                    logged_first_send = true;
-                }
-                protocol_send_power_meter(&reading);
-            }
-        }
-#endif
+        // Power meter: Hardware metering removed (v2.32). Power monitoring via MQTT smart plugs on ESP32.
         
         // Periodically resend boot info (version, env config) to ensure ESP32 stays in sync
         // This helps recover from missed messages or ESP32 restarts
@@ -266,8 +248,7 @@ static const char* get_msg_name(uint8_t type) {
         case MSG_CMD_SET_ECO:             return "SET_ECO";
         case MSG_CMD_BOOTLOADER:          return "BOOTLOADER";
         case MSG_CMD_DIAGNOSTICS:         return "DIAGNOSTICS";
-        case MSG_CMD_POWER_METER_CONFIG:  return "POWER_METER_CONFIG";
-        case MSG_CMD_POWER_METER_DISCOVER: return "POWER_METER_DISCOVER";
+        // MSG_CMD_POWER_METER_CONFIG/DISCOVER removed (v2.32 - MQTT only)
         case MSG_CMD_GET_BOOT:            return "GET_BOOT";
         case MSG_CMD_LOG_CONFIG:          return "LOG_CONFIG";
         case MSG_LOG:                     return "LOG";
@@ -346,9 +327,7 @@ void handle_packet(const packet_t* packet) {
             handle_cmd_diagnostics(packet);
             break;
             
-        case MSG_CMD_POWER_METER_CONFIG:
-        case MSG_CMD_POWER_METER_DISCOVER:
-            handle_cmd_power_meter(packet);
+        // MSG_CMD_POWER_METER_CONFIG/DISCOVER removed (v2.32 - MQTT only)
             break;
             
         case MSG_CMD_GET_BOOT:

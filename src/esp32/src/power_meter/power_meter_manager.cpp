@@ -1,19 +1,15 @@
 /**
  * Power Meter Manager Implementation (ESP32)
  * 
- * Hardware meters: Pico handles Modbus communication, sends readings to ESP32
- * MQTT sources: ESP32 handles subscription and parsing directly
+ * MQTT sources only (v2.32) - Hardware Modbus meters removed from PCB.
+ * ESP32 handles MQTT subscription and parsing directly.
  */
 
 #include "power_meter/power_meter_manager.h"
 #include "power_meter/mqtt_power_meter.h"
 #include "config.h"
-#include "pico_uart.h"
 #include <Preferences.h>
 #include <time.h>
-
-// External reference to PicoUART for sending commands
-extern PicoUART picoUart;
 
 // NVS namespace for power meter config
 #define NVS_NAMESPACE "power_meter"
@@ -22,9 +18,6 @@ PowerMeterManager::PowerMeterManager()
     : _source(PowerMeterSource::NONE)
     , _lastReadTime(0)
     , _mqttMeter(nullptr)
-    , _autoDiscovering(false)
-    , _discoveryStep(0)
-    , _discoveryStepStartTime(0)
     , _lastPollTime(0)
 {
     memset(&_lastReading, 0, sizeof(_lastReading));
@@ -35,7 +28,7 @@ PowerMeterManager::~PowerMeterManager() {
 }
 
 void PowerMeterManager::begin() {
-    LOG_I("Power Meter Manager starting...");
+    LOG_I("Power Meter Manager starting (MQTT-only, v2.32)...");
     
     // Try to load saved configuration
     if (loadConfig()) {
@@ -70,15 +63,6 @@ void PowerMeterManager::loop() {
         }
     }
     
-    // Hardware meter readings come from Pico via onPicoPowerData callback
-    
-    // Auto-discovery timeout: Pico auto-detect takes ~10-15s max.
-    // If we haven't received a result after 20s, assume it failed (ACK was lost).
-    if (_autoDiscovering && (millis() - _discoveryStepStartTime) > 20000) {
-        LOG_W("Power meter discovery timed out (no ACK from Pico)");
-        _autoDiscovering = false;
-    }
-    
     // Check for daily reset
     time_t now = time(nullptr);
     if (now > 1000000) {  // Time is valid (NTP synced)
@@ -109,7 +93,7 @@ bool PowerMeterManager::setSource(PowerMeterSource source) {
         return true;  // No change needed
     }
     
-    LOG_I("Changing power meter source: %s → %s", 
+    LOG_I("Changing power meter source: %s -> %s", 
           powerMeterSourceToString(_source),
           powerMeterSourceToString(source));
     
@@ -117,19 +101,6 @@ bool PowerMeterManager::setSource(PowerMeterSource source) {
     cleanupMeter();
     
     _source = source;
-    
-    return saveConfig();
-}
-
-bool PowerMeterManager::configureHardware() {
-    LOG_I("Configuring hardware meter (via Pico)");
-    
-    // Clean up any existing MQTT meter
-    cleanupMeter();
-    
-    // Hardware meters are handled by Pico
-    // ESP32 just marks the source and receives data via UART
-    _source = PowerMeterSource::HARDWARE_MODBUS;
     
     return saveConfig();
 }
@@ -163,97 +134,21 @@ bool PowerMeterManager::configureMqtt(const char* topic, const char* format) {
     return saved;
 }
 
-void PowerMeterManager::onPicoPowerData(const PowerMeterReading& reading) {
-    // Only accept data if source is set to hardware
-    if (_source != PowerMeterSource::HARDWARE_MODBUS) {
-        return;
+const char* PowerMeterManager::getMqttTopic() const {
+    if (_source == PowerMeterSource::MQTT && _mqttMeter) {
+        return _mqttMeter->getTopic();
     }
-    
-    // Log connection status changes
-    static bool wasConnected = false;
-    bool isNowConnected = reading.valid;
-    if (isNowConnected != wasConnected) {
-        if (isNowConnected) {
-            LOG_I("Power meter (hardware) connected - receiving data from Pico");
-        } else {
-            LOG_W("Power meter (hardware) disconnected - no data from Pico");
-        }
-        wasConnected = isNowConnected;
-    }
-    
-    // Update cached reading
-    _lastReading.voltage = reading.voltage;
-    _lastReading.current = reading.current;
-    _lastReading.power = reading.power;
-    _lastReading.energy_import = reading.energy_import;
-    _lastReading.energy_export = reading.energy_export;
-    _lastReading.frequency = reading.frequency;
-    _lastReading.power_factor = reading.power_factor;
-    _lastReading.timestamp = reading.timestamp;
-    _lastReading.valid = reading.valid;
-    
-    _lastReadTime = millis();
+    return nullptr;
 }
 
-void PowerMeterManager::startAutoDiscovery() {
-    if (_autoDiscovering) {
-        LOG_W("Discovery already in progress");
-        return;
+void PowerMeterManager::onMqttPowerMessage(const char* payload, unsigned int length) {
+    if (_mqttMeter) {
+        _mqttMeter->onMqttData(payload, length);
     }
-    
-    LOG_I("Starting power meter auto-discovery (forwarding to Pico)...");
-    
-    // Auto-discovery is handled by Pico
-    // ESP32 just sets state and waits for Pico to report results
-    _autoDiscovering = true;
-    _discoveryStep = 0;
-    _discoveryStepStartTime = millis();
-    
-    // Send MSG_CMD_POWER_METER_DISCOVER command to Pico
-    // No payload needed - Pico will try all known meter types
-    if (picoUart.sendCommand(MSG_CMD_POWER_METER_DISCOVER, nullptr, 0)) {
-        LOG_I("Power meter discovery command sent to Pico");
-    } else {
-        LOG_E("Failed to send power meter discovery command to Pico");
-        _autoDiscovering = false;  // Reset state on failure
-    }
-}
-
-void PowerMeterManager::onDiscoveryResult(bool success) {
-    if (!_autoDiscovering) {
-        return;  // Not expecting a result
-    }
-    
-    _autoDiscovering = false;
-    
-    if (success) {
-        LOG_I("Power meter discovery: meter found!");
-    } else {
-        LOG_W("Power meter discovery: no meter detected");
-    }
-}
-
-DiscoveryStatus PowerMeterManager::getDiscoveryStatus() const {
-    DiscoveryStatus status;
-    status.discovering = _autoDiscovering;
-    status.currentStep = _discoveryStep;
-    status.totalSteps = 5;  // Number of meter types Pico will try
-    status.discoveredMeter = nullptr;
-    
-    if (_autoDiscovering) {
-        status.currentAction = "Discovering...";
-    } else if (_source == PowerMeterSource::HARDWARE_MODBUS && _lastReading.valid) {
-        status.currentAction = "Complete";
-        status.discoveredMeter = getMeterName();
-    } else {
-        status.currentAction = "None found";
-    }
-    
-    return status;
 }
 
 bool PowerMeterManager::getReading(PowerMeterReading& reading) {
-    // Return last cached reading (from Pico or MQTT)
+    // Return last cached reading from MQTT
     reading = _lastReading;
     return _lastReading.valid && ((millis() - _lastReadTime) < 5000);
 }
@@ -267,25 +162,12 @@ bool PowerMeterManager::isConnected() const {
         return _mqttMeter->isConnected();
     }
     
-    // Hardware: check if we've received data recently from Pico
-    return _lastReading.valid && ((millis() - _lastReadTime) < 5000);
+    return false;
 }
 
 const char* PowerMeterManager::getMeterName() const {
     if (_source == PowerMeterSource::MQTT && _mqttMeter) {
         return _mqttMeter->getName();
-    }
-    
-    if (_source == PowerMeterSource::HARDWARE_MODBUS) {
-        // Return specific meter type name based on stored index
-        switch (_meterIndex) {
-            case 0: return "PZEM-004T V3";
-            case 1: return "JSY-MK-163T";
-            case 2: return "JSY-MK-194T";
-            case 3: return "Eastron SDM120";
-            case 4: return "Eastron SDM230";
-            default: return "Hardware Meter";
-        }
     }
     
     return "None";
@@ -309,19 +191,9 @@ void PowerMeterManager::getStatus(JsonDocument& doc) {
     
     doc["source"] = powerMeterSourceToString(_source);
     doc["connected"] = connected;
-    // Only report meter type when actually communicating, otherwise show configured type with qualifier
     doc["meterType"] = getMeterName();
     doc["configured"] = (_source != PowerMeterSource::NONE);
-    
-    if (_autoDiscovering) {
-        DiscoveryStatus discovery = getDiscoveryStatus();
-        doc["discovering"] = true;
-        doc["discoveryProgress"] = discovery.currentAction;
-        doc["discoveryStep"] = discovery.currentStep;
-        doc["discoveryTotal"] = discovery.totalSteps;
-    } else {
-        doc["discovering"] = false;
-    }
+    doc["discovering"] = false;
     
     if (connected && _lastReading.valid && (millis() - _lastReadTime) < 5000) {
         JsonObject reading = doc["reading"].to<JsonObject>();
@@ -338,9 +210,7 @@ void PowerMeterManager::getStatus(JsonDocument& doc) {
     }
     
     const char* error = getLastError();
-    if (_source == PowerMeterSource::HARDWARE_MODBUS && !connected) {
-        doc["error"] = "No response from meter";
-    } else if (error && strlen(error) > 0) {
+    if (error && strlen(error) > 0) {
         doc["error"] = error;
     } else {
         doc["error"] = nullptr;
@@ -356,9 +226,7 @@ bool PowerMeterManager::saveConfig() {
     
     prefs.putUChar("source", (uint8_t)_source);
     
-    if (_source == PowerMeterSource::HARDWARE_MODBUS) {
-        prefs.putUChar("meter_idx", _meterIndex);
-    } else if (_source == PowerMeterSource::MQTT && _mqttMeter) {
+    if (_source == PowerMeterSource::MQTT && _mqttMeter) {
         prefs.putString("mqtt_topic", _mqttMeter->getTopic());
         prefs.putString("mqtt_format", _mqttMeter->getFormat());
     }
@@ -377,12 +245,15 @@ bool PowerMeterManager::loadConfig() {
     uint8_t sourceVal = prefs.getUChar("source", (uint8_t)PowerMeterSource::NONE);
     _source = (PowerMeterSource)sourceVal;
     
-    if (_source == PowerMeterSource::HARDWARE_MODBUS) {
-        _meterIndex = prefs.getUChar("meter_idx", 0xFF);
+    // Legacy migration: if saved config was HARDWARE_MODBUS (value 1), reset to NONE
+    if (sourceVal == 1) {  // Old HARDWARE_MODBUS enum value
+        LOG_W("Legacy hardware meter config found, resetting to NONE (hardware removed v2.32)");
+        _source = PowerMeterSource::NONE;
         prefs.end();
-        LOG_I("Loaded hardware meter config: index=%d", _meterIndex);
-        return true;
-    } else if (_source == PowerMeterSource::MQTT) {
+        return false;
+    }
+    
+    if (_source == PowerMeterSource::MQTT) {
         String topic = prefs.getString("mqtt_topic", "");
         String format = prefs.getString("mqtt_format", "auto");
         if (topic.length() > 0) {
@@ -427,4 +298,3 @@ void PowerMeterManager::resetDailyEnergy() {
 
 // Global instance - now a pointer, constructed in main.cpp setup()
 PowerMeterManager* powerMeterManager = nullptr;
-

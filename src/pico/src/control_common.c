@@ -26,7 +26,6 @@
 #include "pcb_config.h"
 #include "safety.h"
 #include "state.h"
-#include "power_meter.h"
 #include <math.h>
 #include <string.h>
 
@@ -636,15 +635,7 @@ void control_init(void) {
     LOG_PRINT("Control: Initialized (Brew SP=%.1fC, Steam SP=%.1fC, Strategy=%d)\n",
               g_brew_pid.setpoint, g_steam_pid.setpoint, g_heating_strategy);
     
-#if CONFIG_POWER_METER_ENABLED
-    // Initialize power meter if configured (PZEM, JSY, Eastron, etc.)
-    if (power_meter_init(NULL)) {
-        const char* meter_name = power_meter_get_name();
-        DEBUG_PRINT("Power meter initialized: %s\n", meter_name);
-    }
-#else
-    LOG_PRINT("Control: Power meter disabled (CONFIG_POWER_METER_ENABLED=0)\n");
-#endif
+    // Hardware power metering removed (v2.32). Power monitoring via MQTT smart plugs on ESP32.
 }
 
 // =============================================================================
@@ -695,13 +686,8 @@ void __not_in_flash_func(control_update)(void) {
     // Update simulation
     sensors_sim_set_heating(g_outputs.brew_heater > 0 || g_outputs.steam_heater > 0);
     
-    // Power measurement
-    power_meter_reading_t power_reading;
-    if (power_meter_is_connected() && power_meter_get_reading(&power_reading) && power_reading.valid) {
-        g_outputs.power_watts = (uint16_t)power_reading.power;
-    } else {
-        g_outputs.power_watts = estimate_power_watts(g_outputs.brew_heater, g_outputs.steam_heater);
-    }
+    // Power estimation (hardware metering removed v2.32 - MQTT only)
+    g_outputs.power_watts = estimate_power_watts(g_outputs.brew_heater, g_outputs.steam_heater);
 }
 
 // =============================================================================

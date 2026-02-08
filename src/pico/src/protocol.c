@@ -384,10 +384,7 @@ bool protocol_send_status(const status_payload_t* status) {
     return send_packet(MSG_STATUS, (const uint8_t*)status, sizeof(status_payload_t));
 }
 
-bool protocol_send_power_meter(const power_meter_reading_t* reading) {
-    if (!reading) return false;
-    return send_packet(MSG_POWER_METER, (const uint8_t*)reading, sizeof(power_meter_reading_t));
-}
+// protocol_send_power_meter() removed (v2.32 - hardware power metering removed, MQTT only)
 
 bool protocol_send_alarm(uint8_t code, uint8_t severity, uint16_t value) {
     alarm_payload_t alarm = {

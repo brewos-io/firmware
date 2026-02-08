@@ -16,7 +16,6 @@
 #include "cleaning.h"
 #include "bootloader.h"
 #include "diagnostics.h"
-#include "power_meter.h"
 #include "log_forward.h"
 #include "safety.h"
 #include "pico/stdlib.h"  // For sleep_ms
@@ -598,55 +597,7 @@ void handle_cmd_diagnostics(const packet_t* packet) {
     }
 }
 
-void handle_cmd_power_meter(const packet_t* packet) {
-    if (packet->type == MSG_CMD_POWER_METER_DISCOVER) {
-        // Auto-detect: run discovery and save config if a meter is found
-        if (power_meter_auto_detect()) {
-            protocol_send_ack(MSG_CMD_POWER_METER_DISCOVER, packet->seq, ACK_SUCCESS);
-        } else {
-            protocol_send_ack(MSG_CMD_POWER_METER_DISCOVER, packet->seq, ACK_ERROR_FAILED);
-        }
-        return;
-    }
-
-    /* MSG_CMD_POWER_METER_CONFIG: payload byte0 = enabled (0/1), optional byte1 = meter_index (0-4 or 0xFF = auto) */
-    if (packet->length < 1) {
-        protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_ERROR_INVALID);
-        return;
-    }
-
-    uint8_t meter_index;
-    if (packet->length >= 2) {
-        /* Explicit meter_index provided by ESP32 */
-        meter_index = packet->payload[1];
-    } else {
-        /* No meter_index in payload - default to auto-detect.
-         * Config is NOT persisted on Pico flash; ESP32 is source of truth. */
-        meter_index = 0xFF;
-    }
-
-    power_meter_config_t config = {
-        .enabled = (packet->payload[0] != 0),
-        .meter_index = meter_index,
-        .slave_addr = 0,
-        .baud_rate = 0
-    };
-
-    /* Track if auto-detect was requested - auto_detect saves config internally */
-    bool was_auto_detect = (config.enabled && config.meter_index == 0xFF);
-
-    if (!power_meter_init(&config)) {
-        protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_ERROR_FAILED);
-        return;
-    }
-
-    /* Power meter config is NOT saved to Pico flash.
-     * The ESP32 stores the source in NVS and re-sends the enable command on each
-     * Pico boot (handleBoot). Saving to Pico flash caused hard faults due to
-     * flash erase/program while Core 1 executes from XIP, bricking the device
-     * until a full flash erase. */
-    protocol_send_ack(MSG_CMD_POWER_METER_CONFIG, packet->seq, ACK_SUCCESS);
-}
+// handle_cmd_power_meter() removed (v2.32 - hardware power metering removed, MQTT only)
 
 void handle_cmd_get_boot(const packet_t* packet) {
     protocol_send_boot();

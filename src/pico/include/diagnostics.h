@@ -128,11 +128,7 @@ uint8_t diag_test_relay_pump(diag_result_t* result);
  */
 uint8_t diag_test_relay_solenoid(diag_result_t* result);
 
-/**
- * Test power meter communication (PZEM, JSY, Eastron, etc.)
- * Checks: UART/Modbus response, voltage/current readings
- */
-uint8_t diag_test_power_meter(diag_result_t* result);
+// diag_test_power_meter() removed (v2.32 - MQTT only)
 
 /**
  * Test ESP32 communication

@@ -178,6 +178,14 @@ public:
     void onDisconnected(mqtt_event_callback_t callback) { _onDisconnected = callback; }
     
     /**
+     * Power meter topic subscription (for Tasmota/Shelly MQTT power sensors).
+     * When set, the client subscribes to this topic and forwards messages to onPowerMeterMessage.
+     * Pass nullptr or "" to clear.
+     */
+    void setPowerMeterTopic(const char* topic);
+    void setOnPowerMeterMessage(void (*callback)(const char* payload, unsigned int length)) { _onPowerMeterMessage = callback; }
+    
+    /**
      * Command callback - called when a command is received via MQTT
      * @param cmd Command name (e.g., "set_temp", "set_mode", "tare")
      * @param doc JSON document with command parameters
@@ -201,6 +209,11 @@ private:
     mqtt_event_callback_t _onConnected = nullptr;
     mqtt_event_callback_t _onDisconnected = nullptr;
     mqtt_command_callback_t _commandCallback = nullptr;
+    void (*_onPowerMeterMessage)(const char* payload, unsigned int length) = nullptr;
+    
+    // Power meter MQTT topic (subscribe and forward payloads to _onPowerMeterMessage)
+    static const size_t POWER_METER_TOPIC_MAX = 128;
+    char _powerMeterTopic[POWER_METER_TOPIC_MAX];
     
     // FreeRTOS task management
     TaskHandle_t _taskHandle = nullptr;

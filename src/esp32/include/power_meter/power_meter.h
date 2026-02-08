@@ -1,8 +1,8 @@
 /**
  * Universal Power Meter Interface
  * 
- * Supports both hardware modules (Modbus UART/RS485) and MQTT sources
- * Data-driven architecture using register maps for Modbus devices
+ * Supports MQTT sources (Shelly, Tasmota, generic smart plugs)
+ * Hardware Modbus meters removed in v2.32
  */
 
 #ifndef POWER_METER_H
@@ -26,8 +26,8 @@ struct PowerMeterReading {
 // Power meter source types
 enum class PowerMeterSource {
     NONE,
-    HARDWARE_MODBUS,  // UART/RS485 Modbus device
-    MQTT              // MQTT topic subscription
+    // HARDWARE_MODBUS removed (v2.32) - hardware power metering eliminated from PCB
+    MQTT              // MQTT topic subscription (only supported source)
 };
 
 // Abstract base class for all power meters
@@ -61,7 +61,6 @@ public:
 inline const char* powerMeterSourceToString(PowerMeterSource source) {
     switch (source) {
         case PowerMeterSource::NONE: return "none";
-        case PowerMeterSource::HARDWARE_MODBUS: return "hardware";
         case PowerMeterSource::MQTT: return "mqtt";
         default: return "unknown";
     }
@@ -69,8 +68,9 @@ inline const char* powerMeterSourceToString(PowerMeterSource source) {
 
 // Helper function to parse source string to enum
 inline PowerMeterSource stringToPowerMeterSource(const char* str) {
-    if (strcmp(str, "hardware") == 0) return PowerMeterSource::HARDWARE_MODBUS;
     if (strcmp(str, "mqtt") == 0) return PowerMeterSource::MQTT;
+    // Legacy: treat "hardware" as NONE since hardware metering was removed
+    if (strcmp(str, "hardware") == 0) return PowerMeterSource::NONE;
     return PowerMeterSource::NONE;
 }
 
