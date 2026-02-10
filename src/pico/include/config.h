@@ -89,9 +89,9 @@
 // -----------------------------------------------------------------------------
 // Set to 1 to enable simulation mode (for development without hardware)
 // Set to 0 to use real hardware
-// Can also be overridden at compile time: -DHW_SIMULATION_MODE=0
+// Can also be overridden at compile time: -DHW_SIMULATION_MODE=1
 #ifndef HW_SIMULATION_MODE
-    #define HW_SIMULATION_MODE 1  // Default to simulation for development
+    #define HW_SIMULATION_MODE 0  // Default to real hardware
 #endif
 
 // -----------------------------------------------------------------------------

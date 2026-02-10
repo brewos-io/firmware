@@ -23,7 +23,7 @@
 // Enable simulation mode by default for development
 // Set to 0 to use real hardware
 #ifndef HW_SIMULATION_MODE
-#define HW_SIMULATION_MODE 1
+#define HW_SIMULATION_MODE 0
 #endif
 
 // ADC Configuration

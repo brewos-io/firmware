@@ -84,6 +84,11 @@ static uint32_t g_last_brew_ntc_log_ms = 0;
 static uint32_t g_last_steam_ntc_log_ms = 0;
 static uint32_t g_last_sensor_status_log_ms = 0;
 
+// Last raw ADC values (for diagnostic log; 0xFFFF = not read)
+#define ADC_NOT_READ  0xFFFFu
+static uint16_t g_last_brew_adc = ADC_NOT_READ;
+static uint16_t g_last_steam_adc = ADC_NOT_READ;
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -125,12 +130,13 @@ static float read_brew_ntc(void) {
 
     // Read ADC
     uint16_t adc_value = hw_read_adc(adc_channel);
+    g_last_brew_adc = adc_value;
 
-    // Convert to temperature
+    // Convert to temperature (brew: 3.3k series; 50k or 3.3k NTC per PCB)
     float temp_c = ntc_adc_to_temp(
         adc_value,
         HW_ADC_VREF_VOLTAGE,
-        NTC_SERIES_R_OHMS,
+        NTC_SERIES_BREW_OHMS,
         NTC_R25_OHMS,
         NTC_B_VALUE
     );
@@ -197,12 +203,13 @@ static float read_steam_ntc(void) {
 
     // Read ADC
     uint16_t adc_value = hw_read_adc(adc_channel);
+    g_last_steam_adc = adc_value;
 
-    // Convert to temperature
+    // Convert to temperature (steam: 1.2k series on ECM, else 3.3k; 50k or 3.3k NTC per PCB)
     float temp_c = ntc_adc_to_temp(
         adc_value,
         HW_ADC_VREF_VOLTAGE,
-        NTC_SERIES_R_OHMS,
+        NTC_SERIES_STEAM_OHMS,
         NTC_R25_OHMS,
         NTC_B_VALUE
     );
@@ -456,10 +463,11 @@ void sensors_init(void) {
     g_sensor_data.pressure = 0;        // 0.00 bar
     g_sensor_data.water_level = 80;    // 80%
     
-    LOG_PRINT("Sensors: Initialized (mode: %s, brew_ntc: %s, steam_ntc: %s)\n", 
+    LOG_PRINT("Sensors: Initialized (mode: %s, brew_ntc: %s, steam_ntc: %s, NTC: %.0fR@25C series=%.0fR)\n",
               hw_is_simulation_mode() ? "SIMULATION" : "REAL",
               machine_has_brew_ntc() ? "yes" : "no",
-              machine_has_steam_ntc() ? "yes" : "no");
+              machine_has_steam_ntc() ? "yes" : "no",
+              (double)NTC_R25_OHMS, (double)NTC_SERIES_R_OHMS);
 }
 
 // =============================================================================
@@ -521,7 +529,13 @@ void sensors_read(void) {
                 g_last_sensor_status_log_ms = now_ms;
                 float brew_c = g_sensor_data.brew_temp / 10.0f;
                 float steam_c = g_sensor_data.steam_temp / 10.0f;
-                LOG_PRINT("Sensors: brew=%.1fC steam=%.1fC\n", (double)brew_c, (double)steam_c);
+                if (g_last_brew_adc != ADC_NOT_READ && g_last_steam_adc != ADC_NOT_READ) {
+                    LOG_PRINT("Sensors: brew=%.1fC (GP26/ADC0=%u) steam=%.1fC (GP27/ADC1=%u)\n",
+                              (double)brew_c, (unsigned)g_last_brew_adc,
+                              (double)steam_c, (unsigned)g_last_steam_adc);
+                } else {
+                    LOG_PRINT("Sensors: brew=%.1fC steam=%.1fC\n", (double)brew_c, (double)steam_c);
+                }
                 log_water_level_probes(pcb_config_get(), g_sensor_data.water_level);
             }
         }

@@ -19,10 +19,12 @@
 // =============================================================================
 
 // NTC 3.3kΩ @ 25°C specifications
-#define NTC_R25_OHMS        3300.0f      // Resistance at 25°C
-#define NTC_B_VALUE         3950.0f      // B-value (K)
-#define NTC_SERIES_R_OHMS   3300.0f      // Series resistor (Ω)
-#define NTC_T25_KELVIN      298.15f      // 25°C in Kelvin
+#define NTC_R25_OHMS            3300.0f      // Resistance at 25°C
+#define NTC_B_VALUE             3950.0f      // B-value (K)
+#define NTC_SERIES_R_OHMS       3300.0f      // Series resistor (Ω)
+#define NTC_SERIES_BREW_OHMS    3300.0f      // Brew series resistor (Ω)
+#define NTC_SERIES_STEAM_OHMS   3300.0f      // Steam series resistor (Ω)
+#define NTC_T25_KELVIN          298.15f      // 25°C in Kelvin
 
 // =============================================================================
 // Median Filter
