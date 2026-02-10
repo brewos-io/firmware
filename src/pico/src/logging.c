@@ -17,8 +17,8 @@
 // Ring Buffer for Non-Blocking Logging
 // =============================================================================
 
-#define LOG_BUFFER_SIZE 1024  // Ring buffer size in bytes
-#define LOG_MAX_MESSAGE 96   // Maximum message length (reduced from 256 to save stack space)
+#define LOG_BUFFER_SIZE 2048  // Ring buffer size in bytes (doubled for diagnostic logs)
+#define LOG_MAX_MESSAGE 160  // Maximum message length (increased to fit sensor+water log lines)
 
 // Ring buffer structure
 typedef struct {

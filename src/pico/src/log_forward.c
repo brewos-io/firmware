@@ -25,8 +25,9 @@ static bool g_initialized = false;
 static bool g_pending_flash_write = false;
 static bool g_pending_flash_value = false;
 static uint32_t g_last_send_time = 0;
-static const uint32_t LOG_SEND_MIN_INTERVAL_MS = 2;  // Minimum 2ms between log sends (allows up to 500 logs/sec)
-                                                    // MSG_LOG doesn't require ACK, so we can be more permissive
+static const uint32_t LOG_SEND_MIN_INTERVAL_MS = 0;  // No rate limit - let protocol handle flow control
+                                                    // MSG_LOG doesn't require ACK, and consecutive logs
+                                                    // (e.g. sensor + water level) must not be dropped
 
 // =============================================================================
 // Public Functions

@@ -678,10 +678,9 @@ int main(void) {
             // Update state machine
             state_update();
             
-            // Run control (PID, outputs)
-            if (!safety_is_safe_state()) {
-                control_update();
-            }
+            // Run control (PID, outputs). Always call so safe/IDLE still apply outputs off
+            // (e.g. phase-sync schedules cleared, SSRs driven low).
+            control_update();
             
             // Update status for Core 1 (double-buffered, non-blocking)
             sensor_data_t sensor_data;

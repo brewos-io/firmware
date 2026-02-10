@@ -333,8 +333,8 @@ safety_state_t __not_in_flash_func(safety_check)(void) {
         g_reservoir_state = true;
     }
     
-    // Check tank level (SAF-011)
-    if (pcb && pcb->pins.input_tank_level >= 0) {
+    // Check tank level (SAF-011) - only in water tank mode
+    if (is_water_tank_mode && pcb && pcb->pins.input_tank_level >= 0) {
         bool tank_low = check_water_sensor_debounced(
             pcb->pins.input_tank_level,
             &g_tank_level_debounce_count,
@@ -350,18 +350,36 @@ safety_state_t __not_in_flash_func(safety_check)(void) {
             // Rate-limit message to avoid log spam
             if ((now - g_last_tank_msg) >= SAFETY_MSG_RATE_LIMIT_MS) {
                 g_last_tank_msg = now;
-                DEBUG_PRINT("SAFETY: Tank level low!\n");
+                LOG_PRINT("SAFETY: Tank level low! (Water tank mode - disabling heaters and pump)\n");
             }
         }
+    } else if (!is_water_tank_mode) {
+        // Plumbed mode: water line always available, reset tank debounce
+        g_tank_level_debounce_count = 0;
+        g_tank_level_state = true;
     }
     
     // Check steam level (SAF-012)
+    // Steam level probe polarity is OPPOSITE to switches:
+    //   GPIO HIGH = probe dry = water LOW (AC signal passes through)
+    //   GPIO LOW  = probe wet = water OK  (AC signal attenuated by water)
+    // So we read GPIO directly (not inverted) to get "true = steam low"
     if (pcb && pcb->pins.input_steam_level >= 0) {
-        bool steam_low = check_water_sensor_debounced(
-            pcb->pins.input_steam_level,
-            &g_steam_level_debounce_count,
-            &g_steam_level_state
-        );
+        bool gpio_state = hw_read_gpio((uint8_t)pcb->pins.input_steam_level);
+        // HIGH = dry = low water; debounce this value
+        if (gpio_state != g_steam_level_state) {
+            g_steam_level_debounce_count = 0;
+            g_steam_level_state = gpio_state;
+        } else {
+            g_steam_level_debounce_count++;
+        }
+        
+        bool steam_low = false;
+        if (g_steam_level_debounce_count >= WATER_SENSOR_DEBOUNCE_SAMPLES) {
+            steam_low = g_steam_level_state;  // HIGH (true) = low water
+        } else {
+            steam_low = g_steam_level_state;  // Use last stable state
+        }
         
         if (steam_low) {
             g_safety_flags |= SAFETY_FLAG_WATER_LOW;
@@ -375,7 +393,7 @@ safety_state_t __not_in_flash_func(safety_check)(void) {
             // Rate-limit message to avoid log spam
             if ((now - g_last_steam_level_msg) >= SAFETY_MSG_RATE_LIMIT_MS) {
                 g_last_steam_level_msg = now;
-                DEBUG_PRINT("SAFETY: Steam boiler level low!\n");
+                LOG_PRINT("SAFETY: Steam boiler level low!\n");
             }
         }
     }

@@ -159,11 +159,12 @@ static const pcb_config_t PCB_ECM_V1 = {
         .spi_cs             = 17,  // GPIO17 (SPI0 CS, reserved)
         
         // Digital inputs
-        .input_reservoir    = 2,   // GPIO2
-        .input_tank_level   = 3,   // GPIO3
-        .input_steam_level  = 4,   // GPIO4
+        .input_reservoir    = -1,  // No separate reservoir sensor (ECM uses water mode switch + tank level)
+        .input_tank_level   = 3,   // GPIO3 - Tank level sensor (magnetic float switch)
+        .input_steam_level  = 4,   // GPIO4 - Steam boiler level probe (TLV3201 comparator)
         .input_brew_switch  = 5,   // GPIO5
         .input_steam_switch = -1,  // Not used (dual boiler)
+        .input_water_mode   = 2,   // GPIO2 - Water mode switch: HIGH=plumbed, LOW=water tank
         .input_flow_pulse   = -1,  // Not used
         .input_emergency_stop = -1, // Not used
         .input_weight_stop  = 21,  // GPIO21 (WEIGHT_STOP from ESP32, J15 Pin 7)

@@ -359,31 +359,38 @@ static uint8_t read_water_level(void) {
         return 100;  // Assume full if not configured
     }
 
-    // Read level switches
-    bool reservoir_ok = true;
+    // Determine water mode: plumbed vs water tank
+    bool is_plumbed = false;
+    if (pcb->pins.input_water_mode >= 0) {
+        is_plumbed = hw_read_gpio(pcb->pins.input_water_mode);  // HIGH = plumbed
+    }
+
+    // In plumbed mode, water line is always available - only check steam level
+    if (is_plumbed) {
+        if (pcb->pins.input_steam_level >= 0) {
+            // Steam level probe: LOW = water present (AC attenuated), HIGH = empty (AC passes)
+            bool steam_ok = !hw_read_gpio(pcb->pins.input_steam_level);
+            return steam_ok ? 100 : 50;
+        }
+        return 100;  // Plumbed, all OK
+    }
+
+    // Water tank mode: check tank level sensor (magnetic float)
     bool tank_level_ok = true;
     bool steam_level_ok = true;
 
-    if (pcb->pins.input_reservoir >= 0) {
-        reservoir_ok = hw_read_gpio(pcb->pins.input_reservoir);
-    }
-
     if (pcb->pins.input_tank_level >= 0) {
+        // Magnetic float switch: HIGH = water ok, LOW = empty
         tank_level_ok = hw_read_gpio(pcb->pins.input_tank_level);
     }
 
     if (pcb->pins.input_steam_level >= 0) {
-        steam_level_ok = hw_read_gpio(pcb->pins.input_steam_level);
-    }
-
-    // Simple level calculation (can be improved)
-    // For now, return 100% if all OK, 0% if any critical switch is low
-    if (!reservoir_ok) {
-        return 0;  // Reservoir empty
+        // Steam level probe: LOW = water present (AC attenuated), HIGH = empty (AC passes)
+        steam_level_ok = !hw_read_gpio(pcb->pins.input_steam_level);
     }
 
     if (!tank_level_ok) {
-        return 20;  // Tank low
+        return 0;  // Tank empty - critical
     }
 
     if (!steam_level_ok) {
@@ -400,28 +407,22 @@ static uint8_t read_water_level(void) {
 static void log_water_level_probes(const pcb_config_t* pcb, uint8_t level) {
     if (!pcb) return;
 
-    int8_t r_pin = pcb->pins.input_reservoir;
-    int8_t t_pin = pcb->pins.input_tank_level;
-    int8_t s_pin = pcb->pins.input_steam_level;
+    int8_t wm_pin = pcb->pins.input_water_mode;
+    int8_t t_pin  = pcb->pins.input_tank_level;
+    int8_t s_pin  = pcb->pins.input_steam_level;
 
-    unsigned r_val = (r_pin >= 0) ? (hw_read_gpio((uint8_t)r_pin) ? 1u : 0u) : 0xFFu;
-    unsigned t_val = (t_pin >= 0) ? (hw_read_gpio((uint8_t)t_pin) ? 1u : 0u) : 0xFFu;
-    unsigned s_val = (s_pin >= 0) ? (hw_read_gpio((uint8_t)s_pin) ? 1u : 0u) : 0xFFu;
+    // Water mode: HIGH=plumbed, LOW=tank
+    const char* wm_str = (wm_pin < 0) ? "n/c" :
+                          (hw_read_gpio((uint8_t)wm_pin) ? "PLUMBED" : "TANK");
+    // Tank level (magnetic float): HIGH=ok, LOW=empty
+    const char* t_str = (t_pin < 0) ? "n/c" :
+                         (hw_read_gpio((uint8_t)t_pin) ? "OK" : "EMPTY");
+    // Steam level (AC probe): LOW=water present (OK), HIGH=dry (LOW)
+    const char* s_str = (s_pin < 0) ? "n/c" :
+                         (hw_read_gpio((uint8_t)s_pin) ? "EMPTY" : "OK");
 
-    const char* r_str = (r_val == 0) ? "empty" : ((r_val == 1) ? "ok" : "n/c");
-    const char* t_str = (t_val == 0) ? "low" : ((t_val == 1) ? "ok" : "n/c");
-    const char* s_str = (s_val == 0) ? "low" : ((s_val == 1) ? "ok" : "n/c");
-
-    if (r_pin >= 0 && t_pin >= 0 && s_pin >= 0) {
-        LOG_PRINT("Sensors: Water reservoir=GPIO%d=%u (%s) tank=GPIO%d=%u (%s) steam=GPIO%d=%u (%s) => level=%u%%\n",
-                  (int)r_pin, r_val, r_str,
-                  (int)t_pin, t_val, t_str,
-                  (int)s_pin, s_val, s_str,
-                  (unsigned)level);
-    } else if (r_pin >= 0) {
-        LOG_PRINT("Sensors: Water reservoir=GPIO%d=%u (%s) => level=%u%%\n",
-                  (int)r_pin, r_val, r_str, (unsigned)level);
-    }
+    LOG_PRINT("Sensors: Water mode(GP%d)=%s tank(GP%d)=%s steam(GP%d)=%s => %u%%\n",
+              (int)wm_pin, wm_str, (int)t_pin, t_str, (int)s_pin, s_str, (unsigned)level);
 }
 
 // =============================================================================
@@ -443,17 +444,18 @@ void sensors_init(void) {
     g_use_hardware = true;  // Always use hardware abstraction (sim or real)
     
     // Initialize digital inputs for water level
+    // Note: gpio_init_inputs() in gpio_init.c handles the primary init.
+    // This is a safety net for pins that might not be covered there.
     const pcb_config_t* pcb = pcb_config_get();
     if (pcb) {
         if (pcb->pins.input_reservoir >= 0) {
-            hw_gpio_init_input(pcb->pins.input_reservoir, true, false);  // Pull-up
+            hw_gpio_init_input(pcb->pins.input_reservoir, true, false);  // Pull-up (switch)
         }
         if (pcb->pins.input_tank_level >= 0) {
-            hw_gpio_init_input(pcb->pins.input_tank_level, true, false);
+            hw_gpio_init_input(pcb->pins.input_tank_level, true, false);  // Pull-up (magnetic float)
         }
-        if (pcb->pins.input_steam_level >= 0) {
-            hw_gpio_init_input(pcb->pins.input_steam_level, true, false);
-        }
+        // Steam level (GPIO4): NO pull-up - TLV3201 comparator drives this pin
+        // Adding a pull-up would fight the comparator output
     }
     
     // Initialize sensor data with default values
@@ -529,13 +531,9 @@ void sensors_read(void) {
                 g_last_sensor_status_log_ms = now_ms;
                 float brew_c = g_sensor_data.brew_temp / 10.0f;
                 float steam_c = g_sensor_data.steam_temp / 10.0f;
-                if (g_last_brew_adc != ADC_NOT_READ && g_last_steam_adc != ADC_NOT_READ) {
-                    LOG_PRINT("Sensors: brew=%.1fC (GP26/ADC0=%u) steam=%.1fC (GP27/ADC1=%u)\n",
-                              (double)brew_c, (unsigned)g_last_brew_adc,
-                              (double)steam_c, (unsigned)g_last_steam_adc);
-                } else {
-                    LOG_PRINT("Sensors: brew=%.1fC steam=%.1fC\n", (double)brew_c, (double)steam_c);
-                }
+                LOG_PRINT("Sensors: brew=%.1fC (GP26/ADC0=%u) steam=%.1fC (GP27/ADC1=%u)\n",
+                          (double)brew_c, (unsigned)g_last_brew_adc,
+                          (double)steam_c, (unsigned)g_last_steam_adc);
                 log_water_level_probes(pcb_config_get(), g_sensor_data.water_level);
             }
         }

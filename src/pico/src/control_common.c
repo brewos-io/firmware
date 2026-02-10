@@ -579,10 +579,17 @@ void apply_hardware_outputs(uint8_t brew_heater, uint8_t steam_heater, uint8_t p
     // For HEAT_SMART_STAGGER, phase sync timer handles SSR control
     // Schedules are set in apply_heating_strategy()
     if (g_heating_strategy == HEAT_SMART_STAGGER) {
-        // Phase sync is active, timer callback handles SSR states
-        // Just ensure timer is running
-        if (!g_phase_sync_active) {
-            start_phase_sync();
+        if (brew_heater == 0 && steam_heater == 0) {
+            // Safe/IDLE: clear schedules so timer stops toggling; drive SSRs off
+            set_ssr_schedule(0, 0, 0);
+            set_ssr_schedule(1, 0, 0);
+            if (pcb->pins.ssr_brew >= 0) hw_set_gpio((uint8_t)pcb->pins.ssr_brew, false);
+            if (pcb->pins.ssr_steam >= 0) hw_set_gpio((uint8_t)pcb->pins.ssr_steam, false);
+        } else {
+            // Phase sync is active, timer callback handles SSR states
+            if (!g_phase_sync_active) {
+                start_phase_sync();
+            }
         }
     } else {
         // Other strategies use hardware PWM
