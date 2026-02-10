@@ -6,6 +6,7 @@
  */
 
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include "hardware/gpio.h"
 #include "sensors.h"
 #include "config.h"
@@ -77,6 +78,12 @@ static uint16_t g_pressure_error_count = 0;
 
 #define SENSOR_ERROR_THRESHOLD 10  // Report error after 10 consecutive failures
 
+// Rate limit for sensor diagnostic logs (avoid log spam)
+#define SENSOR_LOG_INTERVAL_MS  5000   // Log at most every 5 seconds
+static uint32_t g_last_brew_ntc_log_ms = 0;
+static uint32_t g_last_steam_ntc_log_ms = 0;
+static uint32_t g_last_sensor_status_log_ms = 0;
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -86,25 +93,39 @@ static uint16_t g_pressure_error_count = 0;
  * Returns NAN if sensor doesn't exist for this machine type
  */
 static float read_brew_ntc(void) {
+    uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+
     // Machine-type check: HX machines don't have brew NTC
     if (!machine_has_brew_ntc()) {
+        if (now_ms - g_last_brew_ntc_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+            g_last_brew_ntc_log_ms = now_ms;
+            LOG_PRINT("Sensors: Brew NTC not read (machine type has no brew NTC)\n");
+        }
         return NAN;  // Not present on this machine type
     }
-    
+
     const pcb_config_t* pcb = pcb_config_get();
     if (!pcb || pcb->pins.adc_brew_ntc < 0) {
+        if (now_ms - g_last_brew_ntc_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+            g_last_brew_ntc_log_ms = now_ms;
+            LOG_PRINT("Sensors: Brew NTC not read (pin not configured)\n");
+        }
         return NAN;  // Not configured
     }
-    
+
     // Get ADC channel (GPIO26=0, GPIO27=1, GPIO28=2, GPIO29=3)
     uint8_t adc_channel = pcb->pins.adc_brew_ntc - 26;
     if (adc_channel > 3) {
+        if (now_ms - g_last_brew_ntc_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+            g_last_brew_ntc_log_ms = now_ms;
+            LOG_PRINT("Sensors: Brew NTC not read (invalid ADC channel %u)\n", (unsigned)adc_channel);
+        }
         return NAN;  // Invalid channel
     }
-    
+
     // Read ADC
     uint16_t adc_value = hw_read_adc(adc_channel);
-    
+
     // Convert to temperature
     float temp_c = ntc_adc_to_temp(
         adc_value,
@@ -113,19 +134,23 @@ static float read_brew_ntc(void) {
         NTC_R25_OHMS,
         NTC_B_VALUE
     );
-    
+
     // Validate
     if (!sensor_validate_temp(temp_c, -10.0f, 200.0f)) {
         g_brew_ntc_fault = true;
         g_brew_ntc_error_count++;
-        if (g_brew_ntc_error_count >= SENSOR_ERROR_THRESHOLD && 
+        if (g_brew_ntc_error_count >= SENSOR_ERROR_THRESHOLD &&
             g_brew_ntc_error_count == SENSOR_ERROR_THRESHOLD) {
-            LOG_PRINT("Sensors: ERROR - Brew NTC invalid reading (%.1fC) - %d consecutive failures\n", 
+            LOG_PRINT("Sensors: ERROR - Brew NTC invalid reading (%.1fC) - %d consecutive failures\n",
                        temp_c, g_brew_ntc_error_count);
+        } else if (now_ms - g_last_brew_ntc_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+            g_last_brew_ntc_log_ms = now_ms;
+            LOG_PRINT("Sensors: Brew NTC invalid (ADC=%u -> %.1fC, out of range -10..200C)\n",
+                      (unsigned)adc_value, (double)temp_c);
         }
         return NAN;
     }
-    
+
     // Valid reading - reset error count
     if (g_brew_ntc_error_count > 0) {
         LOG_PRINT("Sensors: Brew NTC recovered after %d failures\n", g_brew_ntc_error_count);
@@ -140,25 +165,39 @@ static float read_brew_ntc(void) {
  * Returns NAN if sensor doesn't exist for this machine type
  */
 static float read_steam_ntc(void) {
+    uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+
     // Machine-type check: Single boiler machines don't have steam NTC
     if (!machine_has_steam_ntc()) {
+        if (now_ms - g_last_steam_ntc_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+            g_last_steam_ntc_log_ms = now_ms;
+            LOG_PRINT("Sensors: Steam NTC not read (machine type has no steam NTC)\n");
+        }
         return NAN;  // Not present on this machine type
     }
-    
+
     const pcb_config_t* pcb = pcb_config_get();
     if (!pcb || pcb->pins.adc_steam_ntc < 0) {
+        if (now_ms - g_last_steam_ntc_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+            g_last_steam_ntc_log_ms = now_ms;
+            LOG_PRINT("Sensors: Steam NTC not read (pin not configured)\n");
+        }
         return NAN;  // Not configured
     }
-    
+
     // Get ADC channel
     uint8_t adc_channel = pcb->pins.adc_steam_ntc - 26;
     if (adc_channel > 3) {
+        if (now_ms - g_last_steam_ntc_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+            g_last_steam_ntc_log_ms = now_ms;
+            LOG_PRINT("Sensors: Steam NTC not read (invalid ADC channel %u)\n", (unsigned)adc_channel);
+        }
         return NAN;  // Invalid channel
     }
-    
+
     // Read ADC
     uint16_t adc_value = hw_read_adc(adc_channel);
-    
+
     // Convert to temperature
     float temp_c = ntc_adc_to_temp(
         adc_value,
@@ -167,22 +206,26 @@ static float read_steam_ntc(void) {
         NTC_R25_OHMS,
         NTC_B_VALUE
     );
-    
+
     // Validate
     if (!sensor_validate_temp(temp_c, -10.0f, 200.0f)) {
         g_steam_ntc_fault = true;
         g_steam_ntc_error_count++;
-        if (g_steam_ntc_error_count >= SENSOR_ERROR_THRESHOLD && 
+        if (g_steam_ntc_error_count >= SENSOR_ERROR_THRESHOLD &&
             g_steam_ntc_error_count == SENSOR_ERROR_THRESHOLD) {
-            DEBUG_PRINT("SENSOR ERROR: Steam NTC invalid reading (%.1fC) - %d consecutive failures\n", 
+            LOG_PRINT("Sensors: ERROR - Steam NTC invalid reading (%.1fC) - %d consecutive failures\n",
                        temp_c, g_steam_ntc_error_count);
+        } else if (now_ms - g_last_steam_ntc_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+            g_last_steam_ntc_log_ms = now_ms;
+            LOG_PRINT("Sensors: Steam NTC invalid (ADC=%u -> %.1fC, out of range -10..200C)\n",
+                      (unsigned)adc_value, (double)temp_c);
         }
         return NAN;
     }
-    
+
     // Valid reading - reset error count
     if (g_steam_ntc_error_count > 0) {
-        DEBUG_PRINT("SENSOR: Steam NTC recovered after %d failures\n", g_steam_ntc_error_count);
+        LOG_PRINT("Sensors: Steam NTC recovered after %d failures\n", g_steam_ntc_error_count);
     }
     g_steam_ntc_fault = false;
     g_steam_ntc_error_count = 0;
@@ -301,45 +344,77 @@ static float read_pressure(void) {
 
 /**
  * Read water level (digital inputs)
+ * Switches are active HIGH = OK (full), LOW = empty/low
  */
 static uint8_t read_water_level(void) {
     const pcb_config_t* pcb = pcb_config_get();
     if (!pcb) {
         return 100;  // Assume full if not configured
     }
-    
+
     // Read level switches
     bool reservoir_ok = true;
     bool tank_level_ok = true;
     bool steam_level_ok = true;
-    
+
     if (pcb->pins.input_reservoir >= 0) {
         reservoir_ok = hw_read_gpio(pcb->pins.input_reservoir);
     }
-    
+
     if (pcb->pins.input_tank_level >= 0) {
         tank_level_ok = hw_read_gpio(pcb->pins.input_tank_level);
     }
-    
+
     if (pcb->pins.input_steam_level >= 0) {
         steam_level_ok = hw_read_gpio(pcb->pins.input_steam_level);
     }
-    
+
     // Simple level calculation (can be improved)
     // For now, return 100% if all OK, 0% if any critical switch is low
     if (!reservoir_ok) {
         return 0;  // Reservoir empty
     }
-    
+
     if (!tank_level_ok) {
         return 20;  // Tank low
     }
-    
+
     if (!steam_level_ok) {
         return 50;  // Steam boiler low
     }
-    
+
     return 100;  // All OK
+}
+
+/**
+ * Log water level probe raw state (for diagnostics).
+ * Call with pcb and current level; logs GPIO pin, raw value, and interpretation.
+ */
+static void log_water_level_probes(const pcb_config_t* pcb, uint8_t level) {
+    if (!pcb) return;
+
+    int8_t r_pin = pcb->pins.input_reservoir;
+    int8_t t_pin = pcb->pins.input_tank_level;
+    int8_t s_pin = pcb->pins.input_steam_level;
+
+    unsigned r_val = (r_pin >= 0) ? (hw_read_gpio((uint8_t)r_pin) ? 1u : 0u) : 0xFFu;
+    unsigned t_val = (t_pin >= 0) ? (hw_read_gpio((uint8_t)t_pin) ? 1u : 0u) : 0xFFu;
+    unsigned s_val = (s_pin >= 0) ? (hw_read_gpio((uint8_t)s_pin) ? 1u : 0u) : 0xFFu;
+
+    const char* r_str = (r_val == 0) ? "empty" : ((r_val == 1) ? "ok" : "n/c");
+    const char* t_str = (t_val == 0) ? "low" : ((t_val == 1) ? "ok" : "n/c");
+    const char* s_str = (s_val == 0) ? "low" : ((s_val == 1) ? "ok" : "n/c");
+
+    if (r_pin >= 0 && t_pin >= 0 && s_pin >= 0) {
+        LOG_PRINT("Sensors: Water reservoir=GPIO%d=%u (%s) tank=GPIO%d=%u (%s) steam=GPIO%d=%u (%s) => level=%u%%\n",
+                  (int)r_pin, r_val, r_str,
+                  (int)t_pin, t_val, t_str,
+                  (int)s_pin, s_val, s_str,
+                  (unsigned)level);
+    } else if (r_pin >= 0) {
+        LOG_PRINT("Sensors: Water reservoir=GPIO%d=%u (%s) => level=%u%%\n",
+                  (int)r_pin, r_val, r_str, (unsigned)level);
+    }
 }
 
 // =============================================================================
@@ -438,9 +513,21 @@ void sensors_read(void) {
         
         // Read water level
         g_sensor_data.water_level = read_water_level();
-        
+
+        // Periodic sensor status log (rate-limited) for diagnostics
+        {
+            uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+            if (now_ms - g_last_sensor_status_log_ms >= SENSOR_LOG_INTERVAL_MS) {
+                g_last_sensor_status_log_ms = now_ms;
+                float brew_c = g_sensor_data.brew_temp / 10.0f;
+                float steam_c = g_sensor_data.steam_temp / 10.0f;
+                LOG_PRINT("Sensors: brew=%.1fC steam=%.1fC\n", (double)brew_c, (double)steam_c);
+                log_water_level_probes(pcb_config_get(), g_sensor_data.water_level);
+            }
+        }
+
         // Hardware power metering removed (v2.32). Power monitoring via MQTT smart plugs on ESP32.
-        
+
     } else {
         // Fallback: Old simulation mode (should not be used if hardware abstraction is available)
         // This is kept for backward compatibility
