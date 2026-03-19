@@ -38,7 +38,7 @@ ECM and Profitec share the same parent company (ECM Manufacture GmbH) and use id
 
 | Model | Boiler Type | Configuration | Status | Notes |
 |-------|-------------|---------------|--------|-------|
-| Pro 300 | Single Boiler | `single_boiler` | 🔷 Expected | Same GICAR board |
+| Pro 300 | Single Boiler | `dual_boiler` | 🔷 Expected | Same GICAR board |
 | Pro 500 | Heat Exchanger | `heat_exchanger` | 🔷 Expected | Same GICAR board |
 | Pro 700 | Dual Boiler | `dual_boiler` | 🔷 Expected | Same GICAR board |
 
